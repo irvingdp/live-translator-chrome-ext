@@ -271,6 +271,36 @@ git add src/core/caption-chunker.ts tests/core/caption-chunker.test.ts
 git commit -m "feat: split transcript text into caption-sized units"
 ```
 
+#### Amendment after code review (commit `18da1dd`)
+
+The source above is what was implemented first, in commit `225cb1e`. Code
+review then found three real defects in it, so **the code above is no longer
+the current implementation** — read the file, not this block. The corrected
+behavior is now described in the design spec's boundary rules. What changed:
+
+1. An ASCII `.` only ends a sentence when whitespace or end-of-text follows,
+   looking past any closing punctuation first. Without this, Deepgram's smart
+   formatting (`3.14`, `example.com`, `U.S.`) fragmented into separate
+   *sentences*, which rule 4 can never rejoin. `Mr. Smith` still splits; an
+   abbreviation list was ruled out as speculative.
+2. `visualWidth` and `hardWrap` now share one `characterWidth` helper and both
+   iterate by code point. `hardWrap` previously indexed UTF-16 code units, so it
+   could cut an astral character into lone surrogates — while `isWide` claims to
+   support CJK Extension B — and the two call sites disagreed on emoji width.
+3. Trailing closing punctuation (`"`, `'`, `』`, `」`, `)`, `）`) is absorbed
+   into the unit it ends, instead of being stranded at the start of the next one.
+
+Tests grew from 5 to 21, covering the gaps the spec's testing section already
+asked for: CJK through the splitter itself (not only through `visualWidth`),
+ideographic punctuation in both stages, an unbreakable Latin word, the
+forced-progress guard, and — instead of only literal offsets — the invariants
+`text === source.slice(start, end)`, `visualWidth(text) <= maxWidth`, a
+whitespace-stripped round trip, and prefix stability across growing prefixes.
+
+Later tasks are unaffected: Task 2's fixtures (`Hello there.`,
+`Hello there. And now.`) split identically under the corrected rule, since every
+`.` in them is followed by a space or ends the string.
+
 ---
 
 ### Task 2: Stateful chunker with frozen closed units

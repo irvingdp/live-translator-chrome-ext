@@ -59,16 +59,41 @@ holds, per segment, the units it has already closed.
 Boundary rules, applied in order:
 
 1. Split at sentence-final punctuation: `.`, `?`, `!`, `。`, `！`, `？`, `…`.
-   Punctuation stays with the preceding unit.
+   Punctuation stays with the preceding unit, along with any run of consecutive
+   enders and any closing punctuation that follows them (`"`, `'`, `』`, `」`,
+   `)`, `）`), so a closing quote is never stranded at the start of the next
+   unit.
 2. Split any piece wider than the limit at clause punctuation: `,`, `;`, `:`,
    `，`, `、`, `；`, `：`.
 3. Split any remaining over-wide piece at the last word boundary before the
    limit. Text without spaces is cut at the limit.
+4. Pack adjacent pieces back together greedily, last, and only within a single
+   sentence. Packing before wrapping would strand the leftover tail of an
+   over-wide clause on a near-empty line; packing across sentences would put two
+   sentences on one line.
+
+An ASCII `.` only ends a sentence when whitespace or the end of the text
+follows it, looking past any closing punctuation first. Deepgram's smart
+formatting emits decimals, times, hostnames, and initialisms (`$3.5`, `10.30`,
+`example.com`, `U.S.`), and an unconditional `.` rule fragments every one of
+them. That is worse than ordinary bad wrapping here: each fragment becomes its
+own *sentence*, so rule 4 can never rejoin them, and a two-unit window scrolls
+the viewer's context away several times faster. The CJK enders and `…` stay
+unconditional, because CJK text legitimately has no space after them.
+
+Abbreviations that end in a period followed by a space (`Mr. Smith`, and the
+final period of `U.S. policy`) still split. Recognizing those needs a
+hardcoded abbreviation list, which is deliberately out of scope.
 
 Width is a visual estimate, not a character count: a character in the CJK,
 fullwidth, Hiragana, or Katakana ranges counts as 2, every other character
 counts as 1. One rule then serves both Latin and CJK source languages. The
 limit is the `maxLineWidth` setting.
+
+Width accounting and wrapping both iterate by code point through one shared
+character-width function. Iterating by UTF-16 code unit would let a wrap cut an
+astral character in half — which matters because the wide ranges include CJK
+Extension B — and would let the two call sites disagree about the same string.
 
 Boundaries are computed only from stabilized text, and a closed unit's text is
 frozen. Deepgram revises interim results, so freezing a boundary derived from
@@ -211,9 +236,18 @@ translation line; the original line still shows and still scrolls up normally.
 ## Testing
 
 - `CaptionChunker`: sentence-final and clause splitting, over-wide pieces with
-  and without spaces, CJK double-width accounting, closed units staying frozen
-  when a later revision contradicts them, and the open unit's displayed text
-  being the raw remainder.
+  and without spaces, CJK double-width accounting through the splitter itself
+  and not only through the width function, ideographic punctuation in both
+  splitting stages, an ASCII `.` inside a decimal or hostname not splitting, a
+  closing quote staying with the sentence it ends, an astral character surviving
+  a wrap intact, closed units staying frozen when a later revision contradicts
+  them, and the open unit's displayed text being the raw remainder.
+- `CaptionChunker` invariants, asserted rather than spot-checked against literal
+  values: every unit satisfies `text === source.slice(start, end)` and
+  `visualWidth(text) <= maxWidth`, the whitespace-stripped concatenation of
+  units equals the whitespace-stripped input, and across growing prefixes of
+  the same transcript the boundaries of closed units never move. That last one
+  is the property unit freezing depends on.
 - `CaptionWindow`: dropping the oldest unit on a third insert, ignoring a
   translation for a dropped unit, and preserving arrival order.
 - `CaptionOverlay`: DOM structure for one and two units, the push sequence's
