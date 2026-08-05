@@ -1,10 +1,25 @@
 import type { CaptureStartRequest } from '../audio/offscreen-capture-controller';
+import type { TranslationRequest } from '../providers/deepl';
 import type { AppSettings } from './settings';
 import type { TranscriptEvent } from './transcript-stabilizer';
 
 export type ExtensionMessage =
   | { target: 'offscreen'; type: 'CAPTURE_START'; payload: CaptureStartRequest }
   | { target: 'offscreen'; type: 'CAPTURE_STOP'; payload: { sessionId: string } }
+  | {
+      target: 'offscreen';
+      type: 'TRANSLATE_REQUEST';
+      payload: {
+        request: TranslationRequest;
+        requestId: string;
+        sessionId: string;
+      };
+    }
+  | {
+      target: 'offscreen';
+      type: 'TRANSLATE_CANCEL';
+      payload: { requestId: string; sessionId: string };
+    }
   | { target: 'background'; type: 'CAPTURE_DISCONNECTED'; payload: { sessionId: string } }
   | { target: 'background'; type: 'CAPTURE_KEEPALIVE'; payload: { sessionId: string } }
   | { target: 'background'; type: 'CONTENT_READY' }
