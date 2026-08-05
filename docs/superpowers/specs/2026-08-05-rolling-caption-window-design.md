@@ -83,9 +83,9 @@ translation and for window updates.
 The last unit of a non-final segment stays open.
 
 - Its **displayed original** is the raw interim text minus the prefix already
-  covered by closed units. The chunker tracks a `closedPrefixLength` per
-  segment, the total length of that segment's closed unit text within the raw
-  text; the open unit displays `rawText.slice(closedPrefixLength).trim()`. This
+  covered by closed units. Splitting returns spans carrying their offsets into
+  the source text, so the open unit's start offset is simply the start of the
+  last span, and the open unit displays `rawText.slice(openStart).trim()`. This
   is well defined because stabilized text is always a prefix of the raw interim
   text. It grows word by word, so the third line tracks speech with minimal
   delay.
@@ -132,9 +132,10 @@ original and translation.
 
 The caption box gains a clipping viewport around a bottom-aligned track:
 
-- `.viewport` has `overflow: hidden` and `max-height` of two unit heights, both
-  derived from the font-size variables. Its height follows its content, so it is
-  one unit tall until the second unit arrives and clips at two thereafter.
+- `.viewport` has `overflow: hidden` and a height that follows its content, so
+  it is one unit tall until the second unit arrives and two thereafter. It never
+  needs a `max-height`, because the DOM only ever holds a third unit during the
+  push, and the push pins the viewport's height for its duration.
 - `.track` is a bottom-aligned flex column of unit elements, each holding one
   `.original` and one `.translation` line.
 
