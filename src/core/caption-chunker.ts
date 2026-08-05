@@ -6,13 +6,24 @@ export interface CaptionUnitSpan {
   text: string;
 }
 
-type EndingPredicate = (text: string, index: number) => boolean;
+type EndingPredicate = (text: string, index: number, limit: number) => boolean;
 
 const SENTENCE_ENDING_CHARACTERS = /[.?!。！？…]/u;
 const CLAUSE_ENDING_CHARACTERS = /[,;:，、；：]/u;
-const CLOSING_PUNCTUATION = /["'』」)）]/u;
+const CLOSING_PUNCTUATION = /["'』」)）”’\]}》〉】〕»]/u;
+// Any sentence/clause ender or closer. Used to tell whether a hardWrap
+// remainder is punctuation only, with nothing left to attach it to.
+const PUNCTUATION_OR_CLOSING_CHARACTERS =
+  /[.?!,;:。！？…，、；："'』」)）”’\]}》〉】〕»]/u;
 const WHITESPACE = /\s/u;
 const ASCII_PERIOD = '.';
+
+// The extra width a hardWrap cut may exceed maxWidth by, so a unit never
+// starts with a stray comma, period, or closer. Sized for a small
+// punctuation-only remainder (about two double-width CJK marks); it applies
+// only when everything after the natural cut point is punctuation, never to
+// ordinary text.
+export const PUNCTUATION_TAIL_GRACE = 4;
 
 function isWide(character: string): boolean {
   const code = character.codePointAt(0) ?? 0;
@@ -38,24 +49,43 @@ export function visualWidth(text: string): number {
   return width;
 }
 
-// An ASCII "." ends a sentence only when whitespace (or the end of the text)
-// follows it, skipping over any immediately-trailing closing punctuation such
-// as a quote mark. This keeps decimals ("3.14"), dotted hostnames
-// ("example.com"), and initialisms ("U.S.") from fragmenting into separate
-// sentences. CJK enders and "…" always end a sentence regardless of spacing.
-function isSentenceEnder(text: string, index: number): boolean {
+// Advances past a run of closing punctuation (a quote, a closing bracket)
+// starting at `index`, without scanning past `limit`. Shared by the sentence
+// lookahead and the ender-absorption loop so the two can never disagree
+// about where a closer run ends.
+function skipClosers(text: string, index: number, limit: number): number {
+  let next = index;
+  while (next < limit && CLOSING_PUNCTUATION.test(text[next]!)) next += 1;
+  return next;
+}
+
+// An ASCII "." ends a sentence only when whitespace (or `limit`, the end of
+// the scanned range) follows it, skipping over any immediately-trailing
+// closing punctuation such as a quote mark first. This keeps decimals
+// ("3.14"), dotted hostnames ("example.com"), and initialisms ("U.S.") from
+// fragmenting into separate sentences. CJK enders and "…" always end a
+// sentence regardless of spacing.
+function isSentenceEnder(text: string, index: number, limit: number): boolean {
   const character = text[index]!;
   if (!SENTENCE_ENDING_CHARACTERS.test(character)) return false;
   if (character !== ASCII_PERIOD) return true;
 
-  let next = index + 1;
-  while (next < text.length && CLOSING_PUNCTUATION.test(text[next]!)) next += 1;
-  const nextCharacter = text[next];
-  return nextCharacter === undefined || WHITESPACE.test(nextCharacter);
+  const next = skipClosers(text, index + 1, limit);
+  return next >= limit || WHITESPACE.test(text[next]!);
 }
 
 function isClauseEnder(text: string, index: number): boolean {
   return CLAUSE_ENDING_CHARACTERS.test(text[index]!);
+}
+
+function isPunctuationOnlyTail(tail: string): boolean {
+  let hasPunctuation = false;
+  for (const character of tail) {
+    if (WHITESPACE.test(character)) continue;
+    if (!PUNCTUATION_OR_CLOSING_CHARACTERS.test(character)) return false;
+    hasPunctuation = true;
+  }
+  return hasPunctuation;
 }
 
 function trimmedSpan(
@@ -81,16 +111,15 @@ function boundarySpans(
   let cursor = from;
   let index = from;
   while (index < to) {
-    if (!isEnder(text, index)) {
+    if (!isEnder(text, index, to)) {
       index += 1;
       continue;
     }
-    while (index + 1 < to && isEnder(text, index + 1)) index += 1;
+    while (index + 1 < to && isEnder(text, index + 1, to)) index += 1;
     // A trailing closer (a quote, a closing bracket) belongs with the ender
-    // it follows, not with the next unit.
-    while (index + 1 < to && CLOSING_PUNCTUATION.test(text[index + 1]!)) {
-      index += 1;
-    }
+    // it follows, not with the next unit. Uses the same skipClosers as the
+    // sentence lookahead so the two can never disagree.
+    index = skipClosers(text, index + 1, to) - 1;
     const span = trimmedSpan(text, cursor, index + 1);
     if (span) spans.push(span);
     cursor = index + 1;
@@ -145,6 +174,18 @@ function hardWrap(
     // advancing by a whole code point so a surrogate pair is never split.
     if (end === start) {
       end = start + String.fromCodePoint(text.codePointAt(start)!).length;
+    }
+    // If everything left in this span is punctuation (a stray comma, a
+    // closing bracket) with nowhere else to attach, fold it into this unit
+    // instead of letting it become a unit's stray leading character.
+    if (end < span.end) {
+      const tail = text.slice(end, span.end);
+      if (
+        visualWidth(tail) <= PUNCTUATION_TAIL_GRACE &&
+        isPunctuationOnlyTail(tail)
+      ) {
+        end = span.end;
+      }
     }
     const unit = trimmedSpan(text, start, end);
     if (unit) units.push(unit);
