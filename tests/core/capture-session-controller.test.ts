@@ -367,4 +367,78 @@ describe('CaptureSessionController', () => {
       tabId: 42,
     });
   });
+
+  it('restores circuit-open status when content is reinjected', async () => {
+    const { controller, dependencies } = createHarness();
+    vi.mocked(dependencies.translate).mockRejectedValue(
+      Object.assign(new Error('translation_disabled'), {
+        code: 'translation_disabled',
+      }),
+    );
+    await controller.start(42, settings);
+    const startMessage = vi.mocked(dependencies.sendToOffscreen).mock.calls[0]![0];
+    if (startMessage.type !== 'CAPTURE_START') throw new Error('missing start');
+    await controller.acceptTranscript(startMessage.payload.sessionId, {
+      isFinal: true,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Good morning',
+    });
+    vi.mocked(dependencies.sendToTab).mockClear();
+
+    await controller.handleContentReady(42);
+
+    expect(dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
+      type: 'SESSION_ERROR',
+      payload: { code: 'translation_disabled' },
+    });
+  });
+
+  it('emits circuit-open status once for concurrent translation failures', async () => {
+    const { controller, dependencies } = createHarness();
+    vi.mocked(dependencies.translate).mockRejectedValue(
+      Object.assign(new Error('translation_disabled'), {
+        code: 'translation_disabled',
+      }),
+    );
+    await controller.start(42, settings);
+    const startMessage = vi.mocked(dependencies.sendToOffscreen).mock.calls[0]![0];
+    if (startMessage.type !== 'CAPTURE_START') throw new Error('missing start');
+    const sessionId = startMessage.payload.sessionId;
+    await controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Good morning',
+    });
+    await controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 1,
+      segmentId: 'segment-2',
+      text: 'How are you',
+    });
+    vi.mocked(dependencies.sendToTab).mockClear();
+
+    await Promise.all([
+      controller.acceptTranscript(sessionId, {
+        isFinal: false,
+        revision: 2,
+        segmentId: 'segment-1',
+        text: 'Good morning everyone',
+      }),
+      controller.acceptTranscript(sessionId, {
+        isFinal: false,
+        revision: 2,
+        segmentId: 'segment-2',
+        text: 'How are you today',
+      }),
+    ]);
+
+    expect(dependencies.translate).toHaveBeenCalledTimes(2);
+    expect(
+      vi.mocked(dependencies.sendToTab).mock.calls.filter(
+        ([, message]) => message.type === 'SESSION_ERROR',
+      ),
+    ).toHaveLength(1);
+  });
 });

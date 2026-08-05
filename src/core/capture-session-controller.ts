@@ -253,15 +253,20 @@ export class CaptureSessionController {
         this.currentStatus.state === 'running'
       ) {
         const code = translationFailureCode(error);
+        const shouldNotify =
+          code !== 'translation_disabled' ||
+          this.currentStatus.error !== 'translation_disabled';
         this.currentStatus = {
           error: code,
           state: 'running',
           tabId,
         };
-        await this.dependencies.sendToTab(tabId, {
-          type: 'SESSION_ERROR',
-          payload: { code },
-        });
+        if (shouldNotify) {
+          await this.dependencies.sendToTab(tabId, {
+            type: 'SESSION_ERROR',
+            payload: { code },
+          });
+        }
       }
       return;
     }
@@ -359,6 +364,16 @@ export class CaptureSessionController {
     }
     if (this.lastTranslation) {
       await this.dependencies.sendToTab(tabId, this.lastTranslation);
+    }
+    if (
+      this.currentStatus.state === 'running' &&
+      this.currentStatus.tabId === tabId &&
+      this.currentStatus.error
+    ) {
+      await this.dependencies.sendToTab(tabId, {
+        type: 'SESSION_ERROR',
+        payload: { code: this.currentStatus.error },
+      });
     }
   }
 
