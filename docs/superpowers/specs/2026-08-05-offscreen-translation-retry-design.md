@@ -57,6 +57,8 @@ A new `OffscreenTranslationController` owns:
 - the consecutive DeepL failure count;
 - whether the session circuit is open;
 - abort controllers for active request IDs;
+- a single FIFO translation queue so concurrent segments cannot overshoot the
+  session failure budget;
 - the `DeepLClient` and an injectable delay function.
 
 `CAPTURE_START` resets the controller for the new session. `CAPTURE_STOP`
@@ -78,6 +80,11 @@ Any successful translation resets the consecutive failure count to zero.
 Cancellation caused by a newer transcript, session stop, or session replacement
 does not increment the count and does not show an error. Cancellation interrupts
 both an active fetch and a pending retry delay.
+
+Provider work is serialized per session. A queued request registers its abort
+controller immediately, so it can be cancelled before reaching the provider.
+This guarantees that concurrent transcript segments cannot make a sixth call
+while the fifth failure is still being processed.
 
 After the fifth consecutive failure, the circuit opens. The failing request
 returns `translation_disabled`; every later translation request in the same
@@ -119,6 +126,7 @@ Unit tests will verify:
 - five consecutive failures open the circuit and prevent subsequent provider
   calls;
 - stale-request cancellation consumes no failure budget;
+- concurrent requests cannot exceed five provider failures in one session;
 - session reset closes the circuit and restores the retry budget;
 - retry delays follow the bounded schedule;
 - background abort sends cancellation to the matching offscreen request;
