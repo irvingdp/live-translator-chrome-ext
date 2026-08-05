@@ -98,7 +98,21 @@ Extension B — and would let the two call sites disagree about the same string.
 Boundaries are computed only from stabilized text, and a closed unit's text is
 frozen. Deepgram revises interim results, so freezing a boundary derived from
 unstable text would let a later revision contradict text that has already been
-shown. Units therefore only ever move forward.
+shown.
+
+Closed boundaries are stable across growing text for every width the settings
+can produce — verified at 40, 60, 90, and 140 — but this is a property of that
+range, not of the algorithm. Below roughly 30 columns it provably fails:
+`packSpans` decides piece N by piece N+1's final extent, and `hardWrap`'s
+word-break exemption for a last chunk lets N+1 shrink once a trailing partial
+word completes and gets broken, so a merge that did not fit suddenly does. The
+`maxLineWidth` clamp floor of 40 is therefore load-bearing, not merely a
+usability choice.
+
+The chunker does not rely on that stability regardless: it keeps its own frozen
+text per closed unit and never re-reads a closed boundary from a later
+recomputation. A stability violation could at worst produce a seam between a
+frozen unit and the next one; it cannot rewrite text the viewer already read.
 
 Each unit gets an id of `<segmentId>#<index>`, which makes it a stable key for
 translation and for window updates.
