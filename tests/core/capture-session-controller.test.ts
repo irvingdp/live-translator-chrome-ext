@@ -441,4 +441,112 @@ describe('CaptureSessionController', () => {
       ),
     ).toHaveLength(1);
   });
+
+  it('clears a transient translation status after a later request succeeds', async () => {
+    const { controller, dependencies } = createHarness();
+    vi.mocked(dependencies.translate)
+      .mockRejectedValueOnce(
+        Object.assign(new Error('provider_unavailable'), {
+          code: 'provider_unavailable',
+        }),
+      )
+      .mockResolvedValueOnce('翻譯恢復');
+    await controller.start(42, settings);
+    const startMessage = vi.mocked(dependencies.sendToOffscreen).mock.calls[0]![0];
+    if (startMessage.type !== 'CAPTURE_START') throw new Error('missing start');
+    const sessionId = startMessage.payload.sessionId;
+    vi.mocked(dependencies.sendToTab).mockClear();
+
+    await controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Good morning',
+    });
+    await controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 2,
+      segmentId: 'segment-1',
+      text: 'Good morning everyone',
+    });
+    await controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 3,
+      segmentId: 'segment-1',
+      text: 'Good morning everyone here',
+    });
+
+    expect(
+      vi.mocked(dependencies.sendToTab).mock.calls.map(
+        ([, message]) => message.type,
+      ),
+    ).toEqual([
+      'CAPTION_ORIGINAL',
+      'CAPTION_ORIGINAL',
+      'SESSION_ERROR',
+      'CAPTION_ORIGINAL',
+      'SESSION_ERROR_CLEAR',
+      'CAPTION_TRANSLATION',
+    ]);
+    expect(controller.status()).toEqual({ state: 'running', tabId: 42 });
+  });
+
+  it.each(['quota_exceeded', 'translation_disabled'])(
+    'does not clear a newer %s error when a stale concurrent request succeeds',
+    async (code) => {
+      const { controller, dependencies } = createHarness();
+      let releaseSuccess!: (text: string) => void;
+      vi.mocked(dependencies.translate)
+        .mockImplementationOnce(
+          () => new Promise<string>((resolve) => { releaseSuccess = resolve; }),
+        )
+        .mockRejectedValueOnce(Object.assign(new Error(code), { code }));
+      await controller.start(42, settings);
+      const startMessage = vi.mocked(dependencies.sendToOffscreen).mock.calls[0]![0];
+      if (startMessage.type !== 'CAPTURE_START') throw new Error('missing start');
+      const sessionId = startMessage.payload.sessionId;
+      await controller.acceptTranscript(sessionId, {
+        isFinal: false,
+        revision: 1,
+        segmentId: 'segment-1',
+        text: 'Good morning',
+      });
+      await controller.acceptTranscript(sessionId, {
+        isFinal: false,
+        revision: 1,
+        segmentId: 'segment-2',
+        text: 'How are you',
+      });
+      vi.mocked(dependencies.sendToTab).mockClear();
+
+      const staleSuccess = controller.acceptTranscript(sessionId, {
+        isFinal: false,
+        revision: 2,
+        segmentId: 'segment-1',
+        text: 'Good morning everyone',
+      });
+      await vi.waitFor(() => {
+        expect(dependencies.translate).toHaveBeenCalledOnce();
+      });
+      await controller.acceptTranscript(sessionId, {
+        isFinal: false,
+        revision: 2,
+        segmentId: 'segment-2',
+        text: 'How are you today',
+      });
+      releaseSuccess('過時翻譯');
+      await staleSuccess;
+
+      expect(
+        vi.mocked(dependencies.sendToTab).mock.calls.some(
+          ([, message]) => message.type === 'SESSION_ERROR_CLEAR',
+        ),
+      ).toBe(false);
+      expect(controller.status()).toEqual({
+        error: code,
+        state: 'running',
+        tabId: 42,
+      });
+    },
+  );
 });

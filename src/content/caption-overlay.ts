@@ -165,6 +165,12 @@ export class CaptionOverlay {
     this.syncNativeCue();
   }
 
+  clearSessionError(): void {
+    this.statusTextValue = '';
+    if (this.statusElement) this.statusElement.textContent = '';
+    this.syncNativeCue();
+  }
+
   setTranslation(update: OverlayTranslation): void {
     const previous = this.translations.get(update.segmentId) ?? '';
     const next =

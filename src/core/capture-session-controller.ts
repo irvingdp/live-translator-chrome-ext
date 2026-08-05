@@ -44,7 +44,8 @@ export type TabMessage =
   | {
       type: 'SESSION_ERROR';
       payload: { code: string };
-    };
+    }
+  | { type: 'SESSION_ERROR_CLEAR' };
 
 export type SessionStatus =
   | { state: 'idle' }
@@ -100,6 +101,7 @@ export class CaptureSessionController {
   private lastTranslation?: Extract<TabMessage, { type: 'CAPTION_TRANSLATION' }>;
   private stabilizer = new TranscriptStabilizer();
   private currentStatus: SessionStatus = { state: 'idle' };
+  private translationErrorVersion = 0;
   private translationCoordinator?: TranslationCoordinator;
 
   constructor(private readonly dependencies: CaptureSessionDependencies) {}
@@ -126,6 +128,7 @@ export class CaptureSessionController {
     this.activeSessionId = snapshot.sessionId;
     this.settings = snapshot.settings;
     this.stabilizer = new TranscriptStabilizer();
+    this.translationErrorVersion = 0;
     this.translationCoordinator = this.createTranslationCoordinator(
       snapshot.sessionId,
       snapshot.settings,
@@ -148,6 +151,7 @@ export class CaptureSessionController {
     this.currentStatus = { state: 'starting', tabId };
     this.settings = settings;
     this.stabilizer = new TranscriptStabilizer();
+    this.translationErrorVersion = 0;
     this.lastOriginal = undefined;
     this.lastTranslation = undefined;
     this.translationCoordinator = this.createTranslationCoordinator(
@@ -240,6 +244,7 @@ export class CaptureSessionController {
     if (!update.translation) return;
 
     const phrase = update.translation;
+    const errorVersionAtStart = this.translationErrorVersion;
     let result: CoordinatedTranslation | undefined;
     try {
       result = await this.translationCoordinator.translate({
@@ -256,6 +261,7 @@ export class CaptureSessionController {
         const shouldNotify =
           code !== 'translation_disabled' ||
           this.currentStatus.error !== 'translation_disabled';
+        this.translationErrorVersion += 1;
         this.currentStatus = {
           error: code,
           state: 'running',
@@ -277,8 +283,15 @@ export class CaptureSessionController {
     ) {
       return;
     }
-    if (this.currentStatus.error) {
+    const clearsCurrentError =
+      Boolean(this.currentStatus.error) &&
+      this.currentStatus.error !== 'translation_disabled' &&
+      errorVersionAtStart === this.translationErrorVersion;
+    if (clearsCurrentError) {
       this.currentStatus = { state: 'running', tabId };
+      await this.dependencies.sendToTab(tabId, {
+        type: 'SESSION_ERROR_CLEAR',
+      });
     }
     this.lastTranslation = {
       type: 'CAPTION_TRANSLATION',
@@ -322,6 +335,7 @@ export class CaptureSessionController {
       this.activeSessionId = undefined;
       this.lastOriginal = undefined;
       this.lastTranslation = undefined;
+      this.translationErrorVersion = 0;
       this.translationCoordinator = undefined;
       this.currentStatus = { state: 'idle' };
     }

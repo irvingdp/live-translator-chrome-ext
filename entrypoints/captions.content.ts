@@ -44,6 +44,9 @@ export default defineContentScript({
         case 'SESSION_ERROR':
           overlay.setSessionError(message.payload.code);
           break;
+        case 'SESSION_ERROR_CLEAR':
+          overlay.clearSessionError();
+          break;
       }
       return false;
     });

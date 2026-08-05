@@ -131,6 +131,27 @@ describe('CaptionOverlay', () => {
     );
   });
 
+  it('clears a transient status without changing captions', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show({ originalFontSize: 24, translationFontSize: 22 });
+    overlay.setOriginal('segment-1', 'Good morning');
+    overlay.setTranslation({
+      mode: 'replace',
+      segmentId: 'segment-1',
+      text: '早安',
+    });
+    overlay.setSessionError('provider_unavailable');
+
+    overlay.clearSessionError();
+
+    const shadow = document.documentElement.querySelector<HTMLElement>(
+      '[data-bilingual-caption-root]',
+    )?.shadowRoot;
+    expect(shadow?.querySelector('.status-message')?.textContent).toBe('');
+    expect(shadow?.querySelector('.original')?.textContent).toBe('Good morning');
+    expect(shadow?.querySelector('.translation')?.textContent).toBe('早安');
+  });
+
   it('removes the host completely when hidden', () => {
     const overlay = new CaptionOverlay(document);
     overlay.show({ originalFontSize: 24, translationFontSize: 22 });
