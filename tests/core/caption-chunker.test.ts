@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CaptionUnitSpan } from '../../src/core/caption-chunker';
 import {
+  CaptionChunker,
   PUNCTUATION_TAIL_GRACE,
   splitIntoUnits,
   visualWidth,
@@ -286,5 +287,276 @@ describe('splitIntoUnits prefix stability', () => {
       assertPrefixStability(latin, width);
       assertPrefixStability(cjk, width);
     }
+  });
+});
+
+describe('CaptionChunker', () => {
+  const ingest = (
+    chunker: CaptionChunker,
+    stableText: string,
+    rawText = stableText,
+    isFinal = false,
+  ) =>
+    chunker.ingest({
+      isFinal,
+      maxWidth: 20,
+      rawText,
+      segmentId: 'segment-1',
+      stableText,
+    });
+
+  it('shows the raw interim remainder as the open unit', () => {
+    const chunker = new CaptionChunker();
+
+    expect(ingest(chunker, 'Good morning', 'Good morning every')).toEqual([
+      {
+        displayText: 'Good morning every',
+        id: 'segment-1#0',
+        index: 0,
+        isClosed: false,
+        translateText: 'Good morning',
+      },
+    ]);
+  });
+
+  it('closes a unit once a later unit exists and keeps its text frozen', () => {
+    const chunker = new CaptionChunker();
+    ingest(chunker, 'Hello there.', 'Hello there. And');
+
+    const units = ingest(chunker, 'Hello there. And now', 'Hello there. And now we');
+
+    expect(units).toEqual([
+      {
+        displayText: 'Hello there.',
+        id: 'segment-1#0',
+        index: 0,
+        isClosed: true,
+        translateText: 'Hello there.',
+      },
+      {
+        displayText: 'And now we',
+        id: 'segment-1#1',
+        index: 1,
+        isClosed: false,
+        translateText: 'And now',
+      },
+    ]);
+  });
+
+  it('keeps a frozen unit even when a later revision contradicts it', () => {
+    const chunker = new CaptionChunker();
+    ingest(chunker, 'Hello there. And now');
+
+    const units = ingest(chunker, 'Hello THERE. And now then');
+
+    expect(units.map((unit) => unit.id)).toEqual(['segment-1#1']);
+    expect(units[0]).toMatchObject({ displayText: 'And now then' });
+  });
+
+  it('closes every unit when the segment is final', () => {
+    const chunker = new CaptionChunker();
+    // Only unit 0 exists so far, and it is still open: the whole raw text is
+    // displayed as one unit because the stable text has no second unit yet.
+    ingest(chunker, 'Hello there.', 'Hello there. And now');
+
+    const units = ingest(chunker, 'Hello there. And now.', 'Hello there. And now.', true);
+
+    // Both units close, and unit 0 is re-emitted so its display text shrinks
+    // from the whole raw text to its own frozen sentence.
+    expect(units.map((unit) => ({ id: unit.id, isClosed: unit.isClosed }))).toEqual([
+      { id: 'segment-1#0', isClosed: true },
+      { id: 'segment-1#1', isClosed: true },
+    ]);
+    expect(units[0]).toMatchObject({ displayText: 'Hello there.' });
+    expect(units[1]).toMatchObject({ displayText: 'And now.' });
+  });
+
+  it('emits nothing when neither displayed nor translatable text changed', () => {
+    const chunker = new CaptionChunker();
+    ingest(chunker, 'Good morning');
+
+    expect(ingest(chunker, 'Good morning')).toEqual([]);
+  });
+
+  it('keeps state isolated across interleaved segment ids', () => {
+    const chunker = new CaptionChunker();
+
+    const seg1First = chunker.ingest({
+      isFinal: false,
+      maxWidth: 20,
+      rawText: 'Hello there. And',
+      segmentId: 'segment-1',
+      stableText: 'Hello there.',
+    });
+    const seg2First = chunker.ingest({
+      isFinal: false,
+      maxWidth: 20,
+      rawText: 'Good morning every',
+      segmentId: 'segment-2',
+      stableText: 'Good morning',
+    });
+    const seg1Second = chunker.ingest({
+      isFinal: false,
+      maxWidth: 20,
+      rawText: 'Hello there. And now we',
+      segmentId: 'segment-1',
+      stableText: 'Hello there. And now',
+    });
+    const seg2Repeat = chunker.ingest({
+      isFinal: false,
+      maxWidth: 20,
+      rawText: 'Good morning every',
+      segmentId: 'segment-2',
+      stableText: 'Good morning',
+    });
+
+    expect(seg1First[0]).toMatchObject({ id: 'segment-1#0' });
+    expect(seg2First[0]).toMatchObject({ id: 'segment-2#0' });
+    expect(seg1Second.map((unit) => unit.id)).toEqual(['segment-1#0', 'segment-1#1']);
+    // segment-2's open unit is untouched by segment-1's progress, so a
+    // repeat of the same input still emits nothing.
+    expect(seg2Repeat).toEqual([]);
+  });
+
+  it('starts clean when a segment id is reused after a final', () => {
+    const chunker = new CaptionChunker();
+    ingest(chunker, 'Hello there. And now.', 'Hello there. And now.', true);
+
+    const units = ingest(chunker, 'Good morning', 'Good morning every');
+
+    expect(units).toEqual([
+      {
+        displayText: 'Good morning every',
+        id: 'segment-1#0',
+        index: 0,
+        isClosed: false,
+        translateText: 'Good morning',
+      },
+    ]);
+  });
+
+  it('resets all segment state when clear is called', () => {
+    const chunker = new CaptionChunker();
+    ingest(chunker, 'Hello there.', 'Hello there. And');
+    ingest(chunker, 'Hello there. And now', 'Hello there. And now we');
+
+    chunker.clear();
+    // Replaying the exact input that previously closed unit 0 and opened
+    // unit 1: if clear() had not reset the segment, this would emit nothing
+    // (the state would already match), so a non-empty result proves the
+    // reset happened.
+    const units = ingest(chunker, 'Hello there. And now', 'Hello there. And now we');
+
+    expect(units).toEqual([
+      {
+        displayText: 'Hello there.',
+        id: 'segment-1#0',
+        index: 0,
+        isClosed: true,
+        translateText: 'Hello there.',
+      },
+      {
+        displayText: 'And now we',
+        id: 'segment-1#1',
+        index: 1,
+        isClosed: false,
+        translateText: 'And now',
+      },
+    ]);
+  });
+
+  it('freezes and reopens units for a CJK segment', () => {
+    const chunker = new CaptionChunker();
+    chunker.ingest({
+      isFinal: false,
+      maxWidth: 20,
+      rawText: '大家早安。今天',
+      segmentId: 'segment-cjk',
+      stableText: '大家早安。',
+    });
+
+    const units = chunker.ingest({
+      isFinal: false,
+      maxWidth: 20,
+      rawText: '大家早安。今天我們要討論人工智慧的未來',
+      segmentId: 'segment-cjk',
+      stableText: '大家早安。今天我們要討論人工智慧',
+    });
+
+    expect(units).toEqual([
+      {
+        displayText: '大家早安。',
+        id: 'segment-cjk#0',
+        index: 0,
+        isClosed: true,
+        translateText: '大家早安。',
+      },
+      {
+        displayText: '今天我們要討論人工智',
+        id: 'segment-cjk#1',
+        index: 1,
+        isClosed: true,
+        translateText: '今天我們要討論人工智',
+      },
+      {
+        displayText: '慧的未來',
+        id: 'segment-cjk#2',
+        index: 2,
+        isClosed: false,
+        translateText: '慧',
+      },
+    ]);
+  });
+
+  it('falls back to the stable text when rawText is not a prefix of stableText', () => {
+    const chunker = new CaptionChunker();
+    ingest(chunker, 'Hello there. And now');
+
+    const units = chunker.ingest({
+      isFinal: false,
+      maxWidth: 20,
+      rawText: 'Something else entirely, not a continuation',
+      segmentId: 'segment-1',
+      stableText: 'Hello there. And now then',
+    });
+
+    // rawText no longer starts with stableText (a provider inconsistency).
+    // displayText falls back to the stabilized text itself instead of
+    // slicing the unrelated rawText at a meaningless offset: it degrades to
+    // showing exactly what would be sent for translation, losing only the
+    // raw low-latency preview for this one update.
+    expect(units).toEqual([
+      {
+        displayText: 'And now then',
+        id: 'segment-1#1',
+        index: 1,
+        isClosed: false,
+        translateText: 'And now then',
+      },
+    ]);
+  });
+
+  it('handles an empty stableText before anything has stabilized', () => {
+    const chunker = new CaptionChunker();
+
+    const units = chunker.ingest({
+      isFinal: false,
+      maxWidth: 20,
+      rawText: 'Good',
+      segmentId: 'segment-1',
+      stableText: '',
+    });
+
+    // Nothing has stabilized yet, so there is nothing safe to translate:
+    // displayText shows the raw text immediately, translateText is empty.
+    expect(units).toEqual([
+      {
+        displayText: 'Good',
+        id: 'segment-1#0',
+        index: 0,
+        isClosed: false,
+        translateText: '',
+      },
+    ]);
   });
 });

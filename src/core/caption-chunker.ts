@@ -225,3 +225,91 @@ export function splitIntoUnits(
   }
   return units;
 }
+
+export interface CaptionUnit {
+  displayText: string;
+  id: string;
+  index: number;
+  isClosed: boolean;
+  translateText: string;
+}
+
+export interface CaptionChunkerInput {
+  isFinal: boolean;
+  maxWidth: number;
+  rawText: string;
+  segmentId: string;
+  stableText: string;
+}
+
+interface SegmentUnits {
+  closed: string[];
+  openDisplay: string;
+  openTranslate: string;
+}
+
+export class CaptionChunker {
+  private readonly segments = new Map<string, SegmentUnits>();
+
+  ingest(input: CaptionChunkerInput): CaptionUnit[] {
+    const state = this.segments.get(input.segmentId) ?? {
+      closed: [],
+      openDisplay: '',
+      openTranslate: '',
+    };
+    const spans = splitIntoUnits(input.stableText, input.maxWidth);
+    const closedCount = input.isFinal
+      ? spans.length
+      : Math.max(spans.length - 1, 0);
+    const changed: CaptionUnit[] = [];
+
+    for (let index = state.closed.length; index < closedCount; index += 1) {
+      const span = spans[index]!;
+      state.closed.push(span.text);
+      changed.push({
+        displayText: span.text,
+        id: `${input.segmentId}#${index}`,
+        index,
+        isClosed: true,
+        translateText: span.text,
+      });
+    }
+
+    if (input.isFinal) {
+      this.segments.delete(input.segmentId);
+      return changed;
+    }
+
+    const openSpan = spans[closedCount];
+    const openStart = openSpan?.start ?? spans[closedCount - 1]?.end ?? 0;
+    // Stabilized text is a prefix of the raw interim text, so an offset in one
+    // is an offset in the other. Fall back if a provider ever breaks that.
+    const source = input.rawText.startsWith(input.stableText)
+      ? input.rawText
+      : input.stableText;
+    const displayText = source.slice(Math.min(openStart, source.length)).trim();
+    const translateText = openSpan?.text ?? '';
+
+    if (
+      displayText &&
+      (displayText !== state.openDisplay || translateText !== state.openTranslate)
+    ) {
+      state.openDisplay = displayText;
+      state.openTranslate = translateText;
+      changed.push({
+        displayText,
+        id: `${input.segmentId}#${closedCount}`,
+        index: closedCount,
+        isClosed: false,
+        translateText,
+      });
+    }
+
+    this.segments.set(input.segmentId, state);
+    return changed;
+  }
+
+  clear(): void {
+    this.segments.clear();
+  }
+}
