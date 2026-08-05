@@ -48,8 +48,12 @@ interface DeepLResponse {
   }>;
 }
 
+// Browsers reject `fetch` invoked with a non-global `this`, and calling
+// `this.fetcher(...)` would do exactly that, so forward through a wrapper.
+const globalFetch: typeof fetch = (input, init) => fetch(input, init);
+
 export class DeepLClient {
-  constructor(private readonly fetcher: typeof fetch = fetch) {}
+  constructor(private readonly fetcher: typeof fetch = globalFetch) {}
 
   async translate(
     request: TranslationRequest,

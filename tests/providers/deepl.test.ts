@@ -57,6 +57,39 @@ describe('DeepLClient', () => {
     });
   });
 
+  it('calls the global fetch without rebinding it to the client', async () => {
+    // Chrome rejects `fetch` invoked with a non-global `this`
+    // ("Illegal invocation"), so the default fetcher must not be called as a
+    // method of DeepLClient. Node's fetch is not this-sensitive, so assert the
+    // receiver directly.
+    const receivers: unknown[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = function (this: unknown) {
+      receivers.push(this);
+      return Promise.resolve(
+        new Response(JSON.stringify({ translations: [{ text: '早安' }] }), {
+          status: 200,
+        }),
+      );
+    } as unknown as typeof fetch;
+
+    const client = new DeepLClient();
+    try {
+      await client.translate({
+        apiKey: 'secret:fx',
+        sourceLanguage: 'EN',
+        targetLanguage: 'ZH-HANT',
+        text: 'Good morning',
+      });
+    } finally {
+      globalThis.fetch = original;
+    }
+
+    expect(receivers).toHaveLength(1);
+    expect(receivers[0]).not.toBe(client);
+    expect(receivers[0]).not.toBeInstanceOf(DeepLClient);
+  });
+
   it.each([
     [403, 'invalid_credentials'],
     [429, 'rate_limited'],
