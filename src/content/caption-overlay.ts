@@ -86,7 +86,15 @@ const OVERLAY_CSS = `
     overflow-wrap: anywhere;
     text-shadow: 0 1px 2px #000;
   }
-  .original:empty, .translation:empty { display: none; }
+  .status-message {
+    color: #fca5a5;
+    font-size: 16px;
+    font-weight: 600;
+    margin-top: 5px;
+    overflow-wrap: anywhere;
+    text-shadow: 0 1px 2px #000;
+  }
+  .original:empty, .translation:empty, .status-message:empty { display: none; }
   @media (prefers-reduced-motion: no-preference) {
     .captions { transition: opacity 160ms ease-out; }
   }
@@ -100,6 +108,8 @@ export class CaptionOverlay {
   private nativeVideo?: HTMLVideoElement;
   private originalElement?: HTMLElement;
   private originalTextValue = '';
+  private statusElement?: HTMLElement;
+  private statusTextValue = '';
   private readonly translations = new Map<string, string>();
   private translationElement?: HTMLElement;
 
@@ -116,9 +126,11 @@ export class CaptionOverlay {
     this.host?.remove();
     this.host = undefined;
     this.originalElement = undefined;
+    this.statusElement = undefined;
     this.translationElement = undefined;
     this.activeSegmentId = undefined;
     this.originalTextValue = '';
+    this.statusTextValue = '';
     this.translations.clear();
   }
 
@@ -144,10 +156,13 @@ export class CaptionOverlay {
   }
 
   setSessionError(code: string): void {
-    this.setOriginal(
-      'session-error',
-      SESSION_ERROR_MESSAGES[code] ?? '字幕服務發生未知錯誤，請重新啟動',
-    );
+    this.statusTextValue =
+      SESSION_ERROR_MESSAGES[code] ?? '字幕服務發生未知錯誤，請重新啟動';
+
+    if (this.statusElement) {
+      this.statusElement.textContent = this.statusTextValue;
+    }
+    this.syncNativeCue();
   }
 
   setTranslation(update: OverlayTranslation): void {
@@ -227,12 +242,16 @@ export class CaptionOverlay {
     original.className = 'original';
     const translation = this.document.createElement('div');
     translation.className = 'translation';
-    captions.append(original, translation);
+    const status = this.document.createElement('div');
+    status.className = 'status-message';
+    status.textContent = this.statusTextValue;
+    captions.append(original, translation, status);
     stage.append(captions);
     shadow.append(style, stage);
     this.document.documentElement.append(host);
     this.host = host;
     this.originalElement = original;
+    this.statusElement = status;
     this.translationElement = translation;
   }
 
@@ -270,7 +289,11 @@ export class CaptionOverlay {
     const translation = this.activeSegmentId
       ? this.translations.get(this.activeSegmentId) ?? ''
       : '';
-    this.nativeCue.text = [this.originalTextValue, translation]
+    this.nativeCue.text = [
+      this.originalTextValue,
+      translation,
+      this.statusTextValue,
+    ]
       .filter(Boolean)
       .join('\n');
   }

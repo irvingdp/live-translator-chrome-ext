@@ -108,8 +108,26 @@ describe('CaptionOverlay', () => {
     const host = document.documentElement.querySelector<HTMLElement>(
       '[data-bilingual-caption-root]',
     );
-    expect(host?.shadowRoot?.querySelector('.original')?.textContent).toBe(
+    expect(host?.shadowRoot?.querySelector('.status-message')?.textContent).toBe(
       expected,
+    );
+  });
+
+  it('keeps circuit-open status visible while original captions continue', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show({ originalFontSize: 24, translationFontSize: 22 });
+    overlay.setOriginal('segment-1', 'Good morning');
+    overlay.setSessionError('translation_disabled');
+    overlay.setOriginal('segment-1', 'Good morning everyone');
+
+    const shadow = document.documentElement.querySelector<HTMLElement>(
+      '[data-bilingual-caption-root]',
+    )?.shadowRoot;
+    expect(shadow?.querySelector('.original')?.textContent).toBe(
+      'Good morning everyone',
+    );
+    expect(shadow?.querySelector('.status-message')?.textContent).toBe(
+      'DeepL 連續失敗 5 次，本次字幕已停止翻譯',
     );
   });
 

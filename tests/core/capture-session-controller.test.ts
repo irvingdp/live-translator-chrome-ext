@@ -317,6 +317,7 @@ describe('CaptureSessionController', () => {
     await controller.start(42, settings);
     const startMessage = vi.mocked(dependencies.sendToOffscreen).mock.calls[0]![0];
     if (startMessage.type !== 'CAPTURE_START') throw new Error('missing start');
+    vi.mocked(dependencies.sendToTab).mockClear();
 
     await controller.acceptTranscript(startMessage.payload.sessionId, {
       isFinal: false,
@@ -330,23 +331,36 @@ describe('CaptureSessionController', () => {
       segmentId: 'segment-1',
       text: 'Good morning everyone',
     });
+    await controller.acceptTranscript(startMessage.payload.sessionId, {
+      isFinal: false,
+      revision: 3,
+      segmentId: 'segment-1',
+      text: 'Good morning everyone here',
+    });
 
     expect(dependencies.sendToTab).toHaveBeenCalledWith(42, {
       type: 'CAPTION_ORIGINAL',
       payload: {
         segmentId: 'segment-1',
-        text: 'Good morning everyone',
+        text: 'Good morning everyone here',
       },
     });
+    expect(dependencies.translate).toHaveBeenCalledOnce();
     expect(
       vi.mocked(dependencies.sendToTab).mock.calls.filter(
         ([, message]) => message.type === 'SESSION_ERROR',
       ),
     ).toHaveLength(1);
-    expect(dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
-      type: 'SESSION_ERROR',
-      payload: { code: 'translation_disabled' },
-    });
+    expect(
+      vi.mocked(dependencies.sendToTab).mock.calls.map(
+        ([, message]) => message.type,
+      ),
+    ).toEqual([
+      'CAPTION_ORIGINAL',
+      'CAPTION_ORIGINAL',
+      'SESSION_ERROR',
+      'CAPTION_ORIGINAL',
+    ]);
     expect(controller.status()).toEqual({
       error: 'translation_disabled',
       state: 'running',

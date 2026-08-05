@@ -236,6 +236,7 @@ export class CaptureSessionController {
       payload: { segmentId: event.segmentId, text: update.originalText },
     };
     await this.dependencies.sendToTab(tabId, this.lastOriginal);
+    if (this.currentStatus.error === 'translation_disabled') return;
     if (!update.translation) return;
 
     const phrase = update.translation;
