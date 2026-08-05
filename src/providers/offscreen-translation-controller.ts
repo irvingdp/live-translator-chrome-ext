@@ -110,6 +110,10 @@ export class OffscreenTranslationController {
             retryDelays[this.consecutiveFailures - 1]!,
             abort.signal,
           );
+          if (this.isCancelled(sessionId, abort.signal)) {
+            this.restoreFailureBudget(sessionId, failuresBeforeRequest);
+            return cancelled();
+          }
         } catch (delayError) {
           if (this.isCancelled(sessionId, abort.signal) || isAbortError(delayError)) {
             this.restoreFailureBudget(sessionId, failuresBeforeRequest);

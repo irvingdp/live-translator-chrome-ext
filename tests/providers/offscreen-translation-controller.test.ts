@@ -158,4 +158,36 @@ describe('OffscreenTranslationController', () => {
     expect(translate).toHaveBeenCalledTimes(6);
     expect(delays).toEqual([250, 250, 500, 1_000, 2_000]);
   });
+
+  it('does not retry after session replacement when an aborted delay resolves', async () => {
+    const translate = vi.fn<(
+      request: TranslationRequest,
+      signal?: AbortSignal,
+    ) => Promise<TranslationResult>>().mockRejectedValue(
+      new ProviderError('network_error'),
+    );
+    let resolveFirstDelay: (() => void) | undefined;
+    let delayCalls = 0;
+    const delay = vi.fn(() => {
+      delayCalls += 1;
+      if (delayCalls > 1) return Promise.resolve();
+
+      return new Promise<void>((resolve) => {
+        resolveFirstDelay = resolve;
+      });
+    });
+    const controller = new OffscreenTranslationController({ delay, translate });
+    controller.startSession('session-1');
+
+    const pending = controller.translate('session-1', 'request-1', request);
+    await vi.waitFor(() => expect(delay).toHaveBeenCalledOnce());
+    controller.startSession('session-2');
+    resolveFirstDelay?.();
+
+    await expect(pending).resolves.toEqual({ error: 'cancelled', ok: false });
+    expect(translate).toHaveBeenCalledTimes(1);
+    await expect(controller.translate('session-2', 'request-2', request))
+      .resolves.toEqual({ error: 'translation_disabled', ok: false });
+    expect(translate).toHaveBeenCalledTimes(6);
+  });
 });
