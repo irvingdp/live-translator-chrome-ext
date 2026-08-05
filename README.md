@@ -28,9 +28,9 @@ npm run compile
 npm run build
 ```
 
-接著至 `chrome://extensions` 開啟「開發人員模式」，選擇「載入未封裝項目」，載入 `.output/chrome-mv3`。
+接著至 `chrome://extensions` 開啟「開發人員模式」，選擇「載入未封裝項目」，載入 `output/chrome-mv3`。
 
-開啟 HTTPS 影片分頁，從擴充功能 Popup 輸入自己的 Deepgram 與 DeepL API Key、選擇語言並按「開始即時字幕」。
+在 Chrome 的擴充功能選單中右鍵點擊本擴充功能，選擇「選項」，輸入並儲存自己的 Deepgram 與 DeepL API Key。接著開啟 HTTPS 影片分頁，從 Popup 選擇語言並按「開始即時字幕」。
 
 ## 延遲說明
 
