@@ -9,6 +9,16 @@ export interface OverlayTranslation {
   text: string;
 }
 
+const SESSION_ERROR_MESSAGES: Record<string, string> = {
+  deepgram_disconnected: 'Deepgram 字幕連線中斷，請重新啟動',
+  invalid_credentials: 'DeepL API Key 無效，請到設定頁更新',
+  invalid_response: 'DeepL 回傳了無法辨識的資料',
+  provider_unavailable: 'DeepL 服務暫時無法使用',
+  quota_exceeded: 'DeepL 本月翻譯額度已用完',
+  rate_limited: 'DeepL 請求過於頻繁，請稍後再試',
+  translation_failed: 'DeepL 翻譯失敗，英文字幕仍會繼續',
+};
+
 function videoCandidates(document: Document): HTMLVideoElement[] {
   const hostname = document.location.hostname;
   const preferredSelector = hostname.includes('youtube.com')
@@ -130,6 +140,13 @@ export class CaptionOverlay {
       this.translationElement.textContent = this.translations.get(segmentId) ?? '';
     }
     this.syncNativeCue();
+  }
+
+  setSessionError(code: string): void {
+    this.setOriginal(
+      'session-error',
+      SESSION_ERROR_MESSAGES[code] ?? '字幕服務發生未知錯誤，請重新啟動',
+    );
   }
 
   setTranslation(update: OverlayTranslation): void {

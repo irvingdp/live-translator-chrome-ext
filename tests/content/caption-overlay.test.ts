@@ -94,6 +94,24 @@ describe('CaptionOverlay', () => {
     expect(overlay.translationText()).toBe('各位早安');
   });
 
+  it.each([
+    ['invalid_credentials', 'DeepL API Key 無效，請到設定頁更新'],
+    ['quota_exceeded', 'DeepL 本月翻譯額度已用完'],
+    ['deepgram_disconnected', 'Deepgram 字幕連線中斷，請重新啟動'],
+  ])('shows a specific message for %s', (code, expected) => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show({ originalFontSize: 24, translationFontSize: 22 });
+
+    overlay.setSessionError(code);
+
+    const host = document.documentElement.querySelector<HTMLElement>(
+      '[data-bilingual-caption-root]',
+    );
+    expect(host?.shadowRoot?.querySelector('.original')?.textContent).toBe(
+      expected,
+    );
+  });
+
   it('removes the host completely when hidden', () => {
     const overlay = new CaptionOverlay(document);
     overlay.show({ originalFontSize: 24, translationFontSize: 22 });

@@ -18,6 +18,7 @@ const settings: SessionSettings = {
 
 function createHarness() {
   const dependencies: CaptureSessionDependencies = {
+    ensureContentScript: vi.fn().mockResolvedValue(undefined),
     ensureOffscreen: vi.fn().mockResolvedValue(undefined),
     getStreamId: vi.fn().mockResolvedValue('stream-id'),
     sendToOffscreen: vi.fn().mockResolvedValue(undefined),
@@ -31,6 +32,22 @@ function createHarness() {
 }
 
 describe('CaptureSessionController', () => {
+  it('ensures the target tab receiver exists immediately before starting capture', async () => {
+    const { controller, dependencies } = createHarness();
+
+    await controller.start(42, settings);
+
+    expect(dependencies.ensureContentScript).toHaveBeenCalledWith(42);
+    const receiverOrder = vi.mocked(dependencies.ensureContentScript).mock
+      .invocationCallOrder[0]!;
+    expect(
+      vi.mocked(dependencies.getStreamId).mock.invocationCallOrder[0],
+    ).toBeLessThan(receiverOrder);
+    expect(receiverOrder).toBeLessThan(
+      vi.mocked(dependencies.sendToOffscreen).mock.invocationCallOrder[0]!,
+    );
+  });
+
   it('starts one tab only after offscreen and stream setup succeed', async () => {
     const { controller, dependencies } = createHarness();
 
@@ -258,6 +275,32 @@ describe('CaptureSessionController', () => {
     });
     expect(controller.status()).toEqual({
       error: 'translation_failed',
+      state: 'running',
+      tabId: 42,
+    });
+  });
+
+  it('preserves a categorized DeepL failure for the user-facing error', async () => {
+    const { controller, dependencies } = createHarness();
+    vi.mocked(dependencies.translate).mockRejectedValue(
+      Object.assign(new Error('quota'), { code: 'quota_exceeded' }),
+    );
+    await controller.start(42, settings);
+    const startMessage = vi.mocked(dependencies.sendToOffscreen).mock.calls[0]![0];
+    if (startMessage.type !== 'CAPTURE_START') throw new Error('missing start');
+    await controller.acceptTranscript(startMessage.payload.sessionId, {
+      isFinal: true,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Good morning',
+    });
+
+    expect(dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
+      type: 'SESSION_ERROR',
+      payload: { code: 'quota_exceeded' },
+    });
+    expect(controller.status()).toEqual({
+      error: 'quota_exceeded',
       state: 'running',
       tabId: 42,
     });

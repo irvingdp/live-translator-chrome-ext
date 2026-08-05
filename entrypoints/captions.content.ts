@@ -21,8 +21,11 @@ export default defineContentScript({
     window.addEventListener('scroll', requestPosition, { passive: true });
     document.addEventListener('fullscreenchange', requestPosition);
 
-    chrome.runtime.onMessage.addListener((message: TabMessage) => {
+    chrome.runtime.onMessage.addListener((message: TabMessage, _sender, sendResponse) => {
       switch (message.type) {
+        case 'CONTENT_PING':
+          sendResponse({ ok: true });
+          break;
         case 'OVERLAY_SHOW':
           overlay.show(message.payload);
           break;
@@ -39,9 +42,10 @@ export default defineContentScript({
           overlay.setTranslation(message.payload);
           break;
         case 'SESSION_ERROR':
-          overlay.setOriginal('session-error', '字幕連線中斷，請重新啟動');
+          overlay.setSessionError(message.payload.code);
           break;
       }
+      return false;
     });
 
     void chrome.runtime.sendMessage({

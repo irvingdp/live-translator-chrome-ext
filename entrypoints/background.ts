@@ -1,4 +1,5 @@
 import { CaptureSessionController } from '../src/core/capture-session-controller';
+import { ensureContentScript } from '../src/core/content-script-loader';
 import type { ExtensionMessage } from '../src/core/messages';
 import { normalizeSettings } from '../src/core/settings';
 import { redactSessionSnapshot } from '../src/core/session-persistence';
@@ -8,6 +9,15 @@ export default defineBackground(() => {
   const activeSessionKey = 'activeSession';
   const deepl = new DeepLClient();
   const controller = new CaptureSessionController({
+    ensureContentScript: (tabId) => ensureContentScript({
+      inject: async () => {
+        await chrome.scripting.executeScript({
+          files: ['content-scripts/captions.js'],
+          target: { tabId },
+        });
+      },
+      ping: () => chrome.tabs.sendMessage(tabId, { type: 'CONTENT_PING' }),
+    }),
     async ensureOffscreen() {
       const offscreenUrl = chrome.runtime.getURL('offscreen.html');
       const existing = await chrome.runtime.getContexts({

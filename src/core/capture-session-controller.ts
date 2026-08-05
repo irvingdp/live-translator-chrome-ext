@@ -21,6 +21,7 @@ export interface SessionSettings {
 }
 
 export type TabMessage =
+  | { type: 'CONTENT_PING' }
   | {
       type: 'OVERLAY_SHOW';
       payload: { originalFontSize: number; translationFontSize: number };
@@ -51,7 +52,27 @@ export type SessionStatus =
   | { error?: string; state: 'running'; tabId: number }
   | { error: string; state: 'error'; tabId: number };
 
+const translationFailureCodes = new Set([
+  'invalid_credentials',
+  'invalid_response',
+  'provider_unavailable',
+  'quota_exceeded',
+  'rate_limited',
+]);
+
+function translationFailureCode(error: unknown): string {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    translationFailureCodes.has(error.code)
+  ) return error.code;
+  return 'translation_failed';
+}
+
 export interface CaptureSessionDependencies {
+  ensureContentScript(tabId: number): Promise<void>;
   ensureOffscreen(): Promise<void>;
   getStreamId(tabId: number): Promise<string>;
   sendToOffscreen(message: ExtensionMessage): Promise<unknown>;
@@ -130,6 +151,8 @@ export class CaptureSessionController {
       await this.dependencies.ensureOffscreen();
       if (generation !== this.generation) return;
       const streamId = await this.dependencies.getStreamId(tabId);
+      if (generation !== this.generation) return;
+      await this.dependencies.ensureContentScript(tabId);
       if (generation !== this.generation) return;
       const payload: CaptureStartRequest = {
         apiKey: settings.deepgramApiKey,
@@ -214,19 +237,20 @@ export class CaptureSessionController {
         segmentId: phrase.segmentId,
         text: phrase.text,
       });
-    } catch {
+    } catch (error) {
       if (
         generation === this.generation &&
         this.currentStatus.state === 'running'
       ) {
+        const code = translationFailureCode(error);
         this.currentStatus = {
-          error: 'translation_failed',
+          error: code,
           state: 'running',
           tabId,
         };
         await this.dependencies.sendToTab(tabId, {
           type: 'SESSION_ERROR',
-          payload: { code: 'translation_failed' },
+          payload: { code },
         });
       }
       return;
