@@ -124,6 +124,8 @@ export function PopupApp({ api }: { api: PopupApi }) {
         <span className={`status status-${'error' in status && status.error ? 'error' : status.state}`}>
           {'error' in status && status.error === 'translation_failed'
             ? '翻譯異常'
+            : 'error' in status && status.error === 'translation_disabled'
+              ? '翻譯已停用'
             : status.state === 'running'
             ? '運作中'
             : status.state === 'starting'

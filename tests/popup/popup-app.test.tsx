@@ -129,6 +129,19 @@ describe('PopupApp', () => {
     expect(screen.getByRole('button', { name: '停止字幕' })).toBeVisible();
   });
 
+  it('shows translation disabled while capture remains active', async () => {
+    render(<PopupApp api={createApi({
+      status: vi.fn().mockResolvedValue({
+        error: 'translation_disabled',
+        state: 'running',
+        tabId: 42,
+      }),
+    })} />);
+
+    expect(await screen.findByText('翻譯已停用')).toBeVisible();
+    expect(screen.getByRole('button', { name: '停止字幕' })).toBeVisible();
+  });
+
   it('serializes settings writes so an older save cannot finish last', async () => {
     let releaseFirst!: () => void;
     const saveSettings = vi

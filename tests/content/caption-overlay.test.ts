@@ -98,6 +98,7 @@ describe('CaptionOverlay', () => {
     ['invalid_credentials', 'DeepL API Key 無效，請到設定頁更新'],
     ['quota_exceeded', 'DeepL 本月翻譯額度已用完'],
     ['deepgram_disconnected', 'Deepgram 字幕連線中斷，請重新啟動'],
+    ['translation_disabled', 'DeepL 連續失敗 5 次，本次字幕已停止翻譯'],
   ])('shows a specific message for %s', (code, expected) => {
     const overlay = new CaptionOverlay(document);
     overlay.show({ originalFontSize: 24, translationFontSize: 22 });

@@ -16,6 +16,7 @@ const SESSION_ERROR_MESSAGES: Record<string, string> = {
   provider_unavailable: 'DeepL 服務暫時無法使用',
   quota_exceeded: 'DeepL 本月翻譯額度已用完',
   rate_limited: 'DeepL 請求過於頻繁，請稍後再試',
+  translation_disabled: 'DeepL 連續失敗 5 次，本次字幕已停止翻譯',
   translation_failed: 'DeepL 翻譯失敗，英文字幕仍會繼續',
 };
 
