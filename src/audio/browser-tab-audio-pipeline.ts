@@ -43,15 +43,30 @@ export async function createBrowserTabAudioPipeline(
         onSamples(new Float32Array(event.data));
       }
     };
+    const endedListeners = new Set<() => void>();
+    const handleTrackEnded = () => {
+      for (const listener of endedListeners) listener();
+    };
+    for (const track of media.getTracks()) {
+      track.addEventListener('ended', handleTrackEnded);
+    }
 
     return {
       sampleRate: activeContext.sampleRate,
+      onEnded(listener) {
+        endedListeners.add(listener);
+        return () => endedListeners.delete(listener);
+      },
       async close() {
         worklet.port.onmessage = null;
         worklet.disconnect();
         silentOutput.disconnect();
         source.disconnect();
-        for (const track of media.getTracks()) track.stop();
+        for (const track of media.getTracks()) {
+          track.removeEventListener('ended', handleTrackEnded);
+          track.stop();
+        }
+        endedListeners.clear();
         await activeContext.close();
       },
     };

@@ -53,4 +53,19 @@ describe('TranslationCoordinator', () => {
     expect(signals[0]?.aborted).toBe(true);
     expect(signals[1]?.aborted).toBe(false);
   });
+
+  it('aborts every in-flight request when disposed', () => {
+    const signals: AbortSignal[] = [];
+    const coordinator = new TranslationCoordinator((_text, signal) => {
+      signals.push(signal);
+      return new Promise<string>(() => undefined);
+    });
+    void coordinator.translate({ revision: 1, segmentId: 'one', text: 'One' });
+    void coordinator.translate({ revision: 1, segmentId: 'two', text: 'Two' });
+
+    coordinator.dispose();
+
+    expect(signals).toHaveLength(2);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
 });

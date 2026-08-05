@@ -21,6 +21,11 @@ export class TranslationCoordinator {
 
   constructor(private readonly translateText: TranslateText) {}
 
+  dispose(): void {
+    for (const request of this.inFlight.values()) request.controller.abort();
+    this.inFlight.clear();
+  }
+
   async translate(
     job: TranslationJob,
   ): Promise<CoordinatedTranslation | undefined> {

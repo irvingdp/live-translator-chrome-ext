@@ -43,7 +43,7 @@ describe('TranscriptStabilizer', () => {
     });
   });
 
-  it('does not emit an already translated stable prefix again', () => {
+  it('replaces with the cumulative stable prefix so cancelled requests cannot lose words', () => {
     const stabilizer = new TranscriptStabilizer();
     stabilizer.ingest({
       isFinal: false,
@@ -69,9 +69,10 @@ describe('TranscriptStabilizer', () => {
       originalText: 'Good morning everyone here',
       translation: {
         isFinal: false,
+        mode: 'replace',
         revision: 3,
         segmentId: 'segment-1',
-        text: 'everyone',
+        text: 'Good morning everyone',
       },
     });
   });
@@ -102,9 +103,10 @@ describe('TranscriptStabilizer', () => {
       originalText: 'Good morning everyone.',
       translation: {
         isFinal: true,
+        mode: 'replace',
         revision: 3,
         segmentId: 'segment-1',
-        text: 'everyone.',
+        text: 'Good morning everyone.',
       },
     });
   });

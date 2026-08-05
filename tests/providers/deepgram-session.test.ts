@@ -151,4 +151,34 @@ describe('DeepgramSession', () => {
     expect(socket.sent).not.toContain(JSON.stringify({ type: 'KeepAlive' }));
     vi.useRealTimers();
   });
+
+  it('rejects a pending handshake immediately when the session is closed', async () => {
+    const socket = new FakeSocket();
+    const session = new DeepgramSession(
+      { apiKey: 'secret', language: 'en-US' },
+      () => socket,
+    );
+    const connecting = session.connect();
+
+    session.close();
+
+    await expect(connecting).rejects.toThrow('cancelled');
+  });
+
+  it('times out a stalled handshake', async () => {
+    vi.useFakeTimers();
+    const socket = new FakeSocket();
+    const session = new DeepgramSession(
+      { apiKey: 'secret', language: 'en-US' },
+      () => socket,
+    );
+    const connecting = session.connect();
+    const rejection = expect(connecting).rejects.toThrow('Unable to connect');
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await rejection;
+    expect(socket.readyState).toBe(WebSocket.CLOSED);
+    vi.useRealTimers();
+  });
 });

@@ -1,8 +1,18 @@
 import type { CaptureStartRequest } from '../audio/offscreen-capture-controller';
+import type { AppSettings } from './settings';
 import type { TranscriptEvent } from './transcript-stabilizer';
 
 export type ExtensionMessage =
   | { target: 'offscreen'; type: 'CAPTURE_START'; payload: CaptureStartRequest }
-  | { target: 'offscreen'; type: 'CAPTURE_STOP' }
-  | { target: 'background'; type: 'CAPTURE_DISCONNECTED' }
-  | { target: 'background'; type: 'TRANSCRIPT_EVENT'; payload: TranscriptEvent };
+  | { target: 'offscreen'; type: 'CAPTURE_STOP'; payload: { sessionId: string } }
+  | { target: 'background'; type: 'CAPTURE_DISCONNECTED'; payload: { sessionId: string } }
+  | { target: 'background'; type: 'CAPTURE_KEEPALIVE'; payload: { sessionId: string } }
+  | { target: 'background'; type: 'CONTENT_READY' }
+  | { target: 'background'; type: 'TRANSCRIPT_EVENT'; payload: { event: TranscriptEvent; sessionId: string } }
+  | {
+      target: 'background';
+      type: 'SESSION_START';
+      payload: { settings: AppSettings; tabId: number };
+    }
+  | { target: 'background'; type: 'SESSION_STOP' }
+  | { target: 'background'; type: 'SESSION_STATUS' };

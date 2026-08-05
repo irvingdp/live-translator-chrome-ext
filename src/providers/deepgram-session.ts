@@ -25,6 +25,7 @@ const defaultSocketFactory: SocketFactory = (url, protocols) =>
   new WebSocket(url, protocols);
 
 export class DeepgramSession {
+  private cancelHandshake?: () => void;
   private readonly disconnectListeners = new Set<() => void>();
   private intentionalClose = false;
   private keepAliveTimer?: ReturnType<typeof setInterval>;
@@ -48,6 +49,7 @@ export class DeepgramSession {
     socket.addEventListener('message', this.handleMessage as EventListener);
 
     return new Promise((resolve, reject) => {
+      let handshakeTimer: ReturnType<typeof setTimeout> | undefined;
       const handleOpen = () => {
         cleanupHandshakeListeners();
         socket.addEventListener('close', this.handleUnexpectedClose, {
@@ -65,6 +67,9 @@ export class DeepgramSession {
         reject(new Error('Unable to connect to Deepgram'));
       };
       const cleanupHandshakeListeners = () => {
+        if (handshakeTimer !== undefined) clearTimeout(handshakeTimer);
+        handshakeTimer = undefined;
+        this.cancelHandshake = undefined;
         socket.removeEventListener('open', handleOpen);
         socket.removeEventListener('error', handleFailure);
         socket.removeEventListener('close', handleFailure);
@@ -73,6 +78,14 @@ export class DeepgramSession {
       socket.addEventListener('open', handleOpen, { once: true });
       socket.addEventListener('error', handleFailure, { once: true });
       socket.addEventListener('close', handleFailure, { once: true });
+      this.cancelHandshake = () => {
+        cleanupHandshakeListeners();
+        reject(new Error('Deepgram connection cancelled'));
+      };
+      handshakeTimer = setTimeout(() => {
+        handleFailure();
+        socket.close();
+      }, 10_000);
     });
   }
 
@@ -94,6 +107,7 @@ export class DeepgramSession {
 
   close(): void {
     this.intentionalClose = true;
+    this.cancelHandshake?.();
     if (this.keepAliveTimer !== undefined) {
       clearInterval(this.keepAliveTimer);
       this.keepAliveTimer = undefined;

@@ -74,6 +74,7 @@ export class TranscriptStabilizer {
       ? event.text.trim()
       : stableBoundary(state.lastText, event.text);
     const phrase = untranslatedSuffix(stableText, state.emittedText);
+    const hadEmittedText = Boolean(state.emittedText);
     const replacesEmittedText =
       Boolean(state.emittedText) && !stableText.startsWith(state.emittedText);
 
@@ -86,10 +87,12 @@ export class TranscriptStabilizer {
     if (phrase) {
       update.translation = {
         isFinal: event.isFinal,
-        ...(replacesEmittedText ? { mode: 'replace' as const } : {}),
+        ...(hadEmittedText || replacesEmittedText
+          ? { mode: 'replace' as const }
+          : {}),
         revision: event.revision,
         segmentId: event.segmentId,
-        text: phrase,
+        text: hadEmittedText ? stableText : phrase,
       };
     }
 
