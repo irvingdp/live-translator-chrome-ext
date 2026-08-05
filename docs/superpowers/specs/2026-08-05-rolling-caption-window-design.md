@@ -114,6 +114,21 @@ text per closed unit and never re-reads a closed boundary from a later
 recomputation. A stability violation could at worst produce a seam between a
 frozen unit and the next one; it cannot rewrite text the viewer already read.
 
+Because the split is recomputed from scratch on every update, it can return
+*fewer* units than are already frozen — when the user widens `maxLineWidth`
+mid-session, or when a final event's text is shorter than the interim text
+before it. The chunker must therefore track where its frozen text ends and
+derive the open unit from that offset, never from an index into the recomputed
+list. Frozen units only ever move forward: a lower recomputed count freezes
+nothing rather than reopening a unit that is already on screen. A width change
+consequently keeps the visible units intact and applies to the next unit
+onward, and the final text of a segment always reaches the window even when the
+recomputed list no longer accounts for it.
+
+Resetting the segment on a width change would be wrong: unit ids are
+`<segmentId>#<index>`, so restarting the index would reuse an id already on
+screen with different text.
+
 Each unit gets an id of `<segmentId>#<index>`, which makes it a stable key for
 translation and for window updates.
 
