@@ -1,9 +1,8 @@
 node_modules/
-.output/
+output/
 coverage/
 .wxt/
 .superpowers/
 playwright-report/
 test-results/
 .DS_Store
-
