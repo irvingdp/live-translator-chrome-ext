@@ -3,6 +3,7 @@ output/
 coverage/
 .wxt/
 .superpowers/
+.worktrees/
 playwright-report/
 test-results/
 .DS_Store
