@@ -549,4 +549,69 @@ describe('CaptureSessionController', () => {
       });
     },
   );
+
+  it('clears an older concurrent error when a newer request succeeds', async () => {
+    const { controller, dependencies } = createHarness();
+    let rejectOlder!: (error: Error) => void;
+    let resolveNewer!: (text: string) => void;
+    vi.mocked(dependencies.translate)
+      .mockImplementationOnce(
+        () => new Promise<string>((_resolve, reject) => { rejectOlder = reject; }),
+      )
+      .mockImplementationOnce(
+        () => new Promise<string>((resolve) => { resolveNewer = resolve; }),
+      );
+    await controller.start(42, settings);
+    const startMessage = vi.mocked(dependencies.sendToOffscreen).mock.calls[0]![0];
+    if (startMessage.type !== 'CAPTURE_START') throw new Error('missing start');
+    const sessionId = startMessage.payload.sessionId;
+    await controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Good morning',
+    });
+    await controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 1,
+      segmentId: 'segment-2',
+      text: 'How are you',
+    });
+    vi.mocked(dependencies.sendToTab).mockClear();
+
+    const olderFailure = controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 2,
+      segmentId: 'segment-1',
+      text: 'Good morning everyone',
+    });
+    await vi.waitFor(() => {
+      expect(dependencies.translate).toHaveBeenCalledOnce();
+    });
+    const newerSuccess = controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 2,
+      segmentId: 'segment-2',
+      text: 'How are you today',
+    });
+    await vi.waitFor(() => {
+      expect(dependencies.translate).toHaveBeenCalledTimes(2);
+    });
+
+    rejectOlder(
+      Object.assign(new Error('provider_unavailable'), {
+        code: 'provider_unavailable',
+      }),
+    );
+    await olderFailure;
+    resolveNewer('恢復翻譯');
+    await newerSuccess;
+
+    expect(
+      vi.mocked(dependencies.sendToTab).mock.calls.map(
+        ([, message]) => message.type,
+      ),
+    ).toContain('SESSION_ERROR_CLEAR');
+    expect(controller.status()).toEqual({ state: 'running', tabId: 42 });
+  });
 });
