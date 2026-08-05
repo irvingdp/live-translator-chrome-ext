@@ -3,7 +3,8 @@ export type ProviderErrorCode =
   | 'rate_limited'
   | 'quota_exceeded'
   | 'provider_unavailable'
-  | 'invalid_response';
+  | 'invalid_response'
+  | 'network_error';
 
 export class ProviderError extends Error {
   constructor(
@@ -54,20 +55,26 @@ export class DeepLClient {
     request: TranslationRequest,
     signal?: AbortSignal,
   ): Promise<TranslationResult> {
-    const response = await this.fetcher(resolveDeepLEndpoint(request.apiKey), {
-      method: 'POST',
-      headers: {
-        Authorization: `DeepL-Auth-Key ${request.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model_type: 'latency_optimized',
-        source_lang: request.sourceLanguage,
-        target_lang: request.targetLanguage,
-        text: [request.text],
-      }),
-      signal,
-    });
+    let response: Response;
+    try {
+      response = await this.fetcher(resolveDeepLEndpoint(request.apiKey), {
+        method: 'POST',
+        headers: {
+          Authorization: `DeepL-Auth-Key ${request.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model_type: 'latency_optimized',
+          source_lang: request.sourceLanguage,
+          target_lang: request.targetLanguage,
+          text: [request.text],
+        }),
+        signal,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error;
+      throw new ProviderError('network_error');
+    }
 
     if (!response.ok) throw errorForStatus(response.status);
 

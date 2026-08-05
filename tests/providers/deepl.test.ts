@@ -81,6 +81,35 @@ describe('DeepLClient', () => {
     expect(error).toMatchObject({ code, status });
   });
 
+  it('normalizes a fetch-level network failure', async () => {
+    const client = new DeepLClient(
+      vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch')),
+    );
+
+    const error = await client.translate({
+      apiKey: 'secret:fx',
+      sourceLanguage: 'EN',
+      targetLanguage: 'ZH-HANT',
+      text: 'Hello',
+    }).catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({ code: 'network_error' });
+  });
+
+  it('preserves an aborted fetch so cancellation is not retried', async () => {
+    const abort = new DOMException('aborted', 'AbortError');
+    const client = new DeepLClient(
+      vi.fn<typeof fetch>().mockRejectedValue(abort),
+    );
+
+    await expect(client.translate({
+      apiKey: 'secret:fx',
+      sourceLanguage: 'EN',
+      targetLanguage: 'ZH-HANT',
+      text: 'Hello',
+    })).rejects.toBe(abort);
+  });
+
   it('forwards an AbortSignal so stale segment requests can be cancelled', async () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(
       async (_url, request) => {
