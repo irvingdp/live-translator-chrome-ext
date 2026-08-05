@@ -98,6 +98,7 @@ describe('CaptureSessionController', () => {
       payload: { segmentId: 'segment-1', text: 'Good morning' },
     });
     expect(dependencies.translate).toHaveBeenCalledWith(
+      sessionId,
       {
         apiKey: 'deepl-key:fx',
         sourceLanguage: 'EN',
@@ -301,6 +302,53 @@ describe('CaptureSessionController', () => {
     });
     expect(controller.status()).toEqual({
       error: 'quota_exceeded',
+      state: 'running',
+      tabId: 42,
+    });
+  });
+
+  it('keeps original captions running when translation is disabled', async () => {
+    const { controller, dependencies } = createHarness();
+    vi.mocked(dependencies.translate).mockRejectedValue(
+      Object.assign(new Error('translation_disabled'), {
+        code: 'translation_disabled',
+      }),
+    );
+    await controller.start(42, settings);
+    const startMessage = vi.mocked(dependencies.sendToOffscreen).mock.calls[0]![0];
+    if (startMessage.type !== 'CAPTURE_START') throw new Error('missing start');
+
+    await controller.acceptTranscript(startMessage.payload.sessionId, {
+      isFinal: false,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Good morning',
+    });
+    await controller.acceptTranscript(startMessage.payload.sessionId, {
+      isFinal: false,
+      revision: 2,
+      segmentId: 'segment-1',
+      text: 'Good morning everyone',
+    });
+
+    expect(dependencies.sendToTab).toHaveBeenCalledWith(42, {
+      type: 'CAPTION_ORIGINAL',
+      payload: {
+        segmentId: 'segment-1',
+        text: 'Good morning everyone',
+      },
+    });
+    expect(
+      vi.mocked(dependencies.sendToTab).mock.calls.filter(
+        ([, message]) => message.type === 'SESSION_ERROR',
+      ),
+    ).toHaveLength(1);
+    expect(dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
+      type: 'SESSION_ERROR',
+      payload: { code: 'translation_disabled' },
+    });
+    expect(controller.status()).toEqual({
+      error: 'translation_disabled',
       state: 'running',
       tabId: 42,
     });

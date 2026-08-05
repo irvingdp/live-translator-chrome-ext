@@ -3,11 +3,13 @@ import { ensureContentScript } from '../src/core/content-script-loader';
 import type { ExtensionMessage } from '../src/core/messages';
 import { normalizeSettings } from '../src/core/settings';
 import { redactSessionSnapshot } from '../src/core/session-persistence';
-import { DeepLClient } from '../src/providers/deepl';
+import { createOffscreenTranslationTransport } from '../src/providers/offscreen-translation-transport';
 
 export default defineBackground(() => {
   const activeSessionKey = 'activeSession';
-  const deepl = new DeepLClient();
+  const translateOffscreen = createOffscreenTranslationTransport(
+    (message) => chrome.runtime.sendMessage(message),
+  );
   const controller = new CaptureSessionController({
     ensureContentScript: (tabId) => ensureContentScript({
       inject: async () => {
@@ -42,8 +44,8 @@ export default defineBackground(() => {
       return response;
     },
     sendToTab: (tabId, message) => chrome.tabs.sendMessage(tabId, message),
-    translate: async (request, signal) =>
-      (await deepl.translate(request, signal)).text,
+    translate: (sessionId, request, signal) =>
+      translateOffscreen(sessionId, request, signal),
   });
 
   const ready = chrome.storage.session.get(activeSessionKey).then(async (stored) => {

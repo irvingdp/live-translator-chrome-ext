@@ -58,6 +58,7 @@ const translationFailureCodes = new Set([
   'provider_unavailable',
   'quota_exceeded',
   'rate_limited',
+  'translation_disabled',
 ]);
 
 function translationFailureCode(error: unknown): string {
@@ -77,7 +78,11 @@ export interface CaptureSessionDependencies {
   getStreamId(tabId: number): Promise<string>;
   sendToOffscreen(message: ExtensionMessage): Promise<unknown>;
   sendToTab(tabId: number, message: TabMessage): Promise<unknown>;
-  translate(request: TranslationRequest, signal: AbortSignal): Promise<string>;
+  translate(
+    sessionId: string,
+    request: TranslationRequest,
+    signal: AbortSignal,
+  ): Promise<string>;
 }
 
 export interface ActiveSessionSnapshot {
@@ -122,6 +127,7 @@ export class CaptureSessionController {
     this.settings = snapshot.settings;
     this.stabilizer = new TranscriptStabilizer();
     this.translationCoordinator = this.createTranslationCoordinator(
+      snapshot.sessionId,
       snapshot.settings,
     );
     this.currentStatus = { state: 'running', tabId: snapshot.tabId };
@@ -144,7 +150,10 @@ export class CaptureSessionController {
     this.stabilizer = new TranscriptStabilizer();
     this.lastOriginal = undefined;
     this.lastTranslation = undefined;
-    this.translationCoordinator = this.createTranslationCoordinator(settings);
+    this.translationCoordinator = this.createTranslationCoordinator(
+      sessionId,
+      settings,
+    );
     let captureStarted = false;
 
     try {
@@ -353,10 +362,12 @@ export class CaptureSessionController {
   }
 
   private createTranslationCoordinator(
+    sessionId: string,
     settings: SessionSettings,
   ): TranslationCoordinator {
     return new TranslationCoordinator((text, signal) =>
       this.dependencies.translate(
+        sessionId,
         {
           apiKey: settings.deeplApiKey,
           sourceLanguage: settings.sourceLanguage,

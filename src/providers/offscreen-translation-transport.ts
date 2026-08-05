@@ -9,7 +9,7 @@ type OffscreenTranslationMessage = Extract<
 
 type SendMessage = (
   message: OffscreenTranslationMessage,
-) => Promise<TranslationAttemptResult>;
+) => Promise<unknown>;
 
 type RequestIdGenerator = () => string;
 
@@ -43,6 +43,11 @@ export function createOffscreenTranslationTransport(
       if (signal.aborted) {
         throw new DOMException('Translation cancelled', 'AbortError');
       }
+      if (!isTranslationAttemptResult(result)) {
+        throw Object.assign(new Error('invalid_response'), {
+          code: 'invalid_response',
+        });
+      }
       if (result.ok) return result.text;
 
       throw Object.assign(new Error(result.error), { code: result.error });
@@ -50,4 +55,14 @@ export function createOffscreenTranslationTransport(
       signal.removeEventListener('abort', cancel);
     }
   };
+}
+
+function isTranslationAttemptResult(
+  result: unknown,
+): result is TranslationAttemptResult {
+  if (!result || typeof result !== 'object' || !('ok' in result)) return false;
+  if (result.ok === true) {
+    return 'text' in result && typeof result.text === 'string';
+  }
+  return result.ok === false && 'error' in result && typeof result.error === 'string';
 }

@@ -74,4 +74,14 @@ describe('createOffscreenTranslationTransport', () => {
     await expect(translate('session-1', request, new AbortController().signal))
       .rejects.toMatchObject({ code: 'translation_disabled' });
   });
+
+  it('normalizes a missing runtime response', async () => {
+    const translate = createOffscreenTranslationTransport(
+      async () => undefined as unknown as TranslationAttemptResult,
+      () => 'request-1',
+    );
+
+    await expect(translate('session-1', request, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+  });
 });
