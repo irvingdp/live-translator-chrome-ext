@@ -5,18 +5,22 @@ import {
 } from '../../src/audio/offscreen-capture-controller';
 import type { ExtensionMessage } from '../../src/core/messages';
 import { DeepLClient } from '../../src/providers/deepl';
-import { OffscreenTranslationController } from '../../src/providers/offscreen-translation-controller';
+import {
+  normalizeTranslationAttemptError,
+  OffscreenTranslationController,
+} from '../../src/providers/offscreen-translation-controller';
 
 const controller = new OffscreenCaptureController({
   createPipeline: createBrowserTabAudioPipeline,
   createSession: createDeepgramSession,
   emitDisconnect: (sessionId) => {
-    stopKeepAlive(sessionId);
-    void chrome.runtime.sendMessage<ExtensionMessage>({
-      target: 'background',
-      type: 'CAPTURE_DISCONNECTED',
-      payload: { sessionId },
-    });
+    void teardownSession(sessionId)
+      .catch(() => undefined)
+      .then(() => chrome.runtime.sendMessage<ExtensionMessage>({
+        target: 'background',
+        type: 'CAPTURE_DISCONNECTED',
+        payload: { sessionId },
+      }));
   },
   emitTranscript: (sessionId, event) => {
     void chrome.runtime.sendMessage<ExtensionMessage>({
@@ -69,11 +73,15 @@ function startKeepAlive(sessionId: string): void {
       })
       .then((response: { status?: { state?: string } } | undefined) => {
         if (response?.status?.state !== 'idle') return;
-        stopKeepAlive(sessionId);
-        return controller.stop(sessionId);
+        return teardownSession(sessionId);
       })
       .catch(() => undefined);
   }, 20_000);
+}
+
+async function teardownSession(sessionId: string): Promise<void> {
+  translationController.stopSession(sessionId);
+  await controller.stop(sessionId).finally(() => stopKeepAlive(sessionId));
 }
 
 chrome.runtime.onMessage.addListener(
@@ -83,14 +91,16 @@ chrome.runtime.onMessage.addListener(
       switch (message.type) {
         case 'CAPTURE_START':
           translationController.startSession(message.payload.sessionId);
-          await controller.start(message.payload);
+          try {
+            await controller.start(message.payload);
+          } catch (error) {
+            await teardownSession(message.payload.sessionId).catch(() => undefined);
+            throw error;
+          }
           startKeepAlive(message.payload.sessionId);
           return { ok: true } as const;
         case 'CAPTURE_STOP':
-          translationController.stopSession(message.payload.sessionId);
-          await controller.stop(message.payload.sessionId).finally(() =>
-            stopKeepAlive(message.payload.sessionId),
-          );
+          await teardownSession(message.payload.sessionId);
           return { ok: true } as const;
         case 'TRANSLATE_REQUEST':
           return translationController.translate(
@@ -106,10 +116,14 @@ chrome.runtime.onMessage.addListener(
     void operation.then(
       sendResponse,
       (error: unknown) =>
-        sendResponse({
-          error: error instanceof Error ? error.message : 'Unknown audio error',
-          ok: false,
-        }),
+        sendResponse(message.type === 'TRANSLATE_REQUEST'
+          ? { error: normalizeTranslationAttemptError(error), ok: false }
+          : {
+              error: error instanceof Error
+                ? error.message
+                : 'Unknown audio error',
+              ok: false,
+            }),
     );
     return true;
   },

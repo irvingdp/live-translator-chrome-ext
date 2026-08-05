@@ -31,6 +31,9 @@ type OffscreenListener = (
 let listener: OffscreenListener;
 let fetcher: ReturnType<typeof vi.fn<typeof fetch>>;
 let pipeline: AudioPipeline;
+let runtimeSendMessage: ReturnType<typeof vi.fn>;
+let transcriptionSession: TranscriptionSession;
+let emitUnexpectedDisconnect: () => void;
 
 beforeEach(async () => {
   vi.useFakeTimers();
@@ -43,16 +46,21 @@ beforeEach(async () => {
     onEnded: vi.fn(() => vi.fn()),
     sampleRate: 16_000,
   };
-  const transcriptionSession: TranscriptionSession = {
+  emitUnexpectedDisconnect = () => undefined;
+  transcriptionSession = {
     close: vi.fn(),
     connect: vi.fn().mockResolvedValue(undefined),
-    onDisconnect: vi.fn(() => vi.fn()),
+    onDisconnect: vi.fn((registered) => {
+      emitUnexpectedDisconnect = registered;
+      return vi.fn();
+    }),
     onTranscript: vi.fn(() => vi.fn()),
     sendAudio: vi.fn().mockReturnValue(true),
   };
   audio.createPipeline.mockResolvedValue(pipeline);
   audio.createSession.mockReturnValue(transcriptionSession);
   fetcher = vi.fn<typeof fetch>();
+  runtimeSendMessage = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal('fetch', fetcher);
   vi.stubGlobal('chrome', {
     runtime: {
@@ -61,7 +69,7 @@ beforeEach(async () => {
           listener = registered;
         }),
       },
-      sendMessage: vi.fn().mockResolvedValue(undefined),
+      sendMessage: runtimeSendMessage,
     },
   });
 
@@ -171,6 +179,82 @@ describe('offscreen runtime listener', () => {
     });
     expect(fetcher).toHaveBeenCalledOnce();
   });
+
+  it('rolls back translation state when audio capture start fails', async () => {
+    vi.mocked(transcriptionSession.connect).mockRejectedValueOnce(
+      new Error('Deepgram start failed'),
+    );
+    const started = dispatch(captureStartMessage('session-1'));
+    await vi.waitFor(() => {
+      expect(started.sendResponse).toHaveBeenCalledWith({
+        error: 'Deepgram start failed',
+        ok: false,
+      });
+    });
+    fetcher.mockResolvedValue(new Response(JSON.stringify({
+      translations: [{ text: '不應翻譯' }],
+    }), { status: 200 }));
+
+    const translation = dispatch(translationMessage('session-1', 'request-1'));
+    await vi.waitFor(() => {
+      expect(translation.sendResponse).toHaveBeenCalledWith({
+        error: 'cancelled',
+        ok: false,
+      });
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending translation after an unexpected disconnect', async () => {
+    await startCapture('session-1');
+    const pendingFetch = createPendingFetch();
+    const translation = dispatch(translationMessage('session-1', 'request-1'));
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+
+    emitUnexpectedDisconnect();
+    await vi.waitFor(() => {
+      expect(runtimeSendMessage).toHaveBeenCalledWith({
+        target: 'background',
+        type: 'CAPTURE_DISCONNECTED',
+        payload: { sessionId: 'session-1' },
+      });
+    });
+    const wasAborted = pendingFetch.signal?.aborted ?? false;
+    if (!wasAborted) pendingFetch.resolve(successfulTranslationResponse());
+    await vi.waitFor(() => expect(translation.sendResponse).toHaveBeenCalled());
+
+    expect(wasAborted).toBe(true);
+    expect(translation.sendResponse).toHaveBeenCalledWith({
+      error: 'cancelled',
+      ok: false,
+    });
+  });
+
+  it('cancels a pending translation when keepalive finds an orphaned session', async () => {
+    runtimeSendMessage.mockImplementation((message: ExtensionMessage) =>
+      Promise.resolve(
+        message.type === 'CAPTURE_KEEPALIVE'
+          ? { status: { state: 'idle' } }
+          : undefined,
+      ),
+    );
+    await startCapture('session-1');
+    const pendingFetch = createPendingFetch();
+    const translation = dispatch(translationMessage('session-1', 'request-1'));
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    await vi.waitFor(() => expect(pipeline.close).toHaveBeenCalledOnce());
+    const wasAborted = pendingFetch.signal?.aborted ?? false;
+    if (!wasAborted) pendingFetch.resolve(successfulTranslationResponse());
+    await vi.waitFor(() => expect(translation.sendResponse).toHaveBeenCalled());
+
+    expect(wasAborted).toBe(true);
+    expect(translation.sendResponse).toHaveBeenCalledWith({
+      error: 'cancelled',
+      ok: false,
+    });
+  });
 });
 
 function dispatch(message: ExtensionMessage) {
@@ -180,7 +264,15 @@ function dispatch(message: ExtensionMessage) {
 }
 
 async function startCapture(sessionId: string): Promise<void> {
-  const started = dispatch({
+  const started = dispatch(captureStartMessage(sessionId));
+  expect(started.keepOpen).toBe(true);
+  await vi.waitFor(() => expect(started.sendResponse).toHaveBeenCalledWith({ ok: true }));
+}
+
+function captureStartMessage(
+  sessionId: string,
+): Extract<ExtensionMessage, { type: 'CAPTURE_START' }> {
+  return {
     target: 'offscreen',
     type: 'CAPTURE_START',
     payload: {
@@ -189,9 +281,7 @@ async function startCapture(sessionId: string): Promise<void> {
       sessionId,
       streamId: `stream-${sessionId}`,
     },
-  });
-  expect(started.keepOpen).toBe(true);
-  await vi.waitFor(() => expect(started.sendResponse).toHaveBeenCalledWith({ ok: true }));
+  };
 }
 
 function translationMessage(
@@ -212,4 +302,28 @@ function translationMessage(
       sessionId,
     },
   };
+}
+
+function createPendingFetch() {
+  const gate = Promise.withResolvers<Response>();
+  let signal: AbortSignal | undefined;
+  fetcher.mockImplementationOnce((_input, init) => {
+    signal = init?.signal ?? undefined;
+    signal?.addEventListener('abort', () => {
+      gate.reject(new DOMException('aborted', 'AbortError'));
+    }, { once: true });
+    return gate.promise;
+  });
+  return {
+    resolve: gate.resolve,
+    get signal() {
+      return signal;
+    },
+  };
+}
+
+function successfulTranslationResponse(): Response {
+  return new Response(JSON.stringify({
+    translations: [{ text: '完成' }],
+  }), { status: 200 });
 }

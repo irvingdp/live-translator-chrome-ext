@@ -7,12 +7,47 @@ import type {
 const retryDelays = [250, 500, 1_000, 2_000] as const;
 const maxConsecutiveFailures = 5;
 
+export type TranslationAttemptError =
+  | ProviderErrorCode
+  | 'cancelled'
+  | 'translation_disabled';
+
 export type TranslationAttemptResult =
   | { ok: true; text: string }
-  | {
-    error: ProviderErrorCode | 'cancelled' | 'translation_disabled';
-    ok: false;
-  };
+  | { error: TranslationAttemptError; ok: false };
+
+const translationAttemptErrors = new Set<TranslationAttemptError>([
+  'cancelled',
+  'invalid_credentials',
+  'invalid_response',
+  'network_error',
+  'provider_unavailable',
+  'quota_exceeded',
+  'rate_limited',
+  'translation_disabled',
+]);
+
+export function isTranslationAttemptError(
+  error: unknown,
+): error is TranslationAttemptError {
+  return typeof error === 'string' &&
+    translationAttemptErrors.has(error as TranslationAttemptError);
+}
+
+export function normalizeTranslationAttemptError(
+  error: unknown,
+): TranslationAttemptError {
+  if (isAbortError(error)) return 'cancelled';
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    isTranslationAttemptError(error.code)
+  ) {
+    return error.code;
+  }
+  return 'invalid_response';
+}
 
 interface OffscreenTranslationDependencies {
   delay(milliseconds: number, signal: AbortSignal): Promise<void>;

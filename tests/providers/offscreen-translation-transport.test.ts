@@ -84,4 +84,14 @@ describe('createOffscreenTranslationTransport', () => {
     await expect(translate('session-1', request, new AbortController().signal))
       .rejects.toMatchObject({ code: 'invalid_response' });
   });
+
+  it('rejects an unknown offscreen error code as an invalid response', async () => {
+    const translate = createOffscreenTranslationTransport(
+      async () => ({ error: 'unexpected_code', ok: false }),
+      () => 'request-1',
+    );
+
+    await expect(translate('session-1', request, new AbortController().signal))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+  });
 });

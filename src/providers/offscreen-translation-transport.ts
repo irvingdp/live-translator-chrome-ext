@@ -1,6 +1,9 @@
 import type { ExtensionMessage } from '../core/messages';
 import type { TranslationRequest } from './deepl';
-import type { TranslationAttemptResult } from './offscreen-translation-controller';
+import {
+  isTranslationAttemptError,
+  type TranslationAttemptResult,
+} from './offscreen-translation-controller';
 
 type OffscreenTranslationMessage = Extract<
   ExtensionMessage,
@@ -64,5 +67,7 @@ function isTranslationAttemptResult(
   if (result.ok === true) {
     return 'text' in result && typeof result.text === 'string';
   }
-  return result.ok === false && 'error' in result && typeof result.error === 'string';
+  return result.ok === false &&
+    'error' in result &&
+    isTranslationAttemptError(result.error);
 }

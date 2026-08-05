@@ -5,7 +5,10 @@ import {
   type TranslationRequest,
   type TranslationResult,
 } from '../../src/providers/deepl';
-import { OffscreenTranslationController } from '../../src/providers/offscreen-translation-controller';
+import {
+  normalizeTranslationAttemptError,
+  OffscreenTranslationController,
+} from '../../src/providers/offscreen-translation-controller';
 
 const request: TranslationRequest = {
   apiKey: 'secret',
@@ -31,6 +34,11 @@ function createHarness() {
 }
 
 describe('OffscreenTranslationController', () => {
+  it('normalizes an unexpected offscreen rejection to an allowed error code', () => {
+    expect(normalizeTranslationAttemptError(new Error('secret upstream detail')))
+      .toBe('invalid_response');
+  });
+
   it('retries transient failures and resets the counter after success', async () => {
     const { controller, delays, translate } = createHarness();
     translate
