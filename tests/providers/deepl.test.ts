@@ -21,7 +21,7 @@ describe('resolveDeepLEndpoint', () => {
 });
 
 describe('DeepLClient', () => {
-  it('posts a latency-optimized translation without exposing the key in the URL', async () => {
+  it('posts a compatible translation request without exposing the key in the URL', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -51,7 +51,6 @@ describe('DeepLClient', () => {
       'DeepL-Auth-Key secret:fx',
     );
     expect(JSON.parse(String(request?.body))).toEqual({
-      model_type: 'latency_optimized',
       source_lang: 'EN',
       target_lang: 'ZH-HANT',
       text: ['Good morning'],

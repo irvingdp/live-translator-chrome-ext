@@ -64,7 +64,6 @@ export class DeepLClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model_type: 'latency_optimized',
           source_lang: request.sourceLanguage,
           target_lang: request.targetLanguage,
           text: [request.text],
