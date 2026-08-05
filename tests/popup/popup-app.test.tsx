@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS } from '../../src/core/settings';
 function createApi(overrides: Partial<PopupApi> = {}): PopupApi {
   return {
     loadSettings: vi.fn().mockResolvedValue(DEFAULT_SETTINGS),
+    openOptions: vi.fn().mockResolvedValue(undefined),
     saveSettings: vi.fn().mockResolvedValue(undefined),
     start: vi.fn().mockResolvedValue({ state: 'running', tabId: 42 }),
     status: vi.fn().mockResolvedValue({ state: 'idle' }),
@@ -23,15 +24,65 @@ describe('PopupApp', () => {
     expect(screen.getByText('Gemini 3.5 Live（即將推出）')).toBeDisabled();
   });
 
-  it('shows inline errors and does not start without both API keys', async () => {
+  it('removes API Key fields and directs unconfigured users to options', async () => {
     const api = createApi();
     render(<PopupApp api={api} />);
-    await screen.findByDisplayValue('24');
+
+    expect(await screen.findByText('API Key 尚未設定')).toBeVisible();
+    expect(screen.queryByLabelText('Deepgram API Key')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('DeepL API Key')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '開啟設定' }));
+    await waitFor(() => expect(api.openOptions).toHaveBeenCalledOnce());
+  });
+
+  it('shows configured status when both stored keys are non-empty', async () => {
+    render(
+      <PopupApp
+        api={createApi({
+          loadSettings: vi.fn().mockResolvedValue({
+            ...DEFAULT_SETTINGS,
+            deepgramApiKey: 'dg',
+            deeplApiKey: 'dl',
+          }),
+        })}
+      />,
+    );
+
+    expect(await screen.findByText('API Key 已設定')).toBeVisible();
+  });
+
+  it('shows guidance when Chrome cannot open the options page', async () => {
+    render(
+      <PopupApp
+        api={createApi({
+          openOptions: vi.fn().mockRejectedValue(new Error('unavailable')),
+        })}
+      />,
+    );
+    await screen.findByText('API Key 尚未設定');
+
+    fireEvent.click(screen.getByRole('button', { name: '開啟設定' }));
+
+    expect(
+      await screen.findByText(
+        '無法開啟設定頁，請從擴充功能選單選擇「選項」。',
+      ),
+    ).toBeVisible();
+  });
+
+  it('blocks startup with guidance when an API Key is missing', async () => {
+    const api = createApi();
+    render(<PopupApp api={api} />);
+    await screen.findByText('API Key 尚未設定');
 
     fireEvent.click(screen.getByRole('button', { name: '開始即時字幕' }));
 
-    expect(await screen.findByText('請輸入 Deepgram API Key')).toBeVisible();
-    expect(screen.getByText('請輸入 DeepL API Key')).toBeVisible();
+    expect(
+      await screen.findByText(
+        '請先在設定頁輸入 Deepgram 與 DeepL API Key。',
+      ),
+    ).toBeVisible();
     expect(api.start).not.toHaveBeenCalled();
   });
 

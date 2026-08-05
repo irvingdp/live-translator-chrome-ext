@@ -31,6 +31,7 @@ export const browserPopupApi: PopupApi = {
   async saveSettings(settings) {
     await chrome.storage.local.set({ settings });
   },
+  openOptions: () => chrome.runtime.openOptionsPage(),
   async start(settings) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id === undefined || !tab.url?.startsWith('https://')) {

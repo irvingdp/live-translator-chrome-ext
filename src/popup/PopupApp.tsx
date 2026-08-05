@@ -11,6 +11,7 @@ import {
 
 export interface PopupApi {
   loadSettings(): Promise<AppSettings>;
+  openOptions(): Promise<void>;
   saveSettings(settings: AppSettings): Promise<void>;
   start(settings: AppSettings): Promise<SessionStatus>;
   status(): Promise<SessionStatus>;
@@ -20,13 +21,8 @@ export interface PopupApi {
 export function PopupApp({ api }: { api: PopupApi }) {
   const [settings, setSettings] = useState<AppSettings>();
   const [status, setStatus] = useState<SessionStatus>({ state: 'idle' });
-  const [errors, setErrors] = useState<
-    Partial<Record<'deepgramApiKey' | 'deeplApiKey', string>>
-  >({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [showDeepgramKey, setShowDeepgramKey] = useState(false);
-  const [showDeeplKey, setShowDeeplKey] = useState(false);
   const saveTail = useRef<Promise<void>>(Promise.resolve());
   const sessionAttempt = useRef(0);
 
@@ -57,8 +53,13 @@ export function PopupApp({ api }: { api: PopupApi }) {
         });
       return next;
     });
-    if (key === 'deepgramApiKey' || key === 'deeplApiKey') {
-      setErrors((current) => ({ ...current, [key]: undefined }));
+  };
+
+  const openOptions = async () => {
+    try {
+      await api.openOptions();
+    } catch {
+      setMessage('無法開啟設定頁，請從擴充功能選單選擇「選項」。');
     }
   };
 
@@ -78,9 +79,10 @@ export function PopupApp({ api }: { api: PopupApi }) {
       return;
     }
 
-    const nextErrors = validateSettingsForStart(settings);
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    if (Object.keys(validateSettingsForStart(settings)).length > 0) {
+      setMessage('請先在設定頁輸入 Deepgram 與 DeepL API Key。');
+      return;
+    }
 
     const attempt = ++sessionAttempt.current;
     setStatus({ state: 'starting', tabId: -1 });
@@ -109,6 +111,9 @@ export function PopupApp({ api }: { api: PopupApi }) {
   }
 
   const running = status.state === 'running' || status.state === 'starting';
+  const keysConfigured = Boolean(
+    settings.deepgramApiKey.trim() && settings.deeplApiKey.trim(),
+  );
   return (
     <main className="popup">
       <header className="header">
@@ -136,30 +141,24 @@ export function PopupApp({ api }: { api: PopupApi }) {
           <option value="deepgram">Deepgram Nova-3</option>
           <option disabled>本地 Whisper（即將推出）</option>
         </select>
-        <SecretField
-          error={errors.deepgramApiKey}
-          id="deepgram-key"
-          label="Deepgram API Key"
-          onChange={(value) => update('deepgramApiKey', value)}
-          onToggle={() => setShowDeepgramKey((value) => !value)}
-          revealed={showDeepgramKey}
-          value={settings.deepgramApiKey}
-        />
 
         <label htmlFor="translator">翻譯</label>
         <select id="translator" defaultValue="deepl" disabled={running}>
           <option value="deepl">DeepL API</option>
           <option disabled>Gemini 3.5 Live（即將推出）</option>
         </select>
-        <SecretField
-          error={errors.deeplApiKey}
-          id="deepl-key"
-          label="DeepL API Key"
-          onChange={(value) => update('deeplApiKey', value)}
-          onToggle={() => setShowDeeplKey((value) => !value)}
-          revealed={showDeeplKey}
-          value={settings.deeplApiKey}
-        />
+        <div className="provider-summary">
+          <p className={`provider-state ${keysConfigured ? 'configured' : ''}`}>
+            {keysConfigured ? 'API Key 已設定' : 'API Key 尚未設定'}
+          </p>
+          <button
+            className="secondary"
+            type="button"
+            onClick={() => void openOptions()}
+          >
+            開啟設定
+          </button>
+        </div>
       </section>
 
       <section className="card grid" aria-labelledby="language-heading">
@@ -233,45 +232,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
         {busy ? '處理中…' : running ? '停止字幕' : '開始即時字幕'}
       </button>
     </main>
-  );
-}
-
-function SecretField({
-  error,
-  id,
-  label,
-  onChange,
-  onToggle,
-  revealed,
-  value,
-}: {
-  error?: string;
-  id: string;
-  label: string;
-  onChange(value: string): void;
-  onToggle(): void;
-  revealed: boolean;
-  value: string;
-}) {
-  return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <div className="secret-row">
-        <input
-          aria-describedby={error ? `${id}-error` : undefined}
-          aria-invalid={Boolean(error)}
-          autoComplete="off"
-          id={id}
-          type={revealed ? 'text' : 'password'}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-        />
-        <button aria-label={`${revealed ? '隱藏' : '顯示'} ${label}`} type="button" onClick={onToggle}>
-          {revealed ? '隱藏' : '顯示'}
-        </button>
-      </div>
-      {error && <p className="error" id={`${id}-error`} role="alert">{error}</p>}
-    </div>
   );
 }
 
