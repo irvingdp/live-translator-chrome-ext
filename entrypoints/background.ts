@@ -7,9 +7,18 @@ import { createOffscreenTranslationTransport } from '../src/providers/offscreen-
 
 export default defineBackground(() => {
   const activeSessionKey = 'activeSession';
+  let lifecycleTail: Promise<void> = Promise.resolve();
   const translateOffscreen = createOffscreenTranslationTransport(
     (message) => chrome.runtime.sendMessage(message),
   );
+  const sendToOffscreen = async (message: ExtensionMessage) => {
+    const response = await chrome.runtime.sendMessage(message) as {
+      error?: string;
+      ok?: boolean;
+    };
+    if (!response?.ok) throw new Error(response?.error ?? 'offscreen_error');
+    return response;
+  };
   const controller = new CaptureSessionController({
     ensureContentScript: (tabId) => ensureContentScript({
       inject: async () => {
@@ -35,18 +44,43 @@ export default defineBackground(() => {
     },
     getStreamId: (tabId) =>
       chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }),
-    sendToOffscreen: async (message) => {
-      const response = await chrome.runtime.sendMessage(message) as {
-        error?: string;
-        ok?: boolean;
-      };
-      if (!response?.ok) throw new Error(response?.error ?? 'offscreen_error');
-      return response;
-    },
+    sendToOffscreen,
     sendToTab: (tabId, message) => chrome.tabs.sendMessage(tabId, message),
     translate: (sessionId, request, signal) =>
       translateOffscreen(sessionId, request, signal),
   });
+
+  function enqueueLifecycle<T>(operation: () => Promise<T>): Promise<T> {
+    const result = lifecycleTail.then(operation, operation);
+    lifecycleTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  async function closeOffscreenIfUnused(): Promise<void> {
+    if (controller.snapshot()) return;
+    try {
+      const offscreenUrl = chrome.runtime.getURL('offscreen.html');
+      const contexts = await chrome.runtime.getContexts({
+        contextTypes: ['OFFSCREEN_DOCUMENT'],
+        documentUrls: [offscreenUrl],
+      });
+      if (contexts.length > 0) await chrome.offscreen.closeDocument();
+    } catch {
+      // Chrome may have already discarded the offscreen document.
+    }
+  }
+
+  async function stopOrphanedOffscreen(sessionId: string): Promise<void> {
+    await sendToOffscreen({
+      target: 'offscreen',
+      type: 'CAPTURE_STOP',
+      payload: { sessionId },
+    }).catch(() => undefined);
+    await closeOffscreenIfUnused();
+  }
 
   const ready = chrome.storage.session.get(activeSessionKey).then(async (stored) => {
     const snapshot = stored[activeSessionKey] as {
@@ -98,39 +132,54 @@ export default defineBackground(() => {
             );
             return { ok: true };
           case 'CAPTURE_DISCONNECTED':
-            await controller.handleDisconnect(message.payload.sessionId);
-            if (!controller.snapshot()) {
-              await chrome.storage.session.remove(activeSessionKey);
-            }
-            return { ok: true };
+            return enqueueLifecycle(async () => {
+              await controller.handleDisconnect(message.payload.sessionId);
+              if (!controller.snapshot()) {
+                await chrome.storage.session.remove(activeSessionKey);
+                await closeOffscreenIfUnused();
+              }
+              return { ok: true };
+            });
           case 'CAPTURE_KEEPALIVE':
-            return { ok: true, status: controller.status() };
+            return enqueueLifecycle(async () => {
+              const status = controller.status();
+              if (status.state === 'idle') {
+                await stopOrphanedOffscreen(message.payload.sessionId);
+              }
+              return { ok: true, status };
+            });
           case 'CONTENT_READY':
             if (sender.tab?.id !== undefined) {
               await controller.handleContentReady(sender.tab.id);
             }
             return { ok: true };
           case 'SESSION_START':
-            try {
-              await controller.start(
-                message.payload.tabId,
-                normalizeSettings(message.payload.settings),
-              );
-            } catch (error) {
-              await chrome.storage.session.remove(activeSessionKey);
-              throw error;
-            }
-            const snapshot = controller.snapshot();
-            if (snapshot) {
-              await chrome.storage.session.set({
-                [activeSessionKey]: redactSessionSnapshot(snapshot),
-              });
-            }
-            return { ok: true, status: controller.status() };
+            return enqueueLifecycle(async () => {
+              try {
+                await controller.start(
+                  message.payload.tabId,
+                  normalizeSettings(message.payload.settings),
+                );
+              } catch (error) {
+                await chrome.storage.session.remove(activeSessionKey);
+                await closeOffscreenIfUnused();
+                throw error;
+              }
+              const snapshot = controller.snapshot();
+              if (snapshot) {
+                await chrome.storage.session.set({
+                  [activeSessionKey]: redactSessionSnapshot(snapshot),
+                });
+              }
+              return { ok: true, status: controller.status() };
+            });
           case 'SESSION_STOP':
-            await controller.stop();
-            await chrome.storage.session.remove(activeSessionKey);
-            return { ok: true, status: controller.status() };
+            return enqueueLifecycle(async () => {
+              await controller.stop();
+              await chrome.storage.session.remove(activeSessionKey);
+              await closeOffscreenIfUnused();
+              return { ok: true, status: controller.status() };
+            });
           case 'SESSION_STATUS':
             return { ok: true, status: controller.status() };
           default:
@@ -150,12 +199,15 @@ export default defineBackground(() => {
   );
 
   chrome.tabs.onRemoved.addListener((tabId) => {
-    void ready.then(async () => {
-      const status = controller.status();
-      if ('tabId' in status && status.tabId === tabId) {
-        await controller.stop();
-        await chrome.storage.session.remove(activeSessionKey);
-      }
-    });
+    void ready
+      .then(() => enqueueLifecycle(async () => {
+        const status = controller.status();
+        if ('tabId' in status && status.tabId === tabId) {
+          await controller.stop();
+          await chrome.storage.session.remove(activeSessionKey);
+          await closeOffscreenIfUnused();
+        }
+      }))
+      .catch(() => undefined);
   });
 });
