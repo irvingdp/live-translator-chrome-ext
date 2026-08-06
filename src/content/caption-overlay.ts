@@ -175,7 +175,20 @@ export class CaptionOverlay {
         child instanceof HTMLElement && !incoming.has(child.dataset.pairId ?? ''),
     );
 
-    let appended = false;
+    // Nothing arriving means there is no motion for a drop to ride out on,
+    // and going from one unit to two just grows the box with nothing above
+    // to push out.
+    const pushes =
+      outgoing.length > 0 &&
+      pairs.some((pair) => !this.pairElements.has(pair.id)) &&
+      !this.prefersReducedMotion();
+    // Measured before the append: this is the height the box must hold for
+    // the whole push. Reading it afterwards would pin the taller height that
+    // includes the incoming unit, which is exactly the growth the push hides
+    // -- and would also make the pin a no-op, since it is released in the
+    // same breath as the outgoing unit is removed.
+    const pinnedHeight = pushes ? (this.viewportElement?.offsetHeight ?? 0) : 0;
+
     for (const pair of pairs) {
       const existing = this.pairElements.get(pair.id);
       if (existing) {
@@ -185,16 +198,14 @@ export class CaptionOverlay {
       const element = this.createPair(pair);
       track.append(element);
       this.pairElements.set(pair.id, element);
-      appended = true;
     }
 
     if (outgoing.length === 0) return;
-    // Nothing was pushed in, so there is no motion to cover the drop.
-    if (!appended || this.prefersReducedMotion()) {
+    if (!pushes) {
       this.removePairs(outgoing);
       return;
     }
-    this.animatePush(outgoing);
+    this.animatePush(outgoing, pinnedHeight);
   }
 
   private prefersReducedMotion(): boolean {
@@ -208,7 +219,7 @@ export class CaptionOverlay {
   // by the outgoing height. Offsetting the track by that measured distance and
   // releasing it on the next frame replays that jump as a slide, which keeps
   // the animation in step with the real layout instead of a guessed height.
-  private animatePush(outgoing: HTMLElement[]): void {
+  private animatePush(outgoing: HTMLElement[], pinnedHeight: number): void {
     const track = this.trackElement;
     const viewport = this.viewportElement;
     if (!track || !viewport) {
@@ -219,7 +230,6 @@ export class CaptionOverlay {
       (total, element) => total + element.offsetHeight,
       0,
     );
-    const pinnedHeight = viewport.offsetHeight;
     if (pinnedHeight > 0) viewport.style.height = `${pinnedHeight}px`;
     track.classList.add('instant');
     track.style.transform = `translateY(${distance}px)`;

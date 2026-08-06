@@ -142,6 +142,62 @@ describe('CaptionOverlay', () => {
     }
   });
 
+  it('pins the box to its height from before the incoming unit was appended', async () => {
+    vi.useFakeTimers();
+    const heights = vi
+      .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.classList.contains('pair')) return 10;
+        if (this.classList.contains('viewport')) {
+          return this.querySelectorAll('.pair').length * 10;
+        }
+        return 0;
+      });
+    try {
+      const overlay = new CaptionOverlay(document);
+      overlay.show(appearance);
+      overlay.setWindow([
+        { id: 'a', original: 'A', translation: '甲' },
+        { id: 'b', original: 'B', translation: '乙' },
+      ]);
+
+      overlay.setWindow([
+        { id: 'b', original: 'B', translation: '乙' },
+        { id: 'c', original: 'C', translation: '丙' },
+      ]);
+
+      const viewport = document
+        .querySelector('[data-bilingual-caption-root]')
+        ?.shadowRoot?.querySelector<HTMLElement>('.viewport');
+      const track = viewport?.querySelector<HTMLElement>('.track');
+      // Two units tall. Pinning to the three-unit height the track briefly
+      // has would let the box grow by exactly the unit the push hides.
+      expect(viewport?.style.height).toBe('20px');
+      expect(track?.style.transform).toBe('translateY(10px)');
+
+      await vi.advanceTimersByTimeAsync(400);
+
+      expect(viewport?.style.height).toBe('');
+    } finally {
+      heights.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not measure layout when a unit is only updated in place', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show(appearance);
+    overlay.setWindow([{ id: 'a', original: 'A', translation: '' }]);
+    const heights = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get');
+    try {
+      overlay.setWindow([{ id: 'a', original: 'A longer line', translation: '甲' }]);
+
+      expect(heights).not.toHaveBeenCalled();
+    } finally {
+      heights.mockRestore();
+    }
+  });
+
   it('does not push when a unit only joins a window that was not full', () => {
     const overlay = new CaptionOverlay(document);
     overlay.show(appearance);
