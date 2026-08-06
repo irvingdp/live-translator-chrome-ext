@@ -5,6 +5,8 @@ name: Release
 # first proven broken at the worst moment.
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
