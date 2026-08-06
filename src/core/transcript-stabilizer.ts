@@ -5,19 +5,15 @@ export interface TranscriptEvent {
   text: string;
 }
 
-export interface TranslationPhrase extends TranscriptEvent {
-  mode?: 'replace';
-}
-
 export interface StabilizedTranscriptUpdate {
   originalText: string;
-  translation?: TranslationPhrase;
+  stableText: string;
 }
 
 interface SegmentState {
-  emittedText: string;
   lastRevision: number;
   lastText: string;
+  stableText: string;
 }
 
 function longestCommonPrefix(left: string, right: string): string {
@@ -45,12 +41,6 @@ function stableBoundary(previous: string, current: string): string {
   return common.slice(0, common.lastIndexOf(' ')).trim();
 }
 
-function untranslatedSuffix(fullText: string, emittedText: string): string {
-  if (!emittedText) return fullText.trim();
-  if (!fullText.startsWith(emittedText)) return fullText.trim();
-  return fullText.slice(emittedText.length).trim();
-}
-
 export class TranscriptStabilizer {
   private readonly segments = new Map<string, SegmentState>();
   private readonly finalizedRevisions = new Map<string, number>();
@@ -65,36 +55,27 @@ export class TranscriptStabilizer {
     if (existing && event.revision <= existing.lastRevision) return undefined;
 
     const state: SegmentState = existing ?? {
-      emittedText: '',
       lastRevision: 0,
       lastText: '',
+      stableText: '',
     };
-
-    const stableText = event.isFinal
+    const candidate = event.isFinal
       ? event.text.trim()
       : stableBoundary(state.lastText, event.text);
-    const phrase = untranslatedSuffix(stableText, state.emittedText);
-    const hadEmittedText = Boolean(state.emittedText);
-    const replacesEmittedText =
-      Boolean(state.emittedText) && !stableText.startsWith(state.emittedText);
 
     state.lastRevision = event.revision;
     state.lastText = event.text;
-    if (phrase) state.emittedText = stableText;
+    state.stableText = event.isFinal
+      ? candidate
+      : candidate.length > state.stableText.length
+        ? candidate
+        : state.stableText;
     this.segments.set(event.segmentId, state);
 
-    const update: StabilizedTranscriptUpdate = { originalText: event.text };
-    if (phrase) {
-      update.translation = {
-        isFinal: event.isFinal,
-        ...(hadEmittedText || replacesEmittedText
-          ? { mode: 'replace' as const }
-          : {}),
-        revision: event.revision,
-        segmentId: event.segmentId,
-        text: hadEmittedText ? stableText : phrase,
-      };
-    }
+    const update: StabilizedTranscriptUpdate = {
+      originalText: event.text,
+      stableText: state.stableText,
+    };
 
     if (event.isFinal) {
       this.segments.delete(event.segmentId);
