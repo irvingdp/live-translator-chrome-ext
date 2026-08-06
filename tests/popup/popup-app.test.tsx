@@ -164,6 +164,68 @@ describe('PopupApp', () => {
     );
   });
 
+  it('keeps original and translation font sliders bounded after gaining shared range props', async () => {
+    const api = createApi();
+    render(<PopupApp api={api} />);
+    const original = await screen.findByLabelText('原文字級');
+    const translation = screen.getByLabelText('譯文字級');
+
+    expect(original).toHaveAttribute('min', '16');
+    expect(original).toHaveAttribute('max', '48');
+    expect(translation).toHaveAttribute('min', '16');
+    expect(translation).toHaveAttribute('max', '48');
+
+    fireEvent.change(original, { target: { value: '40' } });
+    fireEvent.change(translation, { target: { value: '18' } });
+
+    expect(original).toHaveValue('40');
+    expect(translation).toHaveValue('18');
+  });
+
+  it('saves each layout setting when its slider moves', async () => {
+    const api = createApi();
+    render(<PopupApp api={api} />);
+
+    fireEvent.change(await screen.findByLabelText('每行長度上限'), {
+      target: { value: '60' },
+    });
+    await waitFor(() =>
+      expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ maxLineWidth: 60 }),
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText('背景透明度'), {
+      target: { value: '30' },
+    });
+    await waitFor(() =>
+      expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ backgroundOpacity: 30 }),
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText('距底部位置'), {
+      target: { value: '20' },
+    });
+    await waitFor(() =>
+      expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ bottomOffset: 20 }),
+      ),
+    );
+  });
+
+  it('keeps the layout sliders usable while a session runs', async () => {
+    render(
+      <PopupApp
+        api={createApi({
+          status: vi.fn().mockResolvedValue({ state: 'running', tabId: 42 }),
+        })}
+      />,
+    );
+
+    expect(await screen.findByLabelText('背景透明度')).toBeEnabled();
+  });
+
   it('allows stopping while the initial provider connection is pending', async () => {
     let releaseStart!: (status: { state: 'running'; tabId: number }) => void;
     const api = createApi({

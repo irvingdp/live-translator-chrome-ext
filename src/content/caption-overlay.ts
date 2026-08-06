@@ -1,12 +1,10 @@
-export interface CaptionSizes {
+import type { CaptionPair } from '../core/caption-window';
+
+export interface CaptionAppearance {
+  backgroundOpacity: number;
+  bottomOffset: number;
   originalFontSize: number;
   translationFontSize: number;
-}
-
-export interface OverlayTranslation {
-  mode: 'append' | 'replace';
-  segmentId: string;
-  text: string;
 }
 
 const SESSION_ERROR_MESSAGES: Record<string, string> = {
@@ -45,6 +43,8 @@ export function findLargestVisibleVideo(
     )[0]?.video;
 }
 
+const PUSH_DURATION_MS = 220;
+
 const OVERLAY_CSS = `
   :host { all: initial; }
   .stage {
@@ -53,13 +53,13 @@ const OVERLAY_CSS = `
     flex-direction: column;
     height: 100%;
     justify-content: flex-end;
-    padding: 0 5% 5%;
+    padding: 0 5% var(--caption-bottom-offset, 8%);
     pointer-events: none;
     width: 100%;
   }
   .captions {
     align-self: center;
-    background: rgba(3, 7, 18, 0.78);
+    background: rgba(3, 7, 18, var(--caption-bg-opacity, 0.78));
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 10px;
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
@@ -70,12 +70,19 @@ const OVERLAY_CSS = `
     max-width: min(92%, 1100px);
     padding: 8px 14px;
     text-align: center;
-    text-wrap: balance;
   }
+  .viewport {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    overflow: hidden;
+  }
+  .track { display: flex; flex-direction: column; }
+  .pair { padding: 2px 0; }
   .original {
     font-size: var(--caption-original-size, 24px);
     font-weight: 650;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     text-shadow: 0 1px 2px #000;
   }
   .translation {
@@ -83,7 +90,7 @@ const OVERLAY_CSS = `
     font-size: var(--caption-translation-size, 22px);
     font-weight: 550;
     margin-top: 3px;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     text-shadow: 0 1px 2px #000;
   }
   .status-message {
@@ -95,29 +102,30 @@ const OVERLAY_CSS = `
     text-shadow: 0 1px 2px #000;
   }
   .original:empty, .translation:empty, .status-message:empty { display: none; }
+  .track.instant { transition: none; }
   @media (prefers-reduced-motion: no-preference) {
     .captions { transition: opacity 160ms ease-out; }
+    .track { transition: transform 220ms ease-out; }
   }
 `;
 
 export class CaptionOverlay {
-  private activeSegmentId?: string;
   private host?: HTMLElement;
   private nativeCue?: VTTCue;
   private nativeTrack?: TextTrack;
   private nativeVideo?: HTMLVideoElement;
-  private originalElement?: HTMLElement;
-  private originalTextValue = '';
+  private pairs: CaptionPair[] = [];
+  private readonly pairElements = new Map<string, HTMLElement>();
   private statusElement?: HTMLElement;
   private statusTextValue = '';
-  private readonly translations = new Map<string, string>();
-  private translationElement?: HTMLElement;
+  private trackElement?: HTMLElement;
+  private viewportElement?: HTMLElement;
 
   constructor(private readonly document: Document) {}
 
-  show(sizes: CaptionSizes): void {
+  show(appearance: CaptionAppearance): void {
     if (!this.host) this.createHost();
-    this.setSizes(sizes);
+    this.setAppearance(appearance);
     this.position();
   }
 
@@ -125,34 +133,121 @@ export class CaptionOverlay {
     this.disableNativeTextTrack();
     this.host?.remove();
     this.host = undefined;
-    this.originalElement = undefined;
     this.statusElement = undefined;
-    this.translationElement = undefined;
-    this.activeSegmentId = undefined;
-    this.originalTextValue = '';
+    this.trackElement = undefined;
+    this.viewportElement = undefined;
+    this.pairElements.clear();
+    this.pairs = [];
     this.statusTextValue = '';
-    this.translations.clear();
   }
 
-  setSizes(sizes: CaptionSizes): void {
-    this.host?.style.setProperty(
+  setAppearance(appearance: CaptionAppearance): void {
+    const style = this.host?.style;
+    if (!style) return;
+    style.setProperty(
       '--caption-original-size',
-      `${sizes.originalFontSize}px`,
+      `${appearance.originalFontSize}px`,
     );
-    this.host?.style.setProperty(
+    style.setProperty(
       '--caption-translation-size',
-      `${sizes.translationFontSize}px`,
+      `${appearance.translationFontSize}px`,
+    );
+    style.setProperty(
+      '--caption-bg-opacity',
+      `${appearance.backgroundOpacity / 100}`,
+    );
+    style.setProperty('--caption-bottom-offset', `${appearance.bottomOffset}%`);
+  }
+
+  // Idempotent: the background owns accumulation and sends the whole window on
+  // every change, so this only reconciles the DOM against the given pairs.
+  setWindow(pairs: CaptionPair[]): void {
+    this.pairs = pairs;
+    this.syncNativeCue();
+    const track = this.trackElement;
+    if (!track) return;
+
+    const incoming = new Set(pairs.map((pair) => pair.id));
+    const outgoing = [...track.children].filter(
+      (child): child is HTMLElement =>
+        child instanceof HTMLElement && !incoming.has(child.dataset.pairId ?? ''),
+    );
+
+    // Nothing arriving means there is no motion for a drop to ride out on,
+    // and going from one unit to two just grows the box with nothing above
+    // to push out.
+    const pushes =
+      outgoing.length > 0 &&
+      pairs.some((pair) => !this.pairElements.has(pair.id)) &&
+      !this.prefersReducedMotion();
+    // Measured before the append: this is the height the box must hold for
+    // the whole push. Reading it afterwards would pin the taller height that
+    // includes the incoming unit, which is exactly the growth the push hides
+    // -- and would also make the pin a no-op, since it is released in the
+    // same breath as the outgoing unit is removed.
+    const pinnedHeight = pushes ? (this.viewportElement?.offsetHeight ?? 0) : 0;
+
+    for (const pair of pairs) {
+      const existing = this.pairElements.get(pair.id);
+      if (existing) {
+        this.writePair(existing, pair);
+        continue;
+      }
+      const element = this.createPair(pair);
+      track.append(element);
+      this.pairElements.set(pair.id, element);
+    }
+
+    if (outgoing.length === 0) return;
+    if (!pushes) {
+      this.removePairs(outgoing);
+      return;
+    }
+    this.animatePush(outgoing, pinnedHeight);
+  }
+
+  private prefersReducedMotion(): boolean {
+    const view = this.document.defaultView;
+    return (
+      view?.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
     );
   }
 
-  setOriginal(segmentId: string, text: string): void {
-    this.activeSegmentId = segmentId;
-    this.originalTextValue = text;
-    if (this.originalElement) this.originalElement.textContent = text;
-    if (this.translationElement) {
-      this.translationElement.textContent = this.translations.get(segmentId) ?? '';
+  // The track is bottom-aligned, so appending already moved the older units up
+  // by the outgoing height. Offsetting the track by that measured distance and
+  // releasing it on the next frame replays that jump as a slide, which keeps
+  // the animation in step with the real layout instead of a guessed height.
+  private animatePush(outgoing: HTMLElement[], pinnedHeight: number): void {
+    const track = this.trackElement;
+    const viewport = this.viewportElement;
+    if (!track || !viewport) {
+      this.removePairs(outgoing);
+      return;
     }
-    this.syncNativeCue();
+    const distance = outgoing.reduce(
+      (total, element) => total + element.offsetHeight,
+      0,
+    );
+    if (pinnedHeight > 0) viewport.style.height = `${pinnedHeight}px`;
+    track.classList.add('instant');
+    track.style.transform = `translateY(${distance}px)`;
+    void track.offsetHeight;
+
+    const view = this.document.defaultView;
+    const release = () => {
+      track.classList.remove('instant');
+      track.style.transform = '';
+    };
+    if (view?.requestAnimationFrame) view.requestAnimationFrame(release);
+    else release();
+
+    const finish = () => {
+      this.removePairs(outgoing);
+      release();
+      viewport.style.height = '';
+    };
+    if (view?.setTimeout) view.setTimeout(finish, PUSH_DURATION_MS + 40);
+    else finish();
   }
 
   setSessionError(code: string): void {
@@ -169,24 +264,6 @@ export class CaptionOverlay {
     this.statusTextValue = '';
     if (this.statusElement) this.statusElement.textContent = '';
     this.syncNativeCue();
-  }
-
-  setTranslation(update: OverlayTranslation): void {
-    const previous = this.translations.get(update.segmentId) ?? '';
-    const next =
-      update.mode === 'replace'
-        ? update.text
-        : [previous, update.text].filter(Boolean).join(' ');
-    this.translations.set(update.segmentId, next);
-    this.activeSegmentId ??= update.segmentId;
-    if (this.activeSegmentId === update.segmentId && this.translationElement) {
-      this.translationElement.textContent = next;
-    }
-    this.syncNativeCue();
-  }
-
-  translationText(): string {
-    return this.translationElement?.textContent ?? '';
   }
 
   position(): void {
@@ -244,21 +321,55 @@ export class CaptionOverlay {
     captions.className = 'captions';
     captions.setAttribute('aria-live', 'polite');
     captions.setAttribute('role', 'status');
-    const original = this.document.createElement('div');
-    original.className = 'original';
-    const translation = this.document.createElement('div');
-    translation.className = 'translation';
+    const viewport = this.document.createElement('div');
+    viewport.className = 'viewport';
+    const track = this.document.createElement('div');
+    track.className = 'track';
+    viewport.append(track);
     const status = this.document.createElement('div');
     status.className = 'status-message';
     status.textContent = this.statusTextValue;
-    captions.append(original, translation, status);
+    captions.append(viewport, status);
     stage.append(captions);
     shadow.append(style, stage);
     this.document.documentElement.append(host);
     this.host = host;
-    this.originalElement = original;
     this.statusElement = status;
-    this.translationElement = translation;
+    this.trackElement = track;
+    this.viewportElement = viewport;
+    for (const pair of this.pairs) {
+      const element = this.createPair(pair);
+      track.append(element);
+      this.pairElements.set(pair.id, element);
+    }
+  }
+
+  private createPair(pair: CaptionPair): HTMLElement {
+    const element = this.document.createElement('div');
+    element.className = 'pair';
+    element.dataset.pairId = pair.id;
+    const original = this.document.createElement('div');
+    original.className = 'original';
+    const translation = this.document.createElement('div');
+    translation.className = 'translation';
+    element.append(original, translation);
+    this.writePair(element, pair);
+    return element;
+  }
+
+  private writePair(element: HTMLElement, pair: CaptionPair): void {
+    const original = element.querySelector('.original');
+    const translation = element.querySelector('.translation');
+    if (original) original.textContent = pair.original;
+    if (translation) translation.textContent = pair.translation;
+  }
+
+  private removePairs(elements: HTMLElement[]): void {
+    for (const element of elements) {
+      const id = element.dataset.pairId;
+      if (id) this.pairElements.delete(id);
+      element.remove();
+    }
   }
 
   private enableNativeTextTrack(video: HTMLVideoElement): void {
@@ -292,12 +403,8 @@ export class CaptionOverlay {
 
   private syncNativeCue(): void {
     if (!this.nativeCue) return;
-    const translation = this.activeSegmentId
-      ? this.translations.get(this.activeSegmentId) ?? ''
-      : '';
     this.nativeCue.text = [
-      this.originalTextValue,
-      translation,
+      ...this.pairs.flatMap((pair) => [pair.original, pair.translation]),
       this.statusTextValue,
     ]
       .filter(Boolean)

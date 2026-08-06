@@ -1,5 +1,7 @@
 import type { CaptureStartRequest } from '../audio/offscreen-capture-controller';
 import type { TranslationRequest } from '../providers/deepl';
+import { CaptionChunker, type CaptionUnit } from './caption-chunker';
+import { CaptionWindow, type CaptionPair } from './caption-window';
 import type { ExtensionMessage } from './messages';
 import {
   TranscriptStabilizer,
@@ -11,8 +13,11 @@ import {
 } from './translation-coordinator';
 
 export interface SessionSettings {
+  backgroundOpacity: number;
+  bottomOffset: number;
   deepgramApiKey: string;
   deeplApiKey: string;
+  maxLineWidth: number;
   sourceLanguage: string;
   sourceLocale: string;
   targetLanguage: string;
@@ -22,25 +27,9 @@ export interface SessionSettings {
 
 export type TabMessage =
   | { type: 'CONTENT_PING' }
-  | {
-      type: 'OVERLAY_SHOW';
-      payload: { originalFontSize: number; translationFontSize: number };
-    }
+  | { type: 'OVERLAY_SHOW' }
   | { type: 'OVERLAY_HIDE' }
-  | {
-      type: 'CAPTION_ORIGINAL';
-      payload: { segmentId: string; text: string };
-    }
-  | {
-      type: 'CAPTION_TRANSLATION';
-      payload: {
-        isFinal: boolean;
-        mode: 'append' | 'replace';
-        revision: number;
-        segmentId: string;
-        text: string;
-      };
-    }
+  | { type: 'CAPTION_WINDOW'; payload: { pairs: CaptionPair[] } }
   | {
       type: 'SESSION_ERROR';
       payload: { code: string };
@@ -97,8 +86,9 @@ export class CaptureSessionController {
   private generation = 0;
   private lifecycleTail: Promise<void> = Promise.resolve();
   private settings?: SessionSettings;
-  private lastOriginal?: Extract<TabMessage, { type: 'CAPTION_ORIGINAL' }>;
-  private lastTranslation?: Extract<TabMessage, { type: 'CAPTION_TRANSLATION' }>;
+  private readonly captionWindow = new CaptionWindow();
+  private readonly chunker = new CaptionChunker();
+  private readonly translatedSources = new Map<string, string>();
   private stabilizer = new TranscriptStabilizer();
   private currentStatus: SessionStatus = { state: 'idle' };
   private currentTranslationErrorAttemptId?: number;
@@ -130,6 +120,9 @@ export class CaptureSessionController {
     this.activeSessionId = snapshot.sessionId;
     this.settings = snapshot.settings;
     this.stabilizer = new TranscriptStabilizer();
+    this.captionWindow.clear();
+    this.translatedSources.clear();
+    this.chunker.clear();
     this.currentTranslationErrorAttemptId = undefined;
     this.lastSuccessfulTranslationAttemptId = 0;
     this.translationAttemptSequence = 0;
@@ -138,6 +131,12 @@ export class CaptureSessionController {
       snapshot.settings,
     );
     this.currentStatus = { state: 'running', tabId: snapshot.tabId };
+  }
+
+  // Units already in the window keep the width they were cut at; recutting
+  // them would renumber ids the overlay is already showing.
+  applyLayout(maxLineWidth: number): void {
+    if (this.settings) this.settings = { ...this.settings, maxLineWidth };
   }
 
   start(tabId: number, settings: SessionSettings): Promise<void> {
@@ -158,8 +157,9 @@ export class CaptureSessionController {
     this.currentTranslationErrorAttemptId = undefined;
     this.lastSuccessfulTranslationAttemptId = 0;
     this.translationAttemptSequence = 0;
-    this.lastOriginal = undefined;
-    this.lastTranslation = undefined;
+    this.captionWindow.clear();
+    this.translatedSources.clear();
+    this.chunker.clear();
     this.translationCoordinator = this.createTranslationCoordinator(
       sessionId,
       settings,
@@ -195,13 +195,7 @@ export class CaptureSessionController {
           .catch(() => undefined);
         return;
       }
-      await this.dependencies.sendToTab(tabId, {
-        type: 'OVERLAY_SHOW',
-        payload: {
-          originalFontSize: settings.originalFontSize,
-          translationFontSize: settings.translationFontSize,
-        },
-      });
+      await this.dependencies.sendToTab(tabId, { type: 'OVERLAY_SHOW' });
       this.currentStatus = { state: 'running', tabId };
     } catch (error) {
       if (captureStarted) {
@@ -241,22 +235,52 @@ export class CaptureSessionController {
     const update = this.stabilizer.ingest(event);
     if (!update) return;
 
-    this.lastOriginal = {
-      type: 'CAPTION_ORIGINAL',
-      payload: { segmentId: event.segmentId, text: update.originalText },
-    };
-    await this.dependencies.sendToTab(tabId, this.lastOriginal);
-    if (this.currentStatus.error === 'translation_disabled') return;
-    if (!update.translation) return;
+    const units = this.chunker.ingest({
+      isFinal: event.isFinal,
+      maxWidth: this.settings.maxLineWidth,
+      rawText: update.originalText,
+      segmentId: event.segmentId,
+      stableText: update.stableText,
+    });
+    if (units.length === 0) return;
 
-    const phrase = update.translation;
+    for (const unit of units) {
+      this.captionWindow.upsertOriginal(unit.id, unit.displayText);
+    }
+    await this.sendWindow(tabId);
+    if (this.currentStatus.error === 'translation_disabled') return;
+
+    for (const unit of units) {
+      if (!unit.translateText) continue;
+      // A unit is translated while it is still open and re-emitted when it
+      // closes, usually with byte-identical text. Sending it twice spends
+      // provider quota to receive an answer we already have.
+      if (this.translatedSources.get(unit.id) === unit.translateText) continue;
+      this.translatedSources.set(unit.id, unit.translateText);
+      await this.translateUnit(unit, event.revision, tabId, generation);
+    }
+  }
+
+  private async sendWindow(tabId: number): Promise<void> {
+    await this.dependencies.sendToTab(tabId, {
+      type: 'CAPTION_WINDOW',
+      payload: { pairs: this.captionWindow.pairs() },
+    });
+  }
+
+  private async translateUnit(
+    unit: CaptionUnit,
+    revision: number,
+    tabId: number,
+    generation: number,
+  ): Promise<void> {
     const attemptId = ++this.translationAttemptSequence;
     let result: CoordinatedTranslation | undefined;
     try {
-      result = await this.translationCoordinator.translate({
-        revision: phrase.revision,
-        segmentId: phrase.segmentId,
-        text: phrase.text,
+      result = await this.translationCoordinator!.translate({
+        revision,
+        segmentId: unit.id,
+        text: unit.translateText,
       });
     } catch (error) {
       if (
@@ -312,17 +336,8 @@ export class CaptureSessionController {
         type: 'SESSION_ERROR_CLEAR',
       });
     }
-    this.lastTranslation = {
-      type: 'CAPTION_TRANSLATION',
-      payload: {
-        isFinal: phrase.isFinal,
-        mode: phrase.mode ?? 'append',
-        revision: phrase.revision,
-        segmentId: phrase.segmentId,
-        text: result.text,
-      },
-    };
-    await this.dependencies.sendToTab(tabId, this.lastTranslation);
+    this.captionWindow.upsertTranslation(unit.id, result.text);
+    await this.sendWindow(tabId);
   }
 
   stop(): Promise<void> {
@@ -352,8 +367,9 @@ export class CaptureSessionController {
       }
       this.settings = undefined;
       this.activeSessionId = undefined;
-      this.lastOriginal = undefined;
-      this.lastTranslation = undefined;
+      this.captionWindow.clear();
+      this.translatedSources.clear();
+      this.chunker.clear();
       this.currentTranslationErrorAttemptId = undefined;
       this.lastSuccessfulTranslationAttemptId = 0;
       this.translationAttemptSequence = 0;
@@ -387,19 +403,8 @@ export class CaptureSessionController {
       this.currentStatus.tabId !== tabId ||
       !this.settings
     ) return;
-    await this.dependencies.sendToTab(tabId, {
-      type: 'OVERLAY_SHOW',
-      payload: {
-        originalFontSize: this.settings.originalFontSize,
-        translationFontSize: this.settings.translationFontSize,
-      },
-    });
-    if (this.lastOriginal) {
-      await this.dependencies.sendToTab(tabId, this.lastOriginal);
-    }
-    if (this.lastTranslation) {
-      await this.dependencies.sendToTab(tabId, this.lastTranslation);
-    }
+    await this.dependencies.sendToTab(tabId, { type: 'OVERLAY_SHOW' });
+    await this.sendWindow(tabId);
     if (
       this.currentStatus.state === 'running' &&
       this.currentStatus.tabId === tabId &&

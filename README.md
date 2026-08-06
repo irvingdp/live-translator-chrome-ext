@@ -8,7 +8,9 @@ Chrome 116+ 的 Manifest V3 擴充功能：擷取目前分頁的音訊，以 Dee
 - Deepgram 即時語音辨識
 - DeepL Free / Pro 翻譯端點
 - YouTube、Netflix、Disney+ 與一般 HTML5 影片的頁內字幕
+- 兩組滾動字幕視窗：一句原文、一句譯文，共四行；新句到達時舊的一組往上推出
 - 原文與譯文字級分別調整
+- 每行長度上限、背景透明度、垂直位置皆可調，且在字幕進行中即時生效
 - API Key 僅存放於 `chrome.storage.local`
 
 本地 Whisper、Gemini Live、系統音訊與跨 App 置頂字幕目前只在介面標示為後續功能。
@@ -34,7 +36,7 @@ npm run build
 
 ## 延遲說明
 
-音訊以 40 ms PCM16 chunk 傳送，並使用 Deepgram interim results 與 DeepL `latency_optimized`。端到端 0.5 秒是網路與供應商狀況良好時的 stretch target，不能由瀏覽器端單方面保證；實際 release gate 為 warm session p50 ≤ 800 ms、p95 ≤ 1500 ms。
+音訊以 40 ms PCM16 chunk 傳送，並使用 Deepgram interim results。翻譯以「約一行」的顯示單位為粒度送出，讓每次 DeepL 請求都很短；請求不指定 `model_type`，由 DeepL 自行挑選相容模型。端到端 0.5 秒是網路與供應商狀況良好時的 stretch target，不能由瀏覽器端單方面保證；實際 release gate 為 warm session p50 ≤ 800 ms、p95 ≤ 1500 ms。
 
 正式發布前，必須分別提供 DeepL Free 與 Pro Key，執行不允許 skip 的相容性檢查：
 

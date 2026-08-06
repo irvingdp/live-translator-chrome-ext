@@ -38,6 +38,56 @@ describe('normalizeSettings', () => {
       translationFontSize: 26,
     });
   });
+
+  it('defaults the layout settings to a visible caption box', () => {
+    expect(DEFAULT_SETTINGS).toMatchObject({
+      backgroundOpacity: 78,
+      bottomOffset: 8,
+      maxLineWidth: 90,
+    });
+  });
+
+  it('clamps the layout settings to their ranges', () => {
+    expect(
+      normalizeSettings({ backgroundOpacity: 150, bottomOffset: -5, maxLineWidth: 999 }),
+    ).toMatchObject({
+      backgroundOpacity: 100,
+      bottomOffset: 0,
+      maxLineWidth: 140,
+    });
+  });
+
+  it('rounds fractional layout settings', () => {
+    expect(normalizeSettings({ maxLineWidth: 90.6 })).toMatchObject({
+      maxLineWidth: 91,
+    });
+  });
+
+  it('falls back to the default when a layout setting is NaN or Infinity', () => {
+    expect(
+      normalizeSettings({
+        backgroundOpacity: Number.NaN,
+        bottomOffset: Number.POSITIVE_INFINITY,
+        maxLineWidth: Number.NEGATIVE_INFINITY,
+      }),
+    ).toMatchObject({
+      backgroundOpacity: DEFAULT_SETTINGS.backgroundOpacity,
+      bottomOffset: DEFAULT_SETTINGS.bottomOffset,
+      maxLineWidth: DEFAULT_SETTINGS.maxLineWidth,
+    });
+  });
+
+  it('falls back to the default when a layout setting is not a number', () => {
+    expect(
+      normalizeSettings({
+        backgroundOpacity: '90' as unknown as number,
+        bottomOffset: null as unknown as number,
+      }),
+    ).toMatchObject({
+      backgroundOpacity: DEFAULT_SETTINGS.backgroundOpacity,
+      bottomOffset: DEFAULT_SETTINGS.bottomOffset,
+    });
+  });
 });
 
 describe('validateSettingsForStart', () => {

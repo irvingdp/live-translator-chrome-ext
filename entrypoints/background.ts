@@ -1,7 +1,7 @@
 import { CaptureSessionController } from '../src/core/capture-session-controller';
 import { ensureContentScript } from '../src/core/content-script-loader';
 import type { ExtensionMessage } from '../src/core/messages';
-import { normalizeSettings } from '../src/core/settings';
+import { normalizeSettings, type AppSettings } from '../src/core/settings';
 import { redactSessionSnapshot } from '../src/core/session-persistence';
 import { createOffscreenTranslationTransport } from '../src/providers/offscreen-translation-transport';
 
@@ -209,5 +209,13 @@ export default defineBackground(() => {
         }
       }))
       .catch(() => undefined);
+  });
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes.settings) return;
+    const next = normalizeSettings(
+      (changes.settings.newValue as Partial<AppSettings> | undefined) ?? {},
+    );
+    controller.applyLayout(next.maxLineWidth);
   });
 });

@@ -4,11 +4,15 @@ import {
   CaptureSessionController,
   type CaptureSessionDependencies,
   type SessionSettings,
+  type TabMessage,
 } from '../../src/core/capture-session-controller';
 
 const settings: SessionSettings = {
+  backgroundOpacity: 78,
+  bottomOffset: 8,
   deepgramApiKey: 'deepgram-key',
   deeplApiKey: 'deepl-key:fx',
+  maxLineWidth: 90,
   sourceLanguage: 'EN',
   sourceLocale: 'en-US',
   targetLanguage: 'ZH-HANT',
@@ -29,6 +33,51 @@ function createHarness() {
     controller: new CaptureSessionController(dependencies),
     dependencies,
   };
+}
+
+async function startSession(
+  harness: ReturnType<typeof createHarness>,
+  overrides: Partial<SessionSettings> = {},
+): Promise<string> {
+  await harness.controller.start(42, { ...settings, ...overrides });
+  const startMessage = vi
+    .mocked(harness.dependencies.sendToOffscreen)
+    .mock.calls.map(([message]) => message)
+    .find((message) => message.type === 'CAPTURE_START');
+  if (startMessage?.type !== 'CAPTURE_START') throw new Error('missing start');
+  vi.mocked(harness.dependencies.sendToTab).mockClear();
+  return startMessage.payload.sessionId;
+}
+
+function windowsSentTo(harness: ReturnType<typeof createHarness>) {
+  return vi
+    .mocked(harness.dependencies.sendToTab)
+    .mock.calls.map(([, message]) => message)
+    .filter(
+      (message): message is Extract<TabMessage, { type: 'CAPTION_WINDOW' }> =>
+        message.type === 'CAPTION_WINDOW',
+    );
+}
+
+// Leaves the window holding an open unit from one segment and a closed unit
+// from another, and the chunker holding in-progress state for the first, so a
+// reset that misses either collaborator shows up in the very next update.
+async function seedWindow(
+  harness: ReturnType<typeof createHarness>,
+  sessionId: string,
+): Promise<void> {
+  await harness.controller.acceptTranscript(sessionId, {
+    isFinal: false,
+    revision: 1,
+    segmentId: 'segment-1',
+    text: 'Hello there.',
+  });
+  await harness.controller.acceptTranscript(sessionId, {
+    isFinal: true,
+    revision: 1,
+    segmentId: 'segment-2',
+    text: 'Second one.',
+  });
 }
 
 describe('CaptureSessionController', () => {
@@ -67,18 +116,14 @@ describe('CaptureSessionController', () => {
     });
     expect(dependencies.sendToTab).toHaveBeenCalledWith(42, {
       type: 'OVERLAY_SHOW',
-      payload: { originalFontSize: 24, translationFontSize: 22 },
     });
     expect(controller.status()).toEqual({ state: 'running', tabId: 42 });
   });
 
-  it('sends interim original text immediately and translates stable phrases', async () => {
-    const { controller, dependencies } = createHarness();
-    await controller.start(42, settings);
-    vi.mocked(dependencies.sendToTab).mockClear();
-    const startMessage = vi.mocked(dependencies.sendToOffscreen).mock.calls[0]![0];
-    if (startMessage.type !== 'CAPTURE_START') throw new Error('missing start');
-    const sessionId = startMessage.payload.sessionId;
+  it('sends interim original text immediately and translates stable text', async () => {
+    const harness = createHarness();
+    const { controller, dependencies } = harness;
+    const sessionId = await startSession(harness);
 
     await controller.acceptTranscript(sessionId, {
       isFinal: false,
@@ -94,8 +139,12 @@ describe('CaptureSessionController', () => {
     });
 
     expect(dependencies.sendToTab).toHaveBeenNthCalledWith(1, 42, {
-      type: 'CAPTION_ORIGINAL',
-      payload: { segmentId: 'segment-1', text: 'Good morning' },
+      type: 'CAPTION_WINDOW',
+      payload: {
+        pairs: [
+          { id: 'segment-1#0', original: 'Good morning', translation: '' },
+        ],
+      },
     });
     expect(dependencies.translate).toHaveBeenCalledWith(
       sessionId,
@@ -108,15 +157,251 @@ describe('CaptureSessionController', () => {
       expect.any(AbortSignal),
     );
     expect(dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
-      type: 'CAPTION_TRANSLATION',
+      type: 'CAPTION_WINDOW',
       payload: {
-        isFinal: false,
-        mode: 'append',
-        revision: 2,
-        segmentId: 'segment-1',
-        text: '翻譯',
+        pairs: [
+          {
+            id: 'segment-1#0',
+            original: 'Good morning everyone',
+            translation: '翻譯',
+          },
+        ],
       },
     });
+  });
+
+  it('sends a rolling window that never holds more than two units', async () => {
+    const harness = createHarness();
+    vi.mocked(harness.dependencies.translate).mockImplementation(
+      async (_sessionId, request) => `[${request.text}]`,
+    );
+    const sessionId = await startSession(harness, { maxLineWidth: 20 });
+
+    await harness.controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Hello there.',
+    });
+    await harness.controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 2,
+      segmentId: 'segment-1',
+      text: 'Hello there. And now we',
+    });
+    await harness.controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 3,
+      segmentId: 'segment-1',
+      text: 'Hello there. And now we go. Then more text arrives',
+    });
+
+    const windows = windowsSentTo(harness);
+    expect(windows.length).toBeGreaterThan(0);
+    for (const message of windows) {
+      expect(message.payload.pairs.length).toBeLessThanOrEqual(2);
+    }
+    expect(
+      vi.mocked(harness.dependencies.translate).mock.calls.map(
+        ([, request]) => request.text,
+      ),
+    ).toContain('Hello there.');
+  });
+
+  it('translates each unit under its own key so pairs stay aligned', async () => {
+    const harness = createHarness();
+    vi.mocked(harness.dependencies.translate).mockImplementation(
+      async (_sessionId, request) => `[${request.text}]`,
+    );
+    const sessionId = await startSession(harness, { maxLineWidth: 20 });
+
+    await harness.controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Hello there.',
+    });
+    await harness.controller.acceptTranscript(sessionId, {
+      isFinal: true,
+      revision: 2,
+      segmentId: 'segment-1',
+      text: 'Hello there. And now.',
+    });
+
+    const pairs = windowsSentTo(harness).at(-1)!.payload.pairs;
+    expect(pairs).toEqual([
+      {
+        id: 'segment-1#0',
+        original: 'Hello there.',
+        translation: '[Hello there.]',
+      },
+      { id: 'segment-1#1', original: 'And now.', translation: '[And now.]' },
+    ]);
+  });
+
+  it('sends window payloads a later translation cannot rewrite', async () => {
+    const harness = createHarness();
+    vi.mocked(harness.dependencies.translate).mockImplementation(
+      async (_sessionId, request) => `[${request.text}]`,
+    );
+    const sessionId = await startSession(harness, { maxLineWidth: 20 });
+
+    await harness.controller.acceptTranscript(sessionId, {
+      isFinal: true,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Hello there.',
+    });
+
+    const windows = windowsSentTo(harness);
+    expect(windows[0]!.payload.pairs).toEqual([
+      { id: 'segment-1#0', original: 'Hello there.', translation: '' },
+    ]);
+    expect(windows.at(-1)!.payload.pairs).toEqual([
+      {
+        id: 'segment-1#0',
+        original: 'Hello there.',
+        translation: '[Hello there.]',
+      },
+    ]);
+  });
+
+  it('does not translate a unit with nothing newly stabilized', async () => {
+    const harness = createHarness();
+    const sessionId = await startSession(harness, { maxLineWidth: 20 });
+
+    await harness.controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Hello',
+    });
+
+    expect(windowsSentTo(harness).at(-1)!.payload.pairs).toEqual([
+      { id: 'segment-1#0', original: 'Hello', translation: '' },
+    ]);
+    expect(harness.dependencies.translate).not.toHaveBeenCalled();
+  });
+
+  it('does not pay for a second translation of text it already translated', async () => {
+    const harness = createHarness();
+    vi.mocked(harness.dependencies.translate).mockImplementation(
+      async (_sessionId, request) => `[${request.text}]`,
+    );
+    const sessionId = await startSession(harness, { maxLineWidth: 20 });
+
+    // Unit 0 is translated while it is still open, then the third event
+    // closes it with byte-identical text. Re-sending that would spend
+    // provider quota to receive an answer we already have.
+    for (const [index, text] of [
+      'Hello there.',
+      'Hello there. And now we',
+      'Hello there. And now we go. Then more',
+    ].entries()) {
+      await harness.controller.acceptTranscript(sessionId, {
+        isFinal: false,
+        revision: index + 1,
+        segmentId: 'segment-1',
+        text,
+      });
+    }
+
+    const translated = vi
+      .mocked(harness.dependencies.translate)
+      .mock.calls.map(([, request]) => request.text);
+
+    expect(translated).toEqual([...new Set(translated)]);
+    expect(windowsSentTo(harness).at(-1)!.payload.pairs[0]).toMatchObject({
+      id: 'segment-1#0',
+      translation: '[Hello there.]',
+    });
+  });
+
+  it('replays the current window when the content script reports ready', async () => {
+    const harness = createHarness();
+    const sessionId = await startSession(harness);
+    await harness.controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Hello there.',
+    });
+    vi.mocked(harness.dependencies.sendToTab).mockClear();
+
+    await harness.controller.handleContentReady(42);
+
+    const types = vi
+      .mocked(harness.dependencies.sendToTab)
+      .mock.calls.map(([, message]) => message.type);
+    expect(types).toContain('OVERLAY_SHOW');
+    expect(types).toContain('CAPTION_WINDOW');
+    expect(windowsSentTo(harness).at(-1)!.payload.pairs).toEqual([
+      { id: 'segment-1#0', original: 'Hello there.', translation: '' },
+    ]);
+  });
+
+  it('applies a new line width to units that arrive afterwards', async () => {
+    const harness = createHarness();
+    const sessionId = await startSession(harness, { maxLineWidth: 140 });
+    harness.controller.applyLayout(20);
+
+    await harness.controller.acceptTranscript(sessionId, {
+      isFinal: true,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'One two three four five six seven eight nine ten.',
+    });
+
+    const pairs = windowsSentTo(harness).at(-1)!.payload.pairs;
+    expect(pairs).toHaveLength(2);
+    for (const pair of pairs) expect(pair.original.length).toBeLessThanOrEqual(20);
+  });
+
+  it('starts the next session with an empty window and a fresh chunker', async () => {
+    const harness = createHarness();
+    const first = await startSession(harness, { maxLineWidth: 20 });
+    await seedWindow(harness, first);
+    await harness.controller.stop();
+    vi.mocked(harness.dependencies.sendToOffscreen).mockClear();
+
+    const second = await startSession(harness, { maxLineWidth: 20 });
+    await harness.controller.acceptTranscript(second, {
+      isFinal: false,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Hello there.',
+    });
+
+    const windows = windowsSentTo(harness);
+    expect(windows).toHaveLength(1);
+    expect(windows[0]!.payload.pairs).toEqual([
+      { id: 'segment-1#0', original: 'Hello there.', translation: '' },
+    ]);
+  });
+
+  it('restores a session with an empty window and a fresh chunker', async () => {
+    const harness = createHarness();
+    const first = await startSession(harness, { maxLineWidth: 20 });
+    await seedWindow(harness, first);
+
+    harness.controller.restore({
+      sessionId: 'restored',
+      settings: { ...settings, maxLineWidth: 20 },
+      tabId: 42,
+    });
+    vi.mocked(harness.dependencies.sendToTab).mockClear();
+    await harness.controller.acceptTranscript('restored', {
+      isFinal: false,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'Hello there.',
+    });
+
+    const windows = windowsSentTo(harness);
+    expect(windows).toHaveLength(1);
+    expect(windows[0]!.payload.pairs).toEqual([
+      { id: 'segment-1#0', original: 'Hello there.', translation: '' },
+    ]);
   });
 
   it('stops capture and removes the overlay even when offscreen stop fails', async () => {
@@ -246,7 +531,6 @@ describe('CaptureSessionController', () => {
 
     expect(dependencies.sendToTab).toHaveBeenCalledWith(42, {
       type: 'OVERLAY_SHOW',
-      payload: { originalFontSize: 24, translationFontSize: 22 },
     });
   });
 
@@ -308,43 +592,41 @@ describe('CaptureSessionController', () => {
   });
 
   it('keeps original captions running when translation is disabled', async () => {
-    const { controller, dependencies } = createHarness();
+    const harness = createHarness();
+    const { controller, dependencies } = harness;
     vi.mocked(dependencies.translate).mockRejectedValue(
       Object.assign(new Error('translation_disabled'), {
         code: 'translation_disabled',
       }),
     );
-    await controller.start(42, settings);
-    const startMessage = vi.mocked(dependencies.sendToOffscreen).mock.calls[0]![0];
-    if (startMessage.type !== 'CAPTURE_START') throw new Error('missing start');
-    vi.mocked(dependencies.sendToTab).mockClear();
+    const sessionId = await startSession(harness);
 
-    await controller.acceptTranscript(startMessage.payload.sessionId, {
+    await controller.acceptTranscript(sessionId, {
       isFinal: false,
       revision: 1,
       segmentId: 'segment-1',
       text: 'Good morning',
     });
-    await controller.acceptTranscript(startMessage.payload.sessionId, {
+    await controller.acceptTranscript(sessionId, {
       isFinal: false,
       revision: 2,
       segmentId: 'segment-1',
       text: 'Good morning everyone',
     });
-    await controller.acceptTranscript(startMessage.payload.sessionId, {
+    await controller.acceptTranscript(sessionId, {
       isFinal: false,
       revision: 3,
       segmentId: 'segment-1',
       text: 'Good morning everyone here',
     });
 
-    expect(dependencies.sendToTab).toHaveBeenCalledWith(42, {
-      type: 'CAPTION_ORIGINAL',
-      payload: {
-        segmentId: 'segment-1',
-        text: 'Good morning everyone here',
+    expect(windowsSentTo(harness).at(-1)!.payload.pairs).toEqual([
+      {
+        id: 'segment-1#0',
+        original: 'Good morning everyone here',
+        translation: '',
       },
-    });
+    ]);
     expect(dependencies.translate).toHaveBeenCalledOnce();
     expect(
       vi.mocked(dependencies.sendToTab).mock.calls.filter(
@@ -356,10 +638,10 @@ describe('CaptureSessionController', () => {
         ([, message]) => message.type,
       ),
     ).toEqual([
-      'CAPTION_ORIGINAL',
-      'CAPTION_ORIGINAL',
+      'CAPTION_WINDOW',
+      'CAPTION_WINDOW',
       'SESSION_ERROR',
-      'CAPTION_ORIGINAL',
+      'CAPTION_WINDOW',
     ]);
     expect(controller.status()).toEqual({
       error: 'translation_disabled',
@@ -481,12 +763,12 @@ describe('CaptureSessionController', () => {
         ([, message]) => message.type,
       ),
     ).toEqual([
-      'CAPTION_ORIGINAL',
-      'CAPTION_ORIGINAL',
+      'CAPTION_WINDOW',
+      'CAPTION_WINDOW',
       'SESSION_ERROR',
-      'CAPTION_ORIGINAL',
+      'CAPTION_WINDOW',
       'SESSION_ERROR_CLEAR',
-      'CAPTION_TRANSLATION',
+      'CAPTION_WINDOW',
     ]);
     expect(controller.status()).toEqual({ state: 'running', tabId: 42 });
   });

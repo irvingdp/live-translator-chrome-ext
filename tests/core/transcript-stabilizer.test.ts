@@ -3,210 +3,156 @@ import { describe, expect, it } from 'vitest';
 import { TranscriptStabilizer } from '../../src/core/transcript-stabilizer';
 
 describe('TranscriptStabilizer', () => {
-  it('waits for a second interim revision before translating text', () => {
-    const stabilizer = new TranscriptStabilizer();
-
-    expect(
-      stabilizer.ingest({
-        isFinal: false,
-        revision: 1,
-        segmentId: 'segment-1',
-        text: 'Good morning',
-      }),
-    ).toEqual({ originalText: 'Good morning' });
+  const event = (text: string, revision: number, isFinal = false) => ({
+    isFinal,
+    revision,
+    segmentId: 'segment-1',
+    text,
   });
 
-  it('emits the word-complete prefix shared by consecutive revisions', () => {
+  it('has no stable text until two revisions agree', () => {
     const stabilizer = new TranscriptStabilizer();
-    stabilizer.ingest({
-      isFinal: false,
-      revision: 1,
-      segmentId: 'segment-1',
-      text: 'Good morning',
-    });
 
-    expect(
-      stabilizer.ingest({
-        isFinal: false,
-        revision: 2,
-        segmentId: 'segment-1',
-        text: 'Good morning everyone',
-      }),
-    ).toEqual({
+    expect(stabilizer.ingest(event('Good morning', 1))).toEqual({
+      originalText: 'Good morning',
+      stableText: '',
+    });
+  });
+
+  it('stabilizes the word-complete prefix shared by consecutive revisions', () => {
+    const stabilizer = new TranscriptStabilizer();
+    stabilizer.ingest(event('Good morning', 1));
+
+    expect(stabilizer.ingest(event('Good morning everyone', 2))).toEqual({
       originalText: 'Good morning everyone',
-      translation: {
-        isFinal: false,
-        revision: 2,
-        segmentId: 'segment-1',
-        text: 'Good morning',
-      },
+      stableText: 'Good morning',
     });
   });
 
-  it('replaces with the cumulative stable prefix so cancelled requests cannot lose words', () => {
+  it('never shrinks stable text when a revision retracts words', () => {
     const stabilizer = new TranscriptStabilizer();
-    stabilizer.ingest({
-      isFinal: false,
-      revision: 1,
-      segmentId: 'segment-1',
-      text: 'Good morning',
-    });
-    stabilizer.ingest({
-      isFinal: false,
-      revision: 2,
-      segmentId: 'segment-1',
-      text: 'Good morning everyone',
-    });
+    stabilizer.ingest(event('Good morning', 1));
+    stabilizer.ingest(event('Good morning everyone', 2));
 
-    expect(
-      stabilizer.ingest({
-        isFinal: false,
-        revision: 3,
-        segmentId: 'segment-1',
-        text: 'Good morning everyone here',
-      }),
-    ).toEqual({
-      originalText: 'Good morning everyone here',
-      translation: {
-        isFinal: false,
-        mode: 'replace',
-        revision: 3,
-        segmentId: 'segment-1',
-        text: 'Good morning everyone',
-      },
+    expect(stabilizer.ingest(event('Good mo', 3))).toMatchObject({
+      stableText: 'Good morning',
     });
   });
 
-  it('emits the untranslated tail when a segment becomes final', () => {
+  it('takes the final text verbatim even when it is shorter', () => {
     const stabilizer = new TranscriptStabilizer();
-    stabilizer.ingest({
-      isFinal: false,
-      revision: 1,
-      segmentId: 'segment-1',
-      text: 'Good morning',
-    });
-    stabilizer.ingest({
-      isFinal: false,
-      revision: 2,
-      segmentId: 'segment-1',
-      text: 'Good morning everyone',
-    });
+    stabilizer.ingest(event('Good morning', 1));
+    stabilizer.ingest(event('Good morning everyone', 2));
 
-    expect(
-      stabilizer.ingest({
-        isFinal: true,
-        revision: 3,
-        segmentId: 'segment-1',
-        text: 'Good morning everyone.',
-      }),
-    ).toEqual({
-      originalText: 'Good morning everyone.',
-      translation: {
-        isFinal: true,
-        mode: 'replace',
-        revision: 3,
-        segmentId: 'segment-1',
-        text: 'Good morning everyone.',
-      },
+    expect(stabilizer.ingest(event('Good morning all.', 3, true))).toEqual({
+      originalText: 'Good morning all.',
+      stableText: 'Good morning all.',
     });
   });
 
-  it('ignores revisions older than the last accepted revision', () => {
+  it('drops events that repeat or precede a revision already seen', () => {
     const stabilizer = new TranscriptStabilizer();
-    stabilizer.ingest({
-      isFinal: false,
-      revision: 4,
-      segmentId: 'segment-1',
-      text: 'Current text',
-    });
+    stabilizer.ingest(event('Good morning', 2));
 
-    expect(
-      stabilizer.ingest({
-        isFinal: false,
-        revision: 3,
-        segmentId: 'segment-1',
-        text: 'Old text',
-      }),
-    ).toBeUndefined();
+    expect(stabilizer.ingest(event('Good', 1))).toBeUndefined();
   });
 
-  it('keeps independent state for simultaneous Deepgram segments', () => {
+  it('drops events that arrive after the segment was finalized', () => {
     const stabilizer = new TranscriptStabilizer();
-    stabilizer.ingest({
-      isFinal: false,
-      revision: 1,
-      segmentId: 'segment-1',
-      text: 'First segment',
-    });
+    stabilizer.ingest(event('Good morning.', 5, true));
 
-    expect(
-      stabilizer.ingest({
-        isFinal: false,
-        revision: 1,
-        segmentId: 'segment-2',
-        text: 'Second segment',
-      }),
-    ).toEqual({ originalText: 'Second segment' });
+    expect(stabilizer.ingest(event('Good morning', 4))).toBeUndefined();
   });
 
-  it('ignores duplicate and older events after a segment is finalized', () => {
+  it('keeps independent stable text and revision state for interleaved segments', () => {
     const stabilizer = new TranscriptStabilizer();
-    stabilizer.ingest({
-      isFinal: true,
-      revision: 4,
-      segmentId: 'segment-1',
-      text: 'Finished sentence.',
+    const eventFor = (segmentId: string, text: string, revision: number) => ({
+      isFinal: false,
+      revision,
+      segmentId,
+      text,
     });
 
+    stabilizer.ingest(eventFor('segment-a', 'Hello', 1));
+    stabilizer.ingest(eventFor('segment-b', 'Bonjour', 1));
+
     expect(
-      stabilizer.ingest({
-        isFinal: true,
-        revision: 4,
-        segmentId: 'segment-1',
-        text: 'Finished sentence.',
-      }),
-    ).toBeUndefined();
+      stabilizer.ingest(eventFor('segment-a', 'Hello there', 2)),
+    ).toEqual({ originalText: 'Hello there', stableText: 'Hello' });
+
+    // segment-b advancing must not be affected by segment-a's state, and vice
+    // versa: each segment's revision counter and stable text are independent.
     expect(
-      stabilizer.ingest({
-        isFinal: false,
-        revision: 3,
-        segmentId: 'segment-1',
-        text: 'Old sentence',
-      }),
-    ).toBeUndefined();
+      stabilizer.ingest(eventFor('segment-b', 'Bonjour tout', 2)),
+    ).toEqual({ originalText: 'Bonjour tout', stableText: 'Bonjour' });
+
+    // A stale revision for segment-b must not be rejected because of
+    // segment-a's revision count (they would collide if state were shared).
+    expect(stabilizer.ingest(eventFor('segment-a', 'Hel', 1))).toBeUndefined();
   });
 
-  it('marks a corrected emitted prefix as a segment replacement', () => {
+  it('only ever grows stable text across a run that retracts then extends again', () => {
     const stabilizer = new TranscriptStabilizer();
-    stabilizer.ingest({
-      isFinal: false,
-      revision: 1,
-      segmentId: 'segment-1',
-      text: 'I like cats',
-    });
-    stabilizer.ingest({
-      isFinal: false,
-      revision: 2,
-      segmentId: 'segment-1',
-      text: 'I like cats today',
+    const seen: string[] = [];
+    const revisions = [
+      'One',
+      'One two',
+      'One tw', // retracts a word
+      'One two three', // re-extends past the retraction
+      'One two three four', // agrees with the prior (non-fragment) revision, so it can stabilize further
+    ];
+
+    revisions.forEach((text, index) => {
+      const update = stabilizer.ingest(event(text, index + 1));
+      seen.push(update!.stableText);
     });
 
-    expect(
-      stabilizer.ingest({
-        isFinal: true,
-        revision: 3,
-        segmentId: 'segment-1',
-        text: 'I love cats today.',
-      }),
-    ).toEqual({
-      originalText: 'I love cats today.',
-      translation: {
-        isFinal: true,
-        mode: 'replace',
-        revision: 3,
-        segmentId: 'segment-1',
-        text: 'I love cats today.',
-      },
+    for (let i = 1; i < seen.length; i += 1) {
+      expect(seen[i]!.length).toBeGreaterThanOrEqual(seen[i - 1]!.length);
+    }
+    // The retraction (revision 3) does not un-stabilize 'One'; growth only
+    // resumes once a later revision agrees with a full, non-fragment
+    // predecessor again (revision 5 agreeing with revision 4's raw text).
+    expect(seen).toEqual(['', 'One', 'One', 'One', 'One two three']);
+  });
+
+  it('stabilizes CJK text with no spaces by taking the whole common prefix', () => {
+    const stabilizer = new TranscriptStabilizer();
+    stabilizer.ingest(event('你好', 1));
+
+    // With no whitespace anywhere in the common prefix, stableBoundary's
+    // whitespace-trim branch never triggers, so the entire shared prefix
+    // (not a word-complete subset of it) becomes stable text immediately.
+    expect(stabilizer.ingest(event('你好世界', 2))).toEqual({
+      originalText: '你好世界',
+      stableText: '你好',
+    });
+  });
+
+  it('accepts a same-length correction rather than keeping stale text', () => {
+    const stabilizer = new TranscriptStabilizer();
+    // 'Ready set go' is 12 characters and becomes the stored stable text.
+    stabilizer.ingest(event('Ready set go', 1));
+    stabilizer.ingest(event('Ready set go now', 2));
+
+    // A later revision can rewrite lastText to something unrelated (Deepgram
+    // can revise a segment's wording outright, not just extend it). This
+    // revision's own candidate is discarded (no shared prefix with the old
+    // lastText), but lastText itself is unconditionally overwritten.
+    stabilizer.ingest(event('Sunny day hi', 3));
+
+    // The next revision extends *that* new text by one word-complete unit.
+    // 'Sunny day hi' is also 12 characters, so its candidate ties the stored
+    // stable text's length exactly.
+    const update = stabilizer.ingest(event('Sunny day hi there', 4));
+
+    // The candidate ties the stored length exactly. Comparing with `>` would
+    // keep the stale text forever; same-length corrections are ordinary in
+    // speech recognition ("their" for "there"), and taking the newer text
+    // still cannot shrink what was already stable.
+    expect(update).toEqual({
+      originalText: 'Sunny day hi there',
+      stableText: 'Sunny day hi',
     });
   });
 });
