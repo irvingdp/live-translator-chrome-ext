@@ -244,28 +244,44 @@ export interface CaptionChunkerInput {
 
 interface SegmentUnits {
   closed: string[];
+  // Offset into the stabilized text where frozen units stop. Anchors the
+  // open unit's slice so it never depends on a span list that can shrink
+  // (see the freeze-forward comment below).
+  closedEnd: number;
   openDisplay: string;
   openTranslate: string;
 }
 
 export class CaptionChunker {
+  // One entry per in-progress segment. Bounded in practice: the background
+  // controller calls clear() on session start and stop, so this never
+  // accumulates across sessions.
   private readonly segments = new Map<string, SegmentUnits>();
 
   ingest(input: CaptionChunkerInput): CaptionUnit[] {
     const state = this.segments.get(input.segmentId) ?? {
       closed: [],
+      closedEnd: 0,
       openDisplay: '',
       openTranslate: '',
     };
     const spans = splitIntoUnits(input.stableText, input.maxWidth);
-    const closedCount = input.isFinal
+    // A live width change, or a final whose text is shorter than the interim
+    // that preceded it, can make the recomputed span count lower than what
+    // is already frozen. Freeze only forward, from state.closed.length up to
+    // whatever the recompute supports right now; when the recompute is
+    // smaller, freeze nothing rather than unclosing units the viewer already
+    // read.
+    const targetClosedCount = input.isFinal
       ? spans.length
       : Math.max(spans.length - 1, 0);
+    const closedCountBefore = state.closed.length;
     const changed: CaptionUnit[] = [];
 
-    for (let index = state.closed.length; index < closedCount; index += 1) {
+    for (let index = state.closed.length; index < targetClosedCount; index += 1) {
       const span = spans[index]!;
       state.closed.push(span.text);
+      state.closedEnd = span.end;
       changed.push({
         displayText: span.text,
         id: `${input.segmentId}#${index}`,
@@ -276,19 +292,48 @@ export class CaptionChunker {
     }
 
     if (input.isFinal) {
+      // The segment's final text must always reach the window. If the
+      // recomputed spans didn't reach closedEnd (the case above), whatever
+      // is left after the last frozen unit is emitted as one closing unit
+      // instead of being dropped.
+      const remaining = input.stableText.slice(state.closedEnd).trim();
+      if (remaining) {
+        const index = state.closed.length;
+        state.closed.push(remaining);
+        changed.push({
+          displayText: remaining,
+          id: `${input.segmentId}#${index}`,
+          index,
+          isClosed: true,
+          translateText: remaining,
+        });
+      }
       this.segments.delete(input.segmentId);
       return changed;
     }
 
-    const openSpan = spans[closedCount];
-    const openStart = openSpan?.start ?? spans[closedCount - 1]?.end ?? 0;
-    // Stabilized text is a prefix of the raw interim text, so an offset in one
-    // is an offset in the other. Fall back if a provider ever breaks that.
+    // A unit that just closed leaves state.open* holding values captured for
+    // the *previous* open index. If the new open unit's text happens to
+    // coincide with them, comparing by text alone would wrongly treat it as
+    // unchanged and never emit it, so any freeze this call invalidates the
+    // cache.
+    if (state.closed.length > closedCountBefore) {
+      state.openDisplay = '';
+      state.openTranslate = '';
+    }
+
+    const openIndex = state.closed.length;
+    // Stabilized text is a prefix of the raw interim text, so an offset in
+    // one is an offset in the other. Fall back if a provider ever breaks
+    // that -- and note the fallback is sticky, not a one-update blip: if the
+    // provider's raw text is never a prefix of its stable text (e.g. it
+    // always prepends a leading space), every revision of this segment keeps
+    // losing the low-latency preview, not just this one.
     const source = input.rawText.startsWith(input.stableText)
       ? input.rawText
       : input.stableText;
-    const displayText = source.slice(Math.min(openStart, source.length)).trim();
-    const translateText = openSpan?.text ?? '';
+    const displayText = source.slice(Math.min(state.closedEnd, source.length)).trim();
+    const translateText = spans[openIndex]?.text ?? '';
 
     if (
       displayText &&
@@ -298,8 +343,8 @@ export class CaptionChunker {
       state.openTranslate = translateText;
       changed.push({
         displayText,
-        id: `${input.segmentId}#${closedCount}`,
-        index: closedCount,
+        id: `${input.segmentId}#${openIndex}`,
+        index: openIndex,
         isClosed: false,
         translateText,
       });

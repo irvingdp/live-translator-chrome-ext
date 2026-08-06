@@ -422,15 +422,25 @@ describe('CaptionChunker', () => {
     const chunker = new CaptionChunker();
     ingest(chunker, 'Hello there. And now.', 'Hello there. And now.', true);
 
-    const units = ingest(chunker, 'Good morning', 'Good morning every');
+    // Grown to two spans (a closed unit plus an open one) so this actually
+    // discriminates: with only one span the reused segment never reaches a
+    // second unit, so this would pass even if segments.delete were removed.
+    const units = ingest(chunker, 'Hello there. And now', 'Hello there. And now we');
 
     expect(units).toEqual([
       {
-        displayText: 'Good morning every',
+        displayText: 'Hello there.',
         id: 'segment-1#0',
         index: 0,
+        isClosed: true,
+        translateText: 'Hello there.',
+      },
+      {
+        displayText: 'And now we',
+        id: 'segment-1#1',
+        index: 1,
         isClosed: false,
-        translateText: 'Good morning',
+        translateText: 'And now',
       },
     ]);
   });
@@ -523,8 +533,10 @@ describe('CaptionChunker', () => {
     // rawText no longer starts with stableText (a provider inconsistency).
     // displayText falls back to the stabilized text itself instead of
     // slicing the unrelated rawText at a meaningless offset: it degrades to
-    // showing exactly what would be sent for translation, losing only the
-    // raw low-latency preview for this one update.
+    // showing exactly what would be sent for translation. This is sticky,
+    // not a one-update blip: if the mismatch persists across revisions (a
+    // provider that always prepends a leading space, say), the segment
+    // keeps losing its raw low-latency preview for as long as it does.
     expect(units).toEqual([
       {
         displayText: 'And now then',
@@ -558,5 +570,211 @@ describe('CaptionChunker', () => {
         translateText: '',
       },
     ]);
+  });
+
+  it('keeps frozen units frozen and still delivers the final text across a live width change', () => {
+    const chunker = new CaptionChunker();
+    const text = 'the quick brown fox jumps over the lazy dog near the river';
+
+    // At width 20 this hard-wraps into three units: two close immediately.
+    const narrow = chunker.ingest({
+      isFinal: false,
+      maxWidth: 20,
+      rawText: text,
+      segmentId: 'segment-1',
+      stableText: text,
+    });
+
+    expect(narrow).toEqual([
+      {
+        displayText: 'the quick brown fox',
+        id: 'segment-1#0',
+        index: 0,
+        isClosed: true,
+        translateText: 'the quick brown fox',
+      },
+      {
+        displayText: 'jumps over the lazy',
+        id: 'segment-1#1',
+        index: 1,
+        isClosed: true,
+        translateText: 'jumps over the lazy',
+      },
+      {
+        displayText: 'dog near the river',
+        id: 'segment-1#2',
+        index: 2,
+        isClosed: false,
+        translateText: 'dog near the river',
+      },
+    ]);
+
+    // The user widens the caption window mid-segment. At width 90 the whole
+    // text now fits as a single unit -- fewer units than are already
+    // frozen. The already-closed segment-1#0 and segment-1#1 must not
+    // reopen or renumber: the open unit stays segment-1#2, never colliding
+    // with segment-1#0's id. Nothing new has stabilized at the new width
+    // (there is no span at index 2 yet), so translateText regresses to
+    // empty rather than reusing stale text.
+    const widened = chunker.ingest({
+      isFinal: false,
+      maxWidth: 90,
+      rawText: text,
+      segmentId: 'segment-1',
+      stableText: text,
+    });
+
+    expect(widened).toEqual([
+      {
+        displayText: 'dog near the river',
+        id: 'segment-1#2',
+        index: 2,
+        isClosed: false,
+        translateText: '',
+      },
+    ]);
+
+    // The segment ends at the new width. The final text must still reach
+    // the window even though the recomputed span list (one span covering
+    // the whole text) never reaches index 2: the remainder beyond the last
+    // frozen boundary is emitted as one closing unit instead of being
+    // silently dropped.
+    const final = chunker.ingest({
+      isFinal: true,
+      maxWidth: 90,
+      rawText: text,
+      segmentId: 'segment-1',
+      stableText: text,
+    });
+
+    expect(final).toEqual([
+      {
+        displayText: 'dog near the river',
+        id: 'segment-1#2',
+        index: 2,
+        isClosed: true,
+        translateText: 'dog near the river',
+      },
+    ]);
+  });
+
+  it('still delivers the remaining text when a final revises to fewer units than were already frozen', () => {
+    const chunker = new CaptionChunker();
+    // Two sentences close, a third opens.
+    ingest(chunker, 'Hi. Bye now. Ok then', 'Hi. Bye now. Ok then');
+
+    // The final merges the first two sentences into one (no more mid-period)
+    // and shortens the tail -- the final text is shorter than the interim
+    // that preceded it, and it re-splits into only two spans, fewer than
+    // the two units already frozen. The already-closed 'Hi.' and 'Bye now.'
+    // must stay exactly as frozen (never rewritten to 'Hi bye now.'), and
+    // the new tail content must still reach the window rather than vanish.
+    const units = ingest(chunker, 'Hi bye now. Ok.', 'Hi bye now. Ok.', true);
+
+    expect(units).toEqual([
+      {
+        displayText: 'Ok.',
+        id: 'segment-1#2',
+        index: 2,
+        isClosed: true,
+        translateText: 'Ok.',
+      },
+    ]);
+  });
+
+  it('does not swallow an open unit whose text matches what the previous open unit last showed', () => {
+    const chunker = new CaptionChunker();
+    // segment-1#0 opens, showing 'ha ha. ha ha' / translating 'ha ha.'.
+    ingest(chunker, 'ha ha.', 'ha ha. ha ha');
+
+    // segment-1#0 closes on 'ha ha.', and segment-1#1 opens -- but its
+    // display/translate text happens to equal what segment-1#0 last showed
+    // while open. A comparison keyed only on text, not on which unit is
+    // open, would wrongly treat #1 as unchanged and never emit it.
+    const units = ingest(chunker, 'ha ha. ha ha.', 'ha ha. ha ha. ha ha');
+
+    expect(units).toEqual([
+      {
+        displayText: 'ha ha.',
+        id: 'segment-1#0',
+        index: 0,
+        isClosed: true,
+        translateText: 'ha ha.',
+      },
+      {
+        displayText: 'ha ha. ha ha',
+        id: 'segment-1#1',
+        index: 1,
+        isClosed: false,
+        translateText: 'ha ha.',
+      },
+    ]);
+  });
+
+  // These pin a real, deliberately-accepted cost of freezing at a production
+  // width (90, inside the 40-140 range splitIntoUnits is stable at -- see
+  // its "prefix stability" tests above). state.closedEnd anchors the open
+  // unit's displayText to a fixed character offset recorded when the
+  // previous unit froze. If a later revision changes the *length* of the
+  // text at or before that offset (not just appends after it -- e.g. a
+  // provider revising an early word once more context arrives), the anchor
+  // no longer lines up with a real word boundary in the new text, and the
+  // open unit's raw preview can duplicate or garble already-frozen content.
+  // translateText is unaffected in both cases: it always comes from a fresh
+  // splitIntoUnits span, never from the stale offset. Do not use these to
+  // justify making things worse; they exist so a future change can't erode
+  // this further unnoticed.
+  describe('boundary-shift cost of freezing at maxWidth 90', () => {
+    const ingest90 = (chunker: CaptionChunker, stableText: string) =>
+      chunker.ingest({
+        isFinal: false,
+        maxWidth: 90,
+        rawText: stableText,
+        segmentId: 'segment-1',
+        stableText,
+      });
+
+    it('can duplicate already-frozen text in the open unit when a revision lengthens the prefix', () => {
+      const chunker = new CaptionChunker();
+      ingest90(chunker, 'Yes. Right now then');
+
+      // The revision prepends "Um, " (4 characters) before "Yes.". The
+      // frozen segment-1#0 correctly stays "Yes." -- but the open unit's
+      // displayText, sliced from the old numeric closedEnd (4, the width of
+      // "Yes." itself), now lands on the *new* string's "Yes." and shows it
+      // a second time.
+      const units = ingest90(chunker, 'Um, Yes. Right now then');
+
+      expect(units).toEqual([
+        {
+          displayText: 'Yes. Right now then',
+          id: 'segment-1#1',
+          index: 1,
+          isClosed: false,
+          translateText: 'Right now then',
+        },
+      ]);
+    });
+
+    it('can garble the open unit when a revision changes the prefix by an odd number of characters', () => {
+      const chunker = new CaptionChunker();
+      ingest90(chunker, 'Yes. Right now then');
+
+      // The revision inserts "Oh " and lowercases "yes" -- a 3-character
+      // change before a 4-character offset, so the stale closedEnd (4)
+      // lands mid-word ("yes") instead of on a boundary, chopping "Y"/"y"
+      // off the front of the open unit's displayText.
+      const units = ingest90(chunker, 'Oh yes. Right now then');
+
+      expect(units).toEqual([
+        {
+          displayText: 'es. Right now then',
+          id: 'segment-1#1',
+          index: 1,
+          isClosed: false,
+          translateText: 'Right now then',
+        },
+      ]);
+    });
   });
 });
