@@ -28,10 +28,10 @@ Chrome 116+ 的 Manifest V3 擴充功能：擷取目前分頁的音訊，顯示�
 | 字幕分行 | 依「每行長度上下限」切行 | 一段話一列，由瀏覽器斷行；原文與譯文各自最多顯示「顯示行數」行，較舊的內容從上方裁掉。兩個長度滑桿不適用並自動隱藏 |
 | 原文推進 | 逐字成長 | 整句一次到位 |
 
-以 Gemini 當純文字翻譯器的評估（結論為不採用）另見
-`docs/superpowers/specs/2026-08-06-gemini-translation-evaluation.md`；本次改採 Live
-Translate 音訊路徑的理由見
-`docs/superpowers/specs/2026-08-06-gemini-live-translate-adoption.md`。
+設計與評估記錄放在 `docs/`（**本機工作筆記，不進版控**）：以 Gemini 當純文字翻譯器
+為何不採用，見 `superpowers/specs/2026-08-06-gemini-translation-evaluation.md`；改採
+Live Translate 音訊路徑的理由，見
+`superpowers/specs/2026-08-06-gemini-live-translate-adoption.md`。
 
 ## Gemini Live API 怎麼接的
 
@@ -90,7 +90,7 @@ model: models/gemini-3.5-live-translate-preview
   1500 input tokens/分鐘，即使沒人說話也一樣。這也是為什麼 DeepL 路徑那個「每分鐘
   上百次請求」的問題在這裡不存在。
 
-完整契約與取捨記在
+完整契約與取捨記在本機的
 `docs/superpowers/specs/2026-08-06-gemini-live-translate-adoption.md`。
 
 ## 本機執行
@@ -143,8 +143,8 @@ zip 根目錄，可直接上傳。`output/` 不進版控，每次都是重新 bu
 不是 `output/chrome-mv3/`。
 
 後台三個分頁要填的每一格（單一用途、各權限說明、資料揭露、雙語文案、給審核員的
-測試說明）都寫在 [`docs/store-listing.md`](docs/store-listing.md)。隱私權政策是
-送審的硬性條件，內容在 [`PRIVACY.md`](PRIVACY.md)，網址填
+測試說明）都寫在本機的 `docs/store-listing.md`——那份不進版控，因為裡面會放給審核員
+的測試金鑰。隱私權政策則相反，它必須公開，內容在 [`PRIVACY.md`](PRIVACY.md)，網址填
 `https://github.com/irvingdp/live-translator-chrome-ext/blob/main/PRIVACY.md`——
 **送審前這個檔案必須已經推上 `main`**，否則審核員會開到 404。
 
