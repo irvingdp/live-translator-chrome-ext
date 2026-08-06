@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
+    "postinstall": "wxt prepare",
     "compile": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
