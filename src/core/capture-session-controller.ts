@@ -11,8 +11,11 @@ import {
 } from './translation-coordinator';
 
 export interface SessionSettings {
+  backgroundOpacity: number;
+  bottomOffset: number;
   deepgramApiKey: string;
   deeplApiKey: string;
+  maxLineWidth: number;
   sourceLanguage: string;
   sourceLocale: string;
   targetLanguage: string;

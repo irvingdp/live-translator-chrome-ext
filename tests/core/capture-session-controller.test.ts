@@ -7,8 +7,11 @@ import {
 } from '../../src/core/capture-session-controller';
 
 const settings: SessionSettings = {
+  backgroundOpacity: 78,
+  bottomOffset: 8,
   deepgramApiKey: 'deepgram-key',
   deeplApiKey: 'deepl-key:fx',
+  maxLineWidth: 90,
   sourceLanguage: 'EN',
   sourceLocale: 'en-US',
   targetLanguage: 'ZH-HANT',

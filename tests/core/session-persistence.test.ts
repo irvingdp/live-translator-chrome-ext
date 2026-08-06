@@ -9,8 +9,11 @@ describe('session persistence', () => {
       sessionId: 'session-1',
       tabId: 42,
       settings: {
+        backgroundOpacity: 78,
+        bottomOffset: 8,
         deepgramApiKey: 'deepgram-secret',
         deeplApiKey: 'deepl-secret',
+        maxLineWidth: 90,
         originalFontSize: 24,
         sourceLanguage: 'EN',
         sourceLocale: 'en-US',
@@ -26,6 +29,9 @@ describe('session persistence', () => {
       sessionId: 'session-1',
       tabId: 42,
       settings: {
+        backgroundOpacity: 78,
+        bottomOffset: 8,
+        maxLineWidth: 90,
         originalFontSize: 24,
         sourceLanguage: 'EN',
         sourceLocale: 'en-US',

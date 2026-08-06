@@ -5,9 +5,23 @@ export interface AppSettings extends SessionSettings {
   translationFontSize: number;
 }
 
+// maxLineWidth's floor of 40 is load-bearing: measurement showed the
+// chunker's closed-unit boundaries are stable at widths 40-140 but not below
+// ~30, so this range must not widen.
+export const SETTING_RANGES = {
+  backgroundOpacity: { max: 100, min: 0 },
+  bottomOffset: { max: 60, min: 0 },
+  maxLineWidth: { max: 140, min: 40 },
+  originalFontSize: { max: 48, min: 16 },
+  translationFontSize: { max: 48, min: 16 },
+} as const;
+
 export const DEFAULT_SETTINGS: AppSettings = {
+  backgroundOpacity: 78,
+  bottomOffset: 8,
   deepgramApiKey: '',
   deeplApiKey: '',
+  maxLineWidth: 90,
   originalFontSize: 24,
   sourceLanguage: 'EN',
   sourceLocale: 'en-US',
@@ -32,20 +46,41 @@ function stringValue(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
 }
 
-function fontSize(value: unknown, fallback: number): number {
-  const numeric = typeof value === 'number' ? value : fallback;
-  return Math.min(48, Math.max(16, Math.round(numeric)));
+function clamped(
+  value: unknown,
+  range: { max: number; min: number },
+  fallback: number,
+): number {
+  const numeric =
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return Math.min(range.max, Math.max(range.min, Math.round(numeric)));
 }
 
 export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
   return {
+    backgroundOpacity: clamped(
+      raw.backgroundOpacity,
+      SETTING_RANGES.backgroundOpacity,
+      DEFAULT_SETTINGS.backgroundOpacity,
+    ),
+    bottomOffset: clamped(
+      raw.bottomOffset,
+      SETTING_RANGES.bottomOffset,
+      DEFAULT_SETTINGS.bottomOffset,
+    ),
     deepgramApiKey: stringValue(
       raw.deepgramApiKey,
       DEFAULT_SETTINGS.deepgramApiKey,
     ),
     deeplApiKey: stringValue(raw.deeplApiKey, DEFAULT_SETTINGS.deeplApiKey),
-    originalFontSize: fontSize(
+    maxLineWidth: clamped(
+      raw.maxLineWidth,
+      SETTING_RANGES.maxLineWidth,
+      DEFAULT_SETTINGS.maxLineWidth,
+    ),
+    originalFontSize: clamped(
       raw.originalFontSize,
+      SETTING_RANGES.originalFontSize,
       DEFAULT_SETTINGS.originalFontSize,
     ),
     sourceLanguage: stringValue(
@@ -57,8 +92,9 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       raw.targetLanguage,
       DEFAULT_SETTINGS.targetLanguage,
     ),
-    translationFontSize: fontSize(
+    translationFontSize: clamped(
       raw.translationFontSize,
+      SETTING_RANGES.translationFontSize,
       DEFAULT_SETTINGS.translationFontSize,
     ),
   };
