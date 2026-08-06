@@ -205,6 +205,16 @@ export function PopupApp({ api }: { api: PopupApi }) {
         </div>
       </section>
 
+      {message && <p className="feedback" role="status">{message}</p>}
+      <button
+        className={`primary ${running ? 'stop' : ''}`}
+        disabled={busy}
+        type="button"
+        onClick={() => void toggleSession()}
+      >
+        {busy ? '處理中…' : running ? '停止字幕' : '開始即時字幕'}
+      </button>
+
       <section className="card" aria-labelledby="size-heading">
         <h2 id="size-heading">字幕大小</h2>
         <RangeField
@@ -298,15 +308,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
         啟動後，分頁音訊會傳送至 Deepgram，辨識文字會傳送至 DeepL。API Key
         僅保存在這台裝置的 Chrome 本機儲存空間。
       </p>
-      {message && <p className="feedback" role="status">{message}</p>}
-      <button
-        className={`primary ${running ? 'stop' : ''}`}
-        disabled={busy}
-        type="button"
-        onClick={() => void toggleSession()}
-      >
-        {busy ? '處理中…' : running ? '停止字幕' : '開始即時字幕'}
-      </button>
     </main>
   );
 }
