@@ -5,7 +5,8 @@ name: Release
 # first proven broken at the worst moment.
 on:
   push:
-    tags: ['v*']
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
