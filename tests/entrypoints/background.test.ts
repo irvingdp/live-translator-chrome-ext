@@ -23,6 +23,10 @@ const settings: AppSettings = {
 };
 
 let listener: BackgroundListener;
+let onSettingsChanged: (
+  changes: Record<string, { newValue?: unknown }>,
+  area: string,
+) => void;
 let onTabRemoved: (tabId: number) => void;
 let offscreenExists: boolean;
 let closeDocument: ReturnType<typeof vi.fn>;
@@ -68,6 +72,18 @@ beforeEach(async () => {
     },
     storage: {
       local: { get: vi.fn().mockResolvedValue({}) },
+      onChanged: {
+        addListener: vi.fn(
+          (
+            callback: (
+              changes: Record<string, { newValue?: unknown }>,
+              area: string,
+            ) => void,
+          ) => {
+            onSettingsChanged = callback;
+          },
+        ),
+      },
       session: {
         get: vi.fn().mockResolvedValue({}),
         remove: removeSessionStorage,
@@ -215,6 +231,17 @@ describe('background offscreen document lifecycle', () => {
 
     expect(response).toMatchObject({ ok: true, status: { state: 'idle' } });
     expect(closeDocument).toHaveBeenCalledOnce();
+  });
+
+  it('registers a settings listener that survives an unrelated storage change', () => {
+    expect(onSettingsChanged).toBeTypeOf('function');
+
+    expect(() => {
+      onSettingsChanged({ other: { newValue: 1 } }, 'local');
+      onSettingsChanged({ settings: { newValue: { maxLineWidth: 55 } } }, 'sync');
+      onSettingsChanged({ settings: { newValue: { maxLineWidth: 55 } } }, 'local');
+      onSettingsChanged({ settings: {} }, 'local');
+    }).not.toThrow();
   });
 });
 
