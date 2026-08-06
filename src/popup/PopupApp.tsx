@@ -229,6 +229,20 @@ export function PopupApp({ api }: { api: PopupApi }) {
 
       <section className="card" aria-labelledby="layout-heading">
         <h2 id="layout-heading">字幕版面</h2>
+        <div>
+          <label htmlFor="caption-rows">顯示行數</label>
+          <select
+            id="caption-rows"
+            value={settings.captionRows}
+            onChange={(event) =>
+              update('captionRows', Number(event.target.value))
+            }
+          >
+            <option value={1}>1 行（原文＋譯文）</option>
+            <option value={2}>2 行</option>
+            <option value={3}>3 行</option>
+          </select>
+        </div>
         <RangeField
           id="max-line-width"
           label="每行長度上限"
@@ -238,6 +252,16 @@ export function PopupApp({ api }: { api: PopupApi }) {
           unit=" 字寬"
           value={settings.maxLineWidth}
           onChange={(value) => update('maxLineWidth', value)}
+        />
+        <RangeField
+          id="min-line-width"
+          label="每行長度下限"
+          max={SETTING_RANGES.minLineWidth.max}
+          min={SETTING_RANGES.minLineWidth.min}
+          step={5}
+          unit=" 字寬"
+          value={settings.minLineWidth}
+          onChange={(value) => update('minLineWidth', value)}
         />
         <RangeField
           id="background-opacity"

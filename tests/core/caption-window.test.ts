@@ -35,6 +35,49 @@ describe('CaptionWindow', () => {
     expect(window.pairs().every((pair) => pair.translation === '')).toBe(true);
   });
 
+  it('holds the number of units it was built for', () => {
+    const window = new CaptionWindow(3);
+    for (const id of ['a', 'b', 'c', 'd']) window.upsertOriginal(id, id);
+
+    expect(window.pairs().map((pair) => pair.id)).toEqual(['b', 'c', 'd']);
+  });
+
+  it('shows a single unit when asked for one row', () => {
+    const window = new CaptionWindow(1);
+    window.upsertOriginal('a', 'first');
+    window.upsertOriginal('b', 'second');
+
+    expect(window.pairs().map((pair) => pair.id)).toEqual(['b']);
+  });
+
+  it('drops the oldest units when the capacity shrinks mid-session', () => {
+    const window = new CaptionWindow(3);
+    for (const id of ['a', 'b', 'c']) window.upsertOriginal(id, id);
+
+    window.setCapacity(1);
+
+    expect(window.pairs().map((pair) => pair.id)).toEqual(['c']);
+  });
+
+  it('keeps what it has when the capacity grows mid-session', () => {
+    const window = new CaptionWindow(2);
+    window.upsertOriginal('a', 'first');
+    window.upsertOriginal('b', 'second');
+
+    window.setCapacity(3);
+    window.upsertOriginal('c', 'third');
+
+    expect(window.pairs().map((pair) => pair.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('falls back to one row rather than going unbounded on a bad capacity', () => {
+    const window = new CaptionWindow(2);
+    window.setCapacity(Number.NaN);
+    for (const id of ['a', 'b', 'c']) window.upsertOriginal(id, id);
+
+    expect(window.pairs().map((pair) => pair.id)).toEqual(['c']);
+  });
+
   it('clears every unit', () => {
     const window = new CaptionWindow();
     window.upsertOriginal('a', 'first');

@@ -15,9 +15,11 @@ import {
 export interface SessionSettings {
   backgroundOpacity: number;
   bottomOffset: number;
+  captionRows: number;
   deepgramApiKey: string;
   deeplApiKey: string;
   maxLineWidth: number;
+  minLineWidth: number;
   sourceLanguage: string;
   sourceLocale: string;
   targetLanguage: string;
@@ -120,6 +122,7 @@ export class CaptureSessionController {
     this.activeSessionId = snapshot.sessionId;
     this.settings = snapshot.settings;
     this.stabilizer = new TranscriptStabilizer();
+    this.captionWindow.setCapacity(snapshot.settings.captionRows);
     this.captionWindow.clear();
     this.translatedSources.clear();
     this.chunker.clear();
@@ -135,8 +138,14 @@ export class CaptureSessionController {
 
   // Units already in the window keep the width they were cut at; recutting
   // them would renumber ids the overlay is already showing.
-  applyLayout(maxLineWidth: number): void {
-    if (this.settings) this.settings = { ...this.settings, maxLineWidth };
+  applyLayout(layout: {
+    captionRows: number;
+    maxLineWidth: number;
+    minLineWidth: number;
+  }): void {
+    if (!this.settings) return;
+    this.settings = { ...this.settings, ...layout };
+    this.captionWindow.setCapacity(layout.captionRows);
   }
 
   start(tabId: number, settings: SessionSettings): Promise<void> {
@@ -157,6 +166,7 @@ export class CaptureSessionController {
     this.currentTranslationErrorAttemptId = undefined;
     this.lastSuccessfulTranslationAttemptId = 0;
     this.translationAttemptSequence = 0;
+    this.captionWindow.setCapacity(settings.captionRows);
     this.captionWindow.clear();
     this.translatedSources.clear();
     this.chunker.clear();
@@ -238,6 +248,7 @@ export class CaptureSessionController {
     const units = this.chunker.ingest({
       isFinal: event.isFinal,
       maxWidth: this.settings.maxLineWidth,
+      minWidth: this.settings.minLineWidth,
       rawText: update.originalText,
       segmentId: event.segmentId,
       stableText: update.stableText,

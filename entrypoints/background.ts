@@ -216,6 +216,10 @@ export default defineBackground(() => {
     const next = normalizeSettings(
       (changes.settings.newValue as Partial<AppSettings> | undefined) ?? {},
     );
-    controller.applyLayout(next.maxLineWidth);
+    controller.applyLayout({
+      captionRows: next.captionRows,
+      maxLineWidth: next.maxLineWidth,
+      minLineWidth: next.minLineWidth,
+    });
   });
 });

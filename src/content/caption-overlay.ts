@@ -3,6 +3,7 @@ import type { CaptionPair } from '../core/caption-window';
 export interface CaptionAppearance {
   backgroundOpacity: number;
   bottomOffset: number;
+  maxLineWidth: number;
   originalFontSize: number;
   translationFontSize: number;
 }
@@ -67,9 +68,17 @@ const OVERLAY_CSS = `
     color: #fff;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     line-height: 1.35;
-    max-width: min(92%, 1100px);
+    /* The box is sized from the line-width setting rather than its content,
+       so it stops resizing on every caption. 1ch is one column of the
+       chunker's width budget: a Latin character counts 1 and a CJK character,
+       which is about 2ch wide, counts 2. font-size is set here so ch resolves
+       against the original line rather than an inherited size. */
+    box-sizing: content-box;
+    font-size: var(--caption-original-size, 24px);
+    max-width: 92%;
     padding: 8px 14px;
     text-align: center;
+    width: calc(var(--caption-max-columns, 90) * 1ch);
   }
   .viewport {
     display: flex;
@@ -157,6 +166,7 @@ export class CaptionOverlay {
       `${appearance.backgroundOpacity / 100}`,
     );
     style.setProperty('--caption-bottom-offset', `${appearance.bottomOffset}%`);
+    style.setProperty('--caption-max-columns', `${appearance.maxLineWidth}`);
   }
 
   // Idempotent: the background owns accumulation and sends the whole window on

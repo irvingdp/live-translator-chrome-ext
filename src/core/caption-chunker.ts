@@ -169,7 +169,16 @@ function hardWrap(
       end += character.length;
       if (WHITESPACE.test(character)) lastBreakEnd = end;
     }
-    if (end < span.end && lastBreakEnd > start) end = lastBreakEnd;
+    // Back off to the last word boundary only when the cut lands inside a
+    // word. A word that ends exactly at the limit is already whole, and
+    // retreating there would throw away a word's worth of line for nothing.
+    if (
+      end < span.end &&
+      lastBreakEnd > start &&
+      !WHITESPACE.test(text[end]!)
+    ) {
+      end = lastBreakEnd;
+    }
     // A limit narrower than one wide character must still make progress,
     // advancing by a whole code point so a surrogate pair is never split.
     if (end === start) {
@@ -194,9 +203,37 @@ function hardWrap(
   return units;
 }
 
+// Merges a unit that falls short of minWidth into the one after it, so a
+// stray "Mhmm." does not occupy a whole caption row. This is the only place
+// units may join across a sentence boundary, and it stays greedy from the
+// left so closed boundaries remain prefix-stable. The last unit is exempt: it
+// is still growing, and holding it back would delay the live line.
+function mergeShortUnits(
+  text: string,
+  units: CaptionUnitSpan[],
+  maxWidth: number,
+  minWidth: number,
+): CaptionUnitSpan[] {
+  if (minWidth <= 0) return units;
+  const merged: CaptionUnitSpan[] = [];
+  for (const unit of units) {
+    const previous = merged[merged.length - 1];
+    if (previous && visualWidth(previous.text) < minWidth) {
+      const candidate = trimmedSpan(text, previous.start, unit.end);
+      if (candidate && visualWidth(candidate.text) <= maxWidth) {
+        merged[merged.length - 1] = candidate;
+        continue;
+      }
+    }
+    merged.push(unit);
+  }
+  return merged;
+}
+
 export function splitIntoUnits(
   text: string,
   maxWidth: number,
+  minWidth = 0,
 ): CaptionUnitSpan[] {
   const units: CaptionUnitSpan[] = [];
   for (const sentence of boundarySpans(text, 0, text.length, isSentenceEnder)) {
@@ -223,7 +260,7 @@ export function splitIntoUnits(
     // line, which breaks the one-sentence-per-line rule.
     units.push(...packSpans(text, pieces, maxWidth));
   }
-  return units;
+  return mergeShortUnits(text, units, maxWidth, minWidth);
 }
 
 export interface CaptionUnit {
@@ -237,6 +274,7 @@ export interface CaptionUnit {
 export interface CaptionChunkerInput {
   isFinal: boolean;
   maxWidth: number;
+  minWidth?: number;
   rawText: string;
   segmentId: string;
   stableText: string;
@@ -293,7 +331,11 @@ export class CaptionChunker {
       openDisplay: '',
       openTranslate: '',
     };
-    const spans = splitIntoUnits(input.stableText, input.maxWidth);
+    const spans = splitIntoUnits(
+      input.stableText,
+      input.maxWidth,
+      input.minWidth ?? 0,
+    );
     // A live width change, or a final whose text is shorter than the interim
     // that preceded it, can make the recomputed span count lower than what
     // is already frozen. Freeze only forward, from state.closed.length up to

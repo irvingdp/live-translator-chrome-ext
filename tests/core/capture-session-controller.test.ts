@@ -10,9 +10,11 @@ import {
 const settings: SessionSettings = {
   backgroundOpacity: 78,
   bottomOffset: 8,
+  captionRows: 2,
   deepgramApiKey: 'deepgram-key',
   deeplApiKey: 'deepl-key:fx',
   maxLineWidth: 90,
+  minLineWidth: 40,
   sourceLanguage: 'EN',
   sourceLocale: 'en-US',
   targetLanguage: 'ZH-HANT',
@@ -340,10 +342,41 @@ describe('CaptureSessionController', () => {
     ]);
   });
 
+  it('applies a new row count to the live window', async () => {
+    const harness = createHarness();
+    const sessionId = await startSession(harness, { maxLineWidth: 20 });
+
+    await harness.controller.acceptTranscript(sessionId, {
+      isFinal: true,
+      revision: 1,
+      segmentId: 'segment-1',
+      text: 'One two three. Four five six. Seven eight nine.',
+    });
+    expect(windowsSentTo(harness).at(-1)!.payload.pairs).toHaveLength(2);
+
+    harness.controller.applyLayout({
+      captionRows: 1,
+      maxLineWidth: 20,
+      minLineWidth: 0,
+    });
+    await harness.controller.acceptTranscript(sessionId, {
+      isFinal: true,
+      revision: 1,
+      segmentId: 'segment-2',
+      text: 'Ten eleven twelve.',
+    });
+
+    expect(windowsSentTo(harness).at(-1)!.payload.pairs).toHaveLength(1);
+  });
+
   it('applies a new line width to units that arrive afterwards', async () => {
     const harness = createHarness();
     const sessionId = await startSession(harness, { maxLineWidth: 140 });
-    harness.controller.applyLayout(20);
+    harness.controller.applyLayout({
+      captionRows: 2,
+      maxLineWidth: 20,
+      minLineWidth: 0,
+    });
 
     await harness.controller.acceptTranscript(sessionId, {
       isFinal: true,

@@ -11,9 +11,11 @@ describe('session persistence', () => {
       settings: {
         backgroundOpacity: 78,
         bottomOffset: 8,
+        captionRows: 2,
         deepgramApiKey: 'deepgram-secret',
         deeplApiKey: 'deepl-secret',
         maxLineWidth: 90,
+        minLineWidth: 40,
         originalFontSize: 24,
         sourceLanguage: 'EN',
         sourceLocale: 'en-US',
@@ -31,7 +33,9 @@ describe('session persistence', () => {
       settings: {
         backgroundOpacity: 78,
         bottomOffset: 8,
+        captionRows: 2,
         maxLineWidth: 90,
+        minLineWidth: 40,
         originalFontSize: 24,
         sourceLanguage: 'EN',
         sourceLocale: 'en-US',

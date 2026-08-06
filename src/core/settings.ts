@@ -11,7 +11,9 @@ export interface AppSettings extends SessionSettings {
 export const SETTING_RANGES = {
   backgroundOpacity: { max: 100, min: 0 },
   bottomOffset: { max: 60, min: 0 },
+  captionRows: { max: 3, min: 1 },
   maxLineWidth: { max: 140, min: 40 },
+  minLineWidth: { max: 120, min: 0 },
   originalFontSize: { max: 48, min: 16 },
   translationFontSize: { max: 48, min: 16 },
 } as const;
@@ -19,9 +21,11 @@ export const SETTING_RANGES = {
 export const DEFAULT_SETTINGS: AppSettings = {
   backgroundOpacity: 78,
   bottomOffset: 8,
+  captionRows: 2,
   deepgramApiKey: '',
   deeplApiKey: '',
   maxLineWidth: 90,
+  minLineWidth: 40,
   originalFontSize: 24,
   sourceLanguage: 'EN',
   sourceLocale: 'en-US',
@@ -57,6 +61,11 @@ function clamped(
 }
 
 export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
+  const maxLineWidth = clamped(
+    raw.maxLineWidth,
+    SETTING_RANGES.maxLineWidth,
+    DEFAULT_SETTINGS.maxLineWidth,
+  );
   return {
     backgroundOpacity: clamped(
       raw.backgroundOpacity,
@@ -68,15 +77,27 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       SETTING_RANGES.bottomOffset,
       DEFAULT_SETTINGS.bottomOffset,
     ),
+    captionRows: clamped(
+      raw.captionRows,
+      SETTING_RANGES.captionRows,
+      DEFAULT_SETTINGS.captionRows,
+    ),
     deepgramApiKey: stringValue(
       raw.deepgramApiKey,
       DEFAULT_SETTINGS.deepgramApiKey,
     ),
     deeplApiKey: stringValue(raw.deeplApiKey, DEFAULT_SETTINGS.deeplApiKey),
-    maxLineWidth: clamped(
-      raw.maxLineWidth,
-      SETTING_RANGES.maxLineWidth,
-      DEFAULT_SETTINGS.maxLineWidth,
+    maxLineWidth,
+    // A minimum above the maximum would ask the chunker to merge every unit
+    // past the width it is allowed to reach, so the pair is clamped together
+    // rather than each field independently.
+    minLineWidth: Math.min(
+      maxLineWidth,
+      clamped(
+        raw.minLineWidth,
+        SETTING_RANGES.minLineWidth,
+        DEFAULT_SETTINGS.minLineWidth,
+      ),
     ),
     originalFontSize: clamped(
       raw.originalFontSize,

@@ -55,6 +55,16 @@ describe('splitIntoUnits', () => {
     ]);
   });
 
+  it('keeps a word that ends exactly at the limit instead of retreating', () => {
+    // 'And it is remarkable' is exactly 20 columns. Backing off to the
+    // previous word boundary here would waste most of the line.
+    expect(
+      splitIntoUnits('And it is remarkable to see this.', 20).map(
+        (unit) => unit.text,
+      ),
+    ).toEqual(['And it is remarkable', 'to see this.']);
+  });
+
   it('hard wraps at the last word boundary when there is no punctuation', () => {
     expect(splitIntoUnits('one two three four five six', 12).map((unit) => unit.text))
       .toEqual(['one two', 'three four', 'five six']);
@@ -150,6 +160,47 @@ describe('splitIntoUnits unbreakable words', () => {
     expect(
       splitIntoUnits('supercalifragilisticexpialidocious', 10).map((unit) => unit.text),
     ).toEqual(['supercalif', 'ragilistic', 'expialidoc', 'ious']);
+  });
+});
+
+describe('splitIntoUnits minimum width', () => {
+  it('leaves units alone when no minimum is asked for', () => {
+    expect(
+      splitIntoUnits('Mhmm. And it is remarkable to see this.', 40).map(
+        (unit) => unit.text,
+      ),
+    ).toEqual(['Mhmm.', 'And it is remarkable to see this.']);
+  });
+
+  it('merges a short sentence into the next one to fill the line', () => {
+    expect(
+      splitIntoUnits('Mhmm. And it is remarkable to see this.', 40, 20).map(
+        (unit) => unit.text,
+      ),
+    ).toEqual(['Mhmm. And it is remarkable to see this.']);
+  });
+
+  it('refuses a merge that would exceed the maximum', () => {
+    // 'Mhmm.' is under the minimum, but merging costs more than the max
+    // allows, so a short line beats an over-long one.
+    expect(
+      splitIntoUnits('Mhmm. And it is remarkable to see this.', 20, 15).map(
+        (unit) => unit.text,
+      ),
+    ).toEqual(['Mhmm.', 'And it is remarkable', 'to see this.']);
+  });
+
+  it('leaves a short trailing unit short, because it is still growing', () => {
+    const units = splitIntoUnits('This one is long enough already. Then', 40, 20);
+
+    expect(units.at(-1)!.text).toBe('Then');
+  });
+
+  it('keeps every unit slice-consistent when merging', () => {
+    const text = 'Mhmm. Yes. And it is remarkable to see this.';
+    for (const unit of splitIntoUnits(text, 40, 20)) {
+      expect(text.slice(unit.start, unit.end)).toBe(unit.text);
+    }
   });
 });
 

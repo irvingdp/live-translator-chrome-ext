@@ -214,6 +214,29 @@ describe('PopupApp', () => {
     );
   });
 
+  it('saves the row count and the minimum line width', async () => {
+    const api = createApi();
+    render(<PopupApp api={api} />);
+
+    fireEvent.change(await screen.findByLabelText('顯示行數'), {
+      target: { value: '3' },
+    });
+    await waitFor(() =>
+      expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ captionRows: 3 }),
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText('每行長度下限'), {
+      target: { value: '25' },
+    });
+    await waitFor(() =>
+      expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ minLineWidth: 25 }),
+      ),
+    );
+  });
+
   it('keeps the layout sliders usable while a session runs', async () => {
     render(
       <PopupApp

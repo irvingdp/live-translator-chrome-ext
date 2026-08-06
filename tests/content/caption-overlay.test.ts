@@ -22,6 +22,7 @@ function rect(width: number, height: number): DOMRect {
 const appearance = {
   backgroundOpacity: 50,
   bottomOffset: 12,
+  maxLineWidth: 90,
   originalFontSize: 30,
   translationFontSize: 20,
 };
@@ -93,6 +94,18 @@ describe('CaptionOverlay', () => {
     );
     expect(host?.style.getPropertyValue('--caption-bg-opacity')).toBe('0.5');
     expect(host?.style.getPropertyValue('--caption-bottom-offset')).toBe('12%');
+  });
+
+  it('sizes the box from the line-width setting so it stops resizing per caption', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show({ ...appearance, maxLineWidth: 60 });
+    const host = document.querySelector<HTMLElement>('[data-bilingual-caption-root]');
+
+    expect(host?.style.getPropertyValue('--caption-max-columns')).toBe('60');
+
+    overlay.setAppearance({ ...appearance, maxLineWidth: 120 });
+
+    expect(host?.style.getPropertyValue('--caption-max-columns')).toBe('120');
   });
 
   it('updates a unit in place without recreating its element', () => {
