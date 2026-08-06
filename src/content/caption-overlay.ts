@@ -110,7 +110,6 @@ const OVERLAY_CSS = `
 `;
 
 export class CaptionOverlay {
-  private appearance?: CaptionAppearance;
   private host?: HTMLElement;
   private nativeCue?: VTTCue;
   private nativeTrack?: TextTrack;
@@ -143,7 +142,6 @@ export class CaptionOverlay {
   }
 
   setAppearance(appearance: CaptionAppearance): void {
-    this.appearance = appearance;
     const style = this.host?.style;
     if (!style) return;
     style.setProperty(
