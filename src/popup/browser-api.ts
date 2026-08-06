@@ -1,4 +1,5 @@
 import type { SessionStatus } from '../core/capture-session-controller';
+import { t } from '../core/i18n';
 import type { ExtensionMessage } from '../core/messages';
 import {
   DEFAULT_SETTINGS,
@@ -16,7 +17,7 @@ interface SessionResponse {
 async function control(message: ExtensionMessage): Promise<SessionStatus> {
   const response = (await chrome.runtime.sendMessage(message)) as SessionResponse;
   if (!response?.ok || !response.status) {
-    throw new Error(response?.error ?? '擴充功能背景服務沒有回應');
+    throw new Error(response?.error ?? t('backgroundNoResponse'));
   }
   return response.status;
 }
@@ -35,7 +36,7 @@ export const browserPopupApi: PopupApi = {
   async start(settings) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id === undefined || !tab.url?.startsWith('https://')) {
-      throw new Error('請切換到可播放影片的 HTTPS 分頁後再啟動');
+      throw new Error(t('needHttpsTab'));
     }
     return control({
       target: 'background',

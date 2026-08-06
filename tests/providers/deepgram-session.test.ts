@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  DeepgramSession,
-  type SocketLike,
-} from '../../src/providers/deepgram-session';
+import { DeepgramSession } from '../../src/providers/deepgram-session';
+import type { SocketLike } from '../../src/providers/socket';
 
 class FakeSocket extends EventTarget implements SocketLike {
   readonly sent: Array<ArrayBuffer | string> = [];
@@ -75,7 +73,7 @@ describe('DeepgramSession', () => {
       { apiKey: 'secret', language: 'en-US' },
       () => socket,
     );
-    session.onTranscript(transcriptListener);
+    session.onEvent(transcriptListener);
     const connecting = session.connect();
     socket.open();
     await connecting;
@@ -92,9 +90,10 @@ describe('DeepgramSession', () => {
     );
 
     expect(transcriptListener).toHaveBeenCalledOnce();
-    expect(transcriptListener).toHaveBeenCalledWith(
-      expect.objectContaining({ text: 'Hello' }),
-    );
+    expect(transcriptListener).toHaveBeenCalledWith({
+      event: expect.objectContaining({ text: 'Hello' }),
+      kind: 'transcript',
+    });
   });
 
   it('requests a graceful Deepgram close before closing the socket', async () => {

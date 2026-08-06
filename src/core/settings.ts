@@ -1,4 +1,5 @@
 import type { SessionSettings } from './capture-session-controller';
+import { t } from './i18n';
 
 export interface AppSettings extends SessionSettings {
   originalFontSize: number;
@@ -20,20 +21,27 @@ export const SETTING_RANGES = {
 } as const;
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  backgroundOpacity: 78,
-  bottomOffset: 8,
+  backgroundOpacity: 50,
+  bottomOffset: 1,
   captionRows: 2,
-  captionWidth: 80,
+  captionWidth: 70,
   deepgramApiKey: '',
   deeplApiKey: '',
+  geminiApiKey: '',
+  geminiTargetLanguage: 'zh-Hant',
   maxLineWidth: 90,
   minLineWidth: 40,
   originalFontSize: 24,
   sourceLanguage: 'EN',
   sourceLocale: 'en-US',
   targetLanguage: 'ZH-HANT',
+  transcriber: 'gemini',
   translationFontSize: 22,
 };
+
+export const TRANSCRIBER_IDS = ['deepgram', 'gemini'] as const;
+
+export type TranscriberId = (typeof TRANSCRIBER_IDS)[number];
 
 export const LANGUAGE_OPTIONS = [
   { deepgram: 'en-US', label: 'English', source: 'EN', target: 'EN-US' },
@@ -50,6 +58,14 @@ export const LANGUAGE_OPTIONS = [
 
 function stringValue(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
+}
+
+// The only setting whose value changes which provider runs, so an unknown
+// string has to fall back rather than reach the offscreen dispatcher.
+function transcriberValue(value: unknown): TranscriberId {
+  return TRANSCRIBER_IDS.includes(value as TranscriberId)
+    ? (value as TranscriberId)
+    : DEFAULT_SETTINGS.transcriber;
 }
 
 function clamped(
@@ -94,6 +110,11 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       DEFAULT_SETTINGS.deepgramApiKey,
     ),
     deeplApiKey: stringValue(raw.deeplApiKey, DEFAULT_SETTINGS.deeplApiKey),
+    geminiApiKey: stringValue(raw.geminiApiKey, DEFAULT_SETTINGS.geminiApiKey),
+    geminiTargetLanguage: stringValue(
+      raw.geminiTargetLanguage,
+      DEFAULT_SETTINGS.geminiTargetLanguage,
+    ),
     maxLineWidth,
     // A minimum above the maximum would ask the chunker to merge every unit
     // past the width it is allowed to reach, so the pair is clamped together
@@ -120,6 +141,7 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       raw.targetLanguage,
       DEFAULT_SETTINGS.targetLanguage,
     ),
+    transcriber: transcriberValue(raw.transcriber),
     translationFontSize: clamped(
       raw.translationFontSize,
       SETTING_RANGES.translationFontSize,
@@ -128,17 +150,25 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
   };
 }
 
+type ApiKeyField = 'deepgramApiKey' | 'deeplApiKey' | 'geminiApiKey';
+
+// Gemini Live Translate transcribes and translates in one session, so its
+// mode needs neither of the other two keys.
 export function validateSettingsForStart(
   settings: AppSettings,
-): Partial<Record<'deepgramApiKey' | 'deeplApiKey', string>> {
-  const errors: Partial<
-    Record<'deepgramApiKey' | 'deeplApiKey', string>
-  > = {};
+): Partial<Record<ApiKeyField, string>> {
+  const errors: Partial<Record<ApiKeyField, string>> = {};
+  if (settings.transcriber === 'gemini') {
+    if (!settings.geminiApiKey.trim()) {
+      errors.geminiApiKey = t('needGeminiKeyField');
+    }
+    return errors;
+  }
   if (!settings.deepgramApiKey.trim()) {
-    errors.deepgramApiKey = '請輸入 Deepgram API Key';
+    errors.deepgramApiKey = t('needDeepgramKeyField');
   }
   if (!settings.deeplApiKey.trim()) {
-    errors.deeplApiKey = '請輸入 DeepL API Key';
+    errors.deeplApiKey = t('needDeeplKeyField');
   }
   return errors;
 }

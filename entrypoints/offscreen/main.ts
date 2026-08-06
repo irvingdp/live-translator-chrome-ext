@@ -1,6 +1,6 @@
 import { createBrowserTabAudioPipeline } from '../../src/audio/browser-tab-audio-pipeline';
 import {
-  createDeepgramSession,
+  createCaptureSession,
   OffscreenCaptureController,
 } from '../../src/audio/offscreen-capture-controller';
 import type { ExtensionMessage } from '../../src/core/messages';
@@ -12,22 +12,30 @@ import {
 
 const controller = new OffscreenCaptureController({
   createPipeline: createBrowserTabAudioPipeline,
-  createSession: createDeepgramSession,
-  emitDisconnect: (sessionId) => {
+  createSession: createCaptureSession,
+  emitDisconnect: (sessionId, code) => {
     void teardownSession(sessionId)
       .catch(() => undefined)
       .then(() => chrome.runtime.sendMessage<ExtensionMessage>({
         target: 'background',
         type: 'CAPTURE_DISCONNECTED',
-        payload: { sessionId },
+        payload: { code, sessionId },
       }));
   },
-  emitTranscript: (sessionId, event) => {
-    void chrome.runtime.sendMessage<ExtensionMessage>({
-      target: 'background',
-      type: 'TRANSCRIPT_EVENT',
-      payload: { event, sessionId },
-    });
+  emitEvent: (sessionId, event) => {
+    void chrome.runtime.sendMessage<ExtensionMessage>(
+      event.kind === 'pair'
+        ? {
+            target: 'background',
+            type: 'CAPTION_PAIR_EVENT',
+            payload: { event: event.event, sessionId },
+          }
+        : {
+            target: 'background',
+            type: 'TRANSCRIPT_EVENT',
+            payload: { event: event.event, sessionId },
+          },
+    );
   },
 });
 

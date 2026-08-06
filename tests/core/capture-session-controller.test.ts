@@ -14,11 +14,14 @@ const settings: SessionSettings = {
   captionWidth: 80,
   deepgramApiKey: 'deepgram-key',
   deeplApiKey: 'deepl-key:fx',
+  geminiApiKey: 'gemini-key',
+  geminiTargetLanguage: 'zh-Hant',
   maxLineWidth: 90,
   minLineWidth: 40,
   sourceLanguage: 'EN',
   sourceLocale: 'en-US',
   targetLanguage: 'ZH-HANT',
+  transcriber: 'deepgram',
   originalFontSize: 24,
   translationFontSize: 22,
 };
@@ -113,6 +116,7 @@ describe('CaptureSessionController', () => {
       payload: {
         apiKey: 'deepgram-key',
         language: 'en-US',
+        provider: 'deepgram',
         sessionId: expect.any(String),
         streamId: 'stream-id',
       },
@@ -370,6 +374,61 @@ describe('CaptureSessionController', () => {
     expect(windowsSentTo(harness).at(-1)!.payload.pairs).toHaveLength(1);
   });
 
+  it('never re-cuts a row the viewer already read when the width narrows', async () => {
+    const harness = createHarness();
+    // A window wide enough to hold every row: the rolling window would
+    // otherwise drop the duplicated rows before they could be observed.
+    const rows = 20;
+    const sessionId = await startSession(harness, {
+      captionRows: rows,
+      maxLineWidth: 90,
+      minLineWidth: 0,
+    });
+    const spoken =
+      'One two three four five six seven eight nine ten. Eleven twelve thirteen fourteen fifteen sixteen.';
+    const text = `${spoken} Seventeen eighteen nineteen twenty.`;
+
+    // Two revisions at the wide setting, because the stabilizer has nothing to
+    // agree with on the first one and so freezes nothing.
+    for (const revision of [1, 2]) {
+      await harness.controller.acceptTranscript(sessionId, {
+        isFinal: false,
+        revision,
+        segmentId: 'segment-1',
+        text: spoken,
+      });
+    }
+    harness.controller.applyLayout({
+      captionRows: rows,
+      maxLineWidth: 20,
+      minLineWidth: 0,
+    });
+    // The speaker keeps going while the slider moves.
+    await harness.controller.acceptTranscript(sessionId, {
+      isFinal: false,
+      revision: 3,
+      segmentId: 'segment-1',
+      text,
+    });
+
+    // The rolling window only ever holds the last few rows, so checking one
+    // window would miss the duplication entirely. Every row this session
+    // produced, in id order and taking each id's latest text, has to lay the
+    // transcript end to end exactly once: a narrower re-cut that starts from
+    // already-frozen text shows up here as repeated words.
+    const latestById = new Map<string, string>();
+    for (const message of windowsSentTo(harness)) {
+      for (const pair of message.payload.pairs) {
+        latestById.set(pair.id, pair.original);
+      }
+    }
+    const inIdOrder = [...latestById.entries()]
+      .sort(([left], [right]) => Number(left.split('#')[1]) - Number(right.split('#')[1]))
+      .map(([, original]) => original);
+
+    expect(inIdOrder.join(' ')).toBe(text);
+  });
+
   it('applies a new line width to units that arrive afterwards', async () => {
     const harness = createHarness();
     const sessionId = await startSession(harness, { maxLineWidth: 140 });
@@ -469,6 +528,106 @@ describe('CaptureSessionController', () => {
       error: 'deepgram_disconnected',
       state: 'error',
       tabId: 42,
+    });
+  });
+
+  it('reports the reason a provider gave for dropping out', async () => {
+    const { controller, dependencies } = createHarness();
+    await controller.start(42, { ...settings, transcriber: 'gemini' });
+    const startMessage = vi.mocked(dependencies.sendToOffscreen).mock.calls[0]![0];
+    if (startMessage.type !== 'CAPTURE_START') throw new Error('missing start');
+
+    await controller.handleDisconnect(
+      startMessage.payload.sessionId,
+      'gemini_quota_exceeded',
+    );
+
+    expect(dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
+      type: 'SESSION_ERROR',
+      payload: { code: 'gemini_quota_exceeded' },
+    });
+  });
+
+  describe('Gemini Live Translate sessions', () => {
+    it('starts the provider that does both jobs with only its own key', async () => {
+      const { controller, dependencies } = createHarness();
+
+      await controller.start(42, { ...settings, transcriber: 'gemini' });
+
+      expect(dependencies.sendToOffscreen).toHaveBeenCalledWith({
+        target: 'offscreen',
+        type: 'CAPTURE_START',
+        payload: {
+          apiKey: 'gemini-key',
+          provider: 'gemini',
+          sessionId: expect.any(String),
+          streamId: 'stream-id',
+          targetLanguage: 'zh-Hant',
+        },
+      });
+    });
+
+    it('renders a provider-translated row without calling a translator', async () => {
+      const harness = createHarness();
+      const sessionId = await startSession(harness, { transcriber: 'gemini' });
+
+      await harness.controller.acceptCaptionPair(sessionId, {
+        original: 'Hello there',
+        translation: '你好',
+        turnId: 'turn-0',
+      });
+
+      expect(windowsSentTo(harness).at(-1)?.payload.pairs).toEqual([
+        { id: 'turn-0', original: 'Hello there', translation: '你好' },
+      ]);
+      expect(harness.dependencies.translate).not.toHaveBeenCalled();
+    });
+
+    it('grows a row in place and rolls the window on at the next turn', async () => {
+      const harness = createHarness();
+      const sessionId = await startSession(harness, {
+        captionRows: 1,
+        transcriber: 'gemini',
+      });
+
+      await harness.controller.acceptCaptionPair(sessionId, {
+        original: 'Hello',
+        translation: '',
+        turnId: 'turn-0',
+      });
+      await harness.controller.acceptCaptionPair(sessionId, {
+        original: 'Hello there',
+        translation: '你好',
+        turnId: 'turn-0',
+      });
+      await harness.controller.acceptCaptionPair(sessionId, {
+        original: 'Goodbye',
+        translation: '再見',
+        turnId: 'turn-1',
+      });
+
+      const windows = windowsSentTo(harness);
+      expect(windows[1]?.payload.pairs).toEqual([
+        { id: 'turn-0', original: 'Hello there', translation: '你好' },
+      ]);
+      expect(windows.at(-1)?.payload.pairs).toEqual([
+        { id: 'turn-1', original: 'Goodbye', translation: '再見' },
+      ]);
+    });
+
+    it('ignores caption rows from a session that is no longer running', async () => {
+      const harness = createHarness();
+      const sessionId = await startSession(harness, { transcriber: 'gemini' });
+      await harness.controller.stop();
+      vi.mocked(harness.dependencies.sendToTab).mockClear();
+
+      await harness.controller.acceptCaptionPair(sessionId, {
+        original: 'Hello',
+        translation: '你好',
+        turnId: 'turn-0',
+      });
+
+      expect(windowsSentTo(harness)).toHaveLength(0);
     });
   });
 

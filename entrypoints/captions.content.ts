@@ -39,6 +39,11 @@ export default defineContentScript({
         backgroundOpacity: settings.backgroundOpacity,
         bottomOffset: settings.bottomOffset,
         captionWidth: settings.captionWidth,
+        // Gemini returns a whole utterance as one row and keeps it open for as
+        // long as the speaker keeps talking, so that row needs a ceiling.
+        // Deepgram's rows are cut to about a line before they ever get here.
+        maxVisibleRows:
+          settings.transcriber === 'gemini' ? settings.captionRows : 0,
         originalFontSize: settings.originalFontSize,
         translationFontSize: settings.translationFontSize,
       };

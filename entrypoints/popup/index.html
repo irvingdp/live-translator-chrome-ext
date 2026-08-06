@@ -1,9 +1,12 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>雙語即時字幕翻譯</title>
+    <!-- WXT copies this into the manifest as action.default_title, where
+         Chrome resolves the placeholder against _locales. A popup has no
+         visible title bar, so the literal string is never shown. -->
+    <title>__MSG_extName__</title>
   </head>
   <body>
     <div id="root"></div>

@@ -1,8 +1,12 @@
-import type { CaptureStartRequest } from '../audio/offscreen-capture-controller';
+import type {
+  CaptionPairEvent,
+  CaptureStartRequest,
+} from '../audio/offscreen-capture-controller';
 import type { TranslationRequest } from '../providers/deepl';
 import { CaptionChunker, type CaptionUnit } from './caption-chunker';
 import { CaptionWindow, type CaptionPair } from './caption-window';
 import type { ExtensionMessage } from './messages';
+import type { TranscriberId } from './settings';
 import {
   TranscriptStabilizer,
   type TranscriptEvent,
@@ -19,11 +23,14 @@ export interface SessionSettings {
   captionWidth: number;
   deepgramApiKey: string;
   deeplApiKey: string;
+  geminiApiKey: string;
+  geminiTargetLanguage: string;
   maxLineWidth: number;
   minLineWidth: number;
   sourceLanguage: string;
   sourceLocale: string;
   targetLanguage: string;
+  transcriber: TranscriberId;
   originalFontSize: number;
   translationFontSize: number;
 }
@@ -184,12 +191,22 @@ export class CaptureSessionController {
       if (generation !== this.generation) return;
       await this.dependencies.ensureContentScript(tabId);
       if (generation !== this.generation) return;
-      const payload: CaptureStartRequest = {
-        apiKey: settings.deepgramApiKey,
-        language: settings.sourceLocale,
-        sessionId,
-        streamId,
-      };
+      const payload: CaptureStartRequest =
+        settings.transcriber === 'gemini'
+          ? {
+              apiKey: settings.geminiApiKey,
+              provider: 'gemini',
+              sessionId,
+              streamId,
+              targetLanguage: settings.geminiTargetLanguage,
+            }
+          : {
+              apiKey: settings.deepgramApiKey,
+              language: settings.sourceLocale,
+              provider: 'deepgram',
+              sessionId,
+              streamId,
+            };
       await this.dependencies.sendToOffscreen({
         target: 'offscreen',
         type: 'CAPTURE_START',
@@ -271,6 +288,25 @@ export class CaptureSessionController {
       this.translatedSources.set(unit.id, unit.translateText);
       await this.translateUnit(unit, event.revision, tabId, generation);
     }
+  }
+
+  // The provider already did the transcribing and the translating, so the row
+  // goes straight into the window: no stabilizer, no chunker, no translation
+  // round trip. Everything downstream of the window is shared with Deepgram.
+  async acceptCaptionPair(
+    sessionId: string,
+    event: CaptionPairEvent,
+  ): Promise<void> {
+    if (
+      sessionId !== this.activeSessionId ||
+      this.currentStatus.state !== 'running' ||
+      !this.settings
+    ) {
+      return;
+    }
+    this.captionWindow.upsertOriginal(event.turnId, event.original);
+    this.captionWindow.upsertTranslation(event.turnId, event.translation);
+    await this.sendWindow(this.currentStatus.tabId);
   }
 
   private async sendWindow(tabId: number): Promise<void> {
@@ -390,22 +426,29 @@ export class CaptureSessionController {
     }
   }
 
-  async handleDisconnect(sessionId: string): Promise<void> {
+  async handleDisconnect(sessionId: string, code?: string): Promise<void> {
     if (
       sessionId !== this.activeSessionId ||
       this.currentStatus.state !== 'running'
     ) return;
     const tabId = this.currentStatus.tabId;
+    // A provider that could say why it dropped out gets to; the rest fall back
+    // to a generic "this provider disconnected".
+    const errorCode =
+      code ??
+      (this.settings?.transcriber === 'gemini'
+        ? 'gemini_disconnected'
+        : 'deepgram_disconnected');
     this.generation += 1;
     this.translationCoordinator?.dispose();
     this.currentStatus = {
-      error: 'deepgram_disconnected',
+      error: errorCode,
       state: 'error',
       tabId,
     };
     await this.dependencies.sendToTab(tabId, {
       type: 'SESSION_ERROR',
-      payload: { code: 'deepgram_disconnected' },
+      payload: { code: errorCode },
     });
   }
 
@@ -429,10 +472,13 @@ export class CaptureSessionController {
     }
   }
 
+  // Gemini Live Translate returns the translation with the transcript, so its
+  // sessions have no second provider to coordinate.
   private createTranslationCoordinator(
     sessionId: string,
     settings: SessionSettings,
-  ): TranslationCoordinator {
+  ): TranslationCoordinator | undefined {
+    if (settings.transcriber === 'gemini') return undefined;
     return new TranslationCoordinator((text, signal) =>
       this.dependencies.translate(
         sessionId,

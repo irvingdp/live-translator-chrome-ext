@@ -1,15 +1,13 @@
-import type { TranscriptEvent } from '../core/transcript-stabilizer';
+import type {
+  CaptureEvent,
+  CaptureSession,
+} from '../audio/offscreen-capture-controller';
 import {
   buildDeepgramUrl,
   deepgramProtocols,
   DeepgramMessageParser,
 } from './deepgram';
-
-export interface SocketLike extends EventTarget {
-  readonly readyState: number;
-  close(): void;
-  send(data: ArrayBuffer | string): void;
-}
+import type { SocketLike } from './socket';
 
 export type SocketFactory = (
   url: string,
@@ -24,12 +22,15 @@ export interface DeepgramSessionConfig {
 const defaultSocketFactory: SocketFactory = (url, protocols) =>
   new WebSocket(url, protocols);
 
-export class DeepgramSession {
+export class DeepgramSession implements CaptureSession {
+  // Deepgram streams raw frames, so smaller chunks buy latency for free.
+  readonly audioChunkMs = 40;
+
   private cancelHandshake?: () => void;
   private readonly disconnectListeners = new Set<() => void>();
   private intentionalClose = false;
   private keepAliveTimer?: ReturnType<typeof setInterval>;
-  private readonly listeners = new Set<(event: TranscriptEvent) => void>();
+  private readonly listeners = new Set<(event: CaptureEvent) => void>();
   private readonly parser = new DeepgramMessageParser();
   private socket?: SocketLike;
 
@@ -89,7 +90,7 @@ export class DeepgramSession {
     });
   }
 
-  onTranscript(listener: (event: TranscriptEvent) => void): () => void {
+  onEvent(listener: (event: CaptureEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
@@ -128,7 +129,9 @@ export class DeepgramSession {
     if (typeof event.data !== 'string') return;
     const transcript = this.parser.parse(event.data);
     if (!transcript) return;
-    for (const listener of this.listeners) listener(transcript);
+    for (const listener of this.listeners) {
+      listener({ event: transcript, kind: 'transcript' });
+    }
   };
 
   private readonly handleUnexpectedClose = () => {

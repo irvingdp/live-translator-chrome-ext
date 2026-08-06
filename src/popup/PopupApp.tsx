@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { SessionStatus } from '../core/capture-session-controller';
+import { t, type MessageKey } from '../core/i18n';
+import {
+  GEMINI_AUTO_SOURCE,
+  GEMINI_LANGUAGE_OPTIONS,
+} from '../core/gemini-languages';
 import {
   DEFAULT_SETTINGS,
   LANGUAGE_OPTIONS,
   normalizeSettings,
   SETTING_RANGES,
   type AppSettings,
+  type TranscriberId,
   validateSettingsForStart,
 } from '../core/settings';
 
@@ -24,7 +30,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
   const [status, setStatus] = useState<SessionStatus>({ state: 'idle' });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [transcriber, setTranscriber] = useState('deepgram');
   const [translator, setTranslator] = useState('deepl');
   const saveTail = useRef<Promise<void>>(Promise.resolve());
   const sessionAttempt = useRef(0);
@@ -37,7 +42,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
       },
       () => {
         setSettings(DEFAULT_SETTINGS);
-        setMessage('無法載入設定，請重新開啟擴充功能。');
+        setMessage(t('settingsLoadFailed'));
       },
     );
   }, [api]);
@@ -52,7 +57,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
       saveTail.current = saveTail.current
         .then(() => api.saveSettings(next))
         .catch(() => {
-          setMessage('設定儲存失敗，請重試。');
+          setMessage(t('settingsSaveFailed'));
         });
       return next;
     });
@@ -62,7 +67,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
     try {
       await api.openOptions();
     } catch {
-      setMessage('無法開啟設定頁，請從擴充功能選單選擇「選項」。');
+      setMessage(t('optionsOpenFailed'));
     }
   };
 
@@ -73,9 +78,9 @@ export function PopupApp({ api }: { api: PopupApi }) {
       setBusy(true);
       try {
         setStatus(await api.stop());
-        setMessage('字幕已停止');
+        setMessage(t('captionsStopped'));
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : '停止字幕失敗');
+        setMessage(error instanceof Error ? error.message : t('stopFailed'));
       } finally {
         setBusy(false);
       }
@@ -83,7 +88,11 @@ export function PopupApp({ api }: { api: PopupApi }) {
     }
 
     if (Object.keys(validateSettingsForStart(settings)).length > 0) {
-      setMessage('請先在設定頁輸入 Deepgram 與 DeepL API Key。');
+      setMessage(
+        settings.transcriber === 'gemini'
+          ? t('needGeminiKey')
+          : t('needDeepgramAndDeeplKeys'),
+      );
       return;
     }
 
@@ -103,88 +112,92 @@ export function PopupApp({ api }: { api: PopupApi }) {
         setMessage(
           error instanceof Error
             ? error.message
-            : '啟動失敗，請檢查 API Key 與目前分頁。',
+            : t('startFailed'),
         );
       }
     }
   };
 
   if (!settings) {
-    return <main className="popup loading" aria-busy="true">載入設定中…</main>;
+    return (
+      <main className="popup loading" aria-busy="true">{t('loadingSettings')}</main>
+    );
   }
 
   const running = status.state === 'running' || status.state === 'starting';
-  const keysConfigured = Boolean(
-    settings.deepgramApiKey.trim() && settings.deeplApiKey.trim(),
-  );
+  const transcriber = settings.transcriber;
+  const isGemini = transcriber === 'gemini';
+  const keysConfigured =
+    Object.keys(validateSettingsForStart(settings)).length === 0;
   return (
     <main className="popup">
       <header className="header">
         <div>
           <p className="eyebrow">LIVE CAPTIONS</p>
-          <h1>雙語即時字幕翻譯</h1>
+          <h1>{t('extName')}</h1>
         </div>
         <span className={`status status-${'error' in status && status.error ? 'error' : status.state}`}>
-          {'error' in status && status.error === 'translation_failed'
-            ? '翻譯異常'
-            : 'error' in status && status.error === 'translation_disabled'
-              ? '翻譯已停用'
-            : status.state === 'running'
-            ? '運作中'
-            : status.state === 'starting'
-              ? '連線中'
-              : status.state === 'error'
-                ? '需重試'
-                : '待命'}
+          {t(statusMessageKey(status))}
         </span>
       </header>
 
       <section className="card" aria-labelledby="provider-heading">
-        <h2 id="provider-heading">服務提供者</h2>
-        <label htmlFor="transcriber">語音辨識</label>
+        <h2 id="provider-heading">{t('providerHeading')}</h2>
+        <label htmlFor="transcriber">{t('transcriberLabel')}</label>
         <select
           id="transcriber"
           disabled={running}
           value={transcriber}
-          onChange={(event) => setTranscriber(event.target.value)}
+          onChange={(event) =>
+            update('transcriber', event.target.value as TranscriberId)
+          }
         >
+          <option value="gemini">Gemini live translate 3.5</option>
           <option value="deepgram">Deepgram Nova-3</option>
-          <option disabled>本地 Whisper（即將推出）</option>
         </select>
         <ProviderLink provider={transcriber} />
 
-        <label htmlFor="translator">翻譯</label>
-        <select
-          id="translator"
-          disabled={running}
-          value={translator}
-          onChange={(event) => setTranslator(event.target.value)}
-        >
-          <option value="deepl">DeepL API</option>
-        </select>
-        <ProviderLink provider={translator} />
+        {/* Gemini Live Translate returns the translation with the transcript,
+            so there is no second provider left to choose. */}
+        {!isGemini && (
+          <>
+            <label htmlFor="translator">{t('translatorLabel')}</label>
+            <select
+              id="translator"
+              disabled={running}
+              value={translator}
+              onChange={(event) => setTranslator(event.target.value)}
+            >
+              <option value="deepl">DeepL API</option>
+            </select>
+            <ProviderLink provider={translator} />
+          </>
+        )}
         <div className="provider-summary">
           <p className={`provider-state ${keysConfigured ? 'configured' : ''}`}>
-            {keysConfigured ? 'API Key 已設定' : 'API Key 尚未設定'}
+            {t(keysConfigured ? 'keysConfigured' : 'keysMissing')}
           </p>
           <button
             className="secondary"
             type="button"
             onClick={() => void openOptions()}
           >
-            開啟設定
+            {t('openOptions')}
           </button>
         </div>
       </section>
 
       <section className="card grid" aria-labelledby="language-heading">
-        <h2 id="language-heading">語言</h2>
+        <h2 id="language-heading">{t('languageHeading')}</h2>
         <div>
-          <label htmlFor="source-language">來源語言</label>
+          <label htmlFor="source-language">{t('sourceLanguageLabel')}</label>
+          {/* Gemini detects the source itself and offers no field to set it, so
+              the picker shows what it can recognise without pretending the
+              choice is ours to make. */}
           <select
             id="source-language"
-            disabled={running}
-            value={settings.sourceLocale}
+            disabled={running || isGemini}
+            value={isGemini ? GEMINI_AUTO_SOURCE : settings.sourceLocale}
             onChange={(event) => {
               const option = LANGUAGE_OPTIONS.find(
                 (item) => item.deepgram === event.target.value,
@@ -194,26 +207,48 @@ export function PopupApp({ api }: { api: PopupApi }) {
               update('sourceLanguage', option.source);
             }}
           >
-            {LANGUAGE_OPTIONS.map((option) => (
-              <option key={option.deepgram} value={option.deepgram}>
-                {option.label}
-              </option>
-            ))}
+            {isGemini && (
+              <option value={GEMINI_AUTO_SOURCE}>{t('autoDetect')}</option>
+            )}
+            {isGemini
+              ? GEMINI_LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))
+              : LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.deepgram} value={option.deepgram}>
+                    {option.label}
+                  </option>
+                ))}
           </select>
         </div>
         <div>
-          <label htmlFor="target-language">目標語言</label>
+          <label htmlFor="target-language">{t('targetLanguageLabel')}</label>
           <select
             id="target-language"
             disabled={running}
-            value={settings.targetLanguage}
-            onChange={(event) => update('targetLanguage', event.target.value)}
+            value={
+              isGemini ? settings.geminiTargetLanguage : settings.targetLanguage
+            }
+            onChange={(event) =>
+              update(
+                isGemini ? 'geminiTargetLanguage' : 'targetLanguage',
+                event.target.value,
+              )
+            }
           >
-            {LANGUAGE_OPTIONS.map((option) => (
-              <option key={option.target} value={option.target}>
-                {option.label}
-              </option>
-            ))}
+            {isGemini
+              ? GEMINI_LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))
+              : LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.target} value={option.target}>
+                    {option.label}
+                  </option>
+                ))}
           </select>
         </div>
       </section>
@@ -225,14 +260,14 @@ export function PopupApp({ api }: { api: PopupApi }) {
         type="button"
         onClick={() => void toggleSession()}
       >
-        {busy ? '處理中…' : running ? '停止字幕' : '開始即時字幕'}
+        {t(busy ? 'working' : running ? 'stopCaptions' : 'startCaptions')}
       </button>
 
       <section className="card" aria-labelledby="size-heading">
-        <h2 id="size-heading">字幕大小</h2>
+        <h2 id="size-heading">{t('sizeHeading')}</h2>
         <RangeField
           id="original-size"
-          label="原文字級"
+          label={t('originalFontSizeLabel')}
           max={SETTING_RANGES.originalFontSize.max}
           min={SETTING_RANGES.originalFontSize.min}
           unit="px"
@@ -241,7 +276,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
         />
         <RangeField
           id="translation-size"
-          label="譯文字級"
+          label={t('translationFontSizeLabel')}
           max={SETTING_RANGES.translationFontSize.max}
           min={SETTING_RANGES.translationFontSize.min}
           unit="px"
@@ -251,9 +286,9 @@ export function PopupApp({ api }: { api: PopupApi }) {
       </section>
 
       <section className="card" aria-labelledby="layout-heading">
-        <h2 id="layout-heading">字幕版面</h2>
+        <h2 id="layout-heading">{t('layoutHeading')}</h2>
         <div>
-          <label htmlFor="caption-rows">顯示行數</label>
+          <label htmlFor="caption-rows">{t('captionRowsLabel')}</label>
           <select
             id="caption-rows"
             value={settings.captionRows}
@@ -261,14 +296,14 @@ export function PopupApp({ api }: { api: PopupApi }) {
               update('captionRows', Number(event.target.value))
             }
           >
-            <option value={1}>1 行（原文＋譯文）</option>
-            <option value={2}>2 行</option>
-            <option value={3}>3 行</option>
+            <option value={1}>{t('captionRows1')}</option>
+            <option value={2}>{t('captionRows2')}</option>
+            <option value={3}>{t('captionRows3')}</option>
           </select>
         </div>
         <RangeField
           id="caption-width"
-          label="字幕寬度"
+          label={t('captionWidthLabel')}
           max={SETTING_RANGES.captionWidth.max}
           min={SETTING_RANGES.captionWidth.min}
           step={5}
@@ -276,29 +311,41 @@ export function PopupApp({ api }: { api: PopupApi }) {
           value={settings.captionWidth}
           onChange={(value) => update('captionWidth', value)}
         />
-        <RangeField
-          id="max-line-width"
-          label="每行長度上限"
-          max={SETTING_RANGES.maxLineWidth.max}
-          min={SETTING_RANGES.maxLineWidth.min}
-          step={5}
-          unit=" 字寬"
-          value={settings.maxLineWidth}
-          onChange={(value) => update('maxLineWidth', value)}
-        />
-        <RangeField
-          id="min-line-width"
-          label="每行長度下限"
-          max={SETTING_RANGES.minLineWidth.max}
-          min={SETTING_RANGES.minLineWidth.min}
-          step={5}
-          unit=" 字寬"
-          value={settings.minLineWidth}
-          onChange={(value) => update('minLineWidth', value)}
-        />
+        {/* Gemini decides its own line boundaries — one utterance is one row —
+            so the chunker widths have nothing to act on in that mode. */}
+        {!isGemini && (
+          <>
+            <RangeField
+              id="max-line-width"
+              label={t('maxLineWidthLabel')}
+              max={SETTING_RANGES.maxLineWidth.max}
+              min={SETTING_RANGES.maxLineWidth.min}
+              step={5}
+              unit={t('unitColumns')}
+              value={settings.maxLineWidth}
+              onChange={(value) => update('maxLineWidth', value)}
+            />
+            <RangeField
+              id="min-line-width"
+              label={t('minLineWidthLabel')}
+              // A minimum above the maximum is clamped away on save, so
+              // offering the full range lets the handle be dragged somewhere
+              // it only springs back from.
+              max={Math.min(
+                SETTING_RANGES.minLineWidth.max,
+                settings.maxLineWidth,
+              )}
+              min={SETTING_RANGES.minLineWidth.min}
+              step={5}
+              unit={t('unitColumns')}
+              value={settings.minLineWidth}
+              onChange={(value) => update('minLineWidth', value)}
+            />
+          </>
+        )}
         <RangeField
           id="background-opacity"
-          label="背景透明度"
+          label={t('backgroundOpacityLabel')}
           max={SETTING_RANGES.backgroundOpacity.max}
           min={SETTING_RANGES.backgroundOpacity.min}
           step={5}
@@ -308,7 +355,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
         />
         <RangeField
           id="bottom-offset"
-          label="距底部位置"
+          label={t('bottomOffsetLabel')}
           max={SETTING_RANGES.bottomOffset.max}
           min={SETTING_RANGES.bottomOffset.min}
           unit="%"
@@ -318,11 +365,23 @@ export function PopupApp({ api }: { api: PopupApi }) {
       </section>
 
       <p className="privacy">
-        啟動後，分頁音訊會傳送至 Deepgram，辨識文字會傳送至 DeepL。API Key
-        僅保存在這台裝置的 Chrome 本機儲存空間。
+        {t(isGemini ? 'privacyGemini' : 'privacyDeepgram')}{' '}
+        {t('keyStorageNote')}
       </p>
     </main>
   );
+}
+
+// A translation problem is worth surfacing even while the session keeps
+// running, so it outranks the plain state.
+function statusMessageKey(status: SessionStatus): MessageKey {
+  const error = 'error' in status ? status.error : undefined;
+  if (error === 'translation_failed') return 'statusTranslationFailed';
+  if (error === 'translation_disabled') return 'statusTranslationDisabled';
+  if (status.state === 'running') return 'statusRunning';
+  if (status.state === 'starting') return 'statusStarting';
+  if (status.state === 'error') return 'statusRetry';
+  return 'statusIdle';
 }
 
 // Where to go to sign up for the selected provider. A provider with no entry
@@ -330,6 +389,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
 const PROVIDER_SIGNUP: Record<string, { href: string; label: string }> = {
   deepgram: { href: 'https://console.deepgram.com/', label: 'console.deepgram.com' },
   deepl: { href: 'https://www.deepl.com/', label: 'www.deepl.com' },
+  gemini: { href: 'https://aistudio.google.com/', label: 'aistudio.google.com' },
 };
 
 function ProviderLink({ provider }: { provider: string }) {
@@ -342,7 +402,7 @@ function ProviderLink({ provider }: { provider: string }) {
       rel="noreferrer"
       target="_blank"
     >
-      前往申請 API Key：{signup.label}
+      {t('providerSignupLink', signup.label)}
     </a>
   );
 }

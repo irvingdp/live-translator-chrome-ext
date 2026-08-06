@@ -12,6 +12,7 @@ describe('browserOptionsApi', () => {
         ...DEFAULT_SETTINGS,
         deepgramApiKey: 'dg-existing',
         deeplApiKey: 'dl-existing',
+        geminiApiKey: 'gm-existing',
       },
     });
     vi.stubGlobal('chrome', { storage: { local: { get, set: vi.fn() } } });
@@ -19,6 +20,7 @@ describe('browserOptionsApi', () => {
     await expect(browserOptionsApi.loadKeys()).resolves.toEqual({
       deepgramApiKey: 'dg-existing',
       deeplApiKey: 'dl-existing',
+      geminiApiKey: 'gm-existing',
     });
     expect(get).toHaveBeenCalledWith('settings');
   });
@@ -39,6 +41,7 @@ describe('browserOptionsApi', () => {
     await browserOptionsApi.saveKeys({
       deepgramApiKey: 'dg-new',
       deeplApiKey: 'dl-new',
+      geminiApiKey: 'gm-new',
     });
 
     expect(set).toHaveBeenCalledWith({
@@ -46,6 +49,7 @@ describe('browserOptionsApi', () => {
         ...existing,
         deepgramApiKey: 'dg-new',
         deeplApiKey: 'dl-new',
+        geminiApiKey: 'gm-new',
       },
     });
   });

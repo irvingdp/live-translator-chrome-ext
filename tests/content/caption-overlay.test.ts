@@ -23,6 +23,7 @@ const appearance = {
   backgroundOpacity: 50,
   bottomOffset: 12,
   captionWidth: 80,
+  maxVisibleRows: 0,
   originalFontSize: 30,
   translationFontSize: 20,
 };
@@ -106,6 +107,39 @@ describe('CaptionOverlay', () => {
     overlay.setAppearance({ ...appearance, captionWidth: 40 });
 
     expect(host?.style.getPropertyValue('--caption-width')).toBe('40%');
+  });
+
+  // Gemini keeps one turn open across continuous speech, so that single row
+  // grows until it eats the screen unless the box has a ceiling.
+  it('caps the box height for a provider whose rows grow on their own', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show({ ...appearance, maxVisibleRows: 2 });
+    const host = document.querySelector<HTMLElement>(
+      '[data-bilingual-caption-root]',
+    );
+    const viewport = host?.shadowRoot?.querySelector('.viewport');
+
+    expect(host?.style.getPropertyValue('--caption-max-rows')).toBe('2');
+    expect(viewport?.classList.contains('clamped')).toBe(true);
+
+    overlay.setAppearance({ ...appearance, maxVisibleRows: 3 });
+
+    expect(host?.style.getPropertyValue('--caption-max-rows')).toBe('3');
+  });
+
+  it('leaves the box unclamped for a provider that cuts its own rows', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show({ ...appearance, maxVisibleRows: 2 });
+    const host = document.querySelector<HTMLElement>(
+      '[data-bilingual-caption-root]',
+    );
+    const viewport = host?.shadowRoot?.querySelector('.viewport');
+
+    // Clamping Deepgram's rows would crop the wrap README documents as
+    // expected when the box is narrow and the line budget is wide.
+    overlay.setAppearance({ ...appearance, maxVisibleRows: 0 });
+
+    expect(viewport?.classList.contains('clamped')).toBe(false);
   });
 
   it('updates a unit in place without recreating its element', () => {
@@ -516,7 +550,7 @@ describe('CaptionOverlay', () => {
       '早安',
       'Everyone',
       '各位',
-      'DeepL 翻譯失敗，英文字幕仍會繼續',
+      'DeepL 翻譯失敗，原文字幕仍會繼續',
     ]);
   });
 });

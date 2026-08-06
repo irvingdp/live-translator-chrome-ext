@@ -41,8 +41,10 @@ describe('normalizeSettings', () => {
 
   it('defaults the layout settings to a visible caption box', () => {
     expect(DEFAULT_SETTINGS).toMatchObject({
-      backgroundOpacity: 78,
-      bottomOffset: 8,
+      backgroundOpacity: 50,
+      bottomOffset: 1,
+      captionRows: 2,
+      captionWidth: 70,
       maxLineWidth: 90,
     });
   });
@@ -90,9 +92,26 @@ describe('normalizeSettings', () => {
   });
 });
 
+describe('normalizeSettings transcriber', () => {
+  it('keeps a supported provider and rejects anything else', () => {
+    expect(normalizeSettings({ transcriber: 'deepgram' }).transcriber).toBe(
+      'deepgram',
+    );
+    // An unknown value would reach the offscreen dispatcher and start nothing.
+    expect(
+      normalizeSettings({ transcriber: 'whisper' as never }).transcriber,
+    ).toBe(DEFAULT_SETTINGS.transcriber);
+  });
+});
+
 describe('validateSettingsForStart', () => {
+  const deepgramDefaults = {
+    ...DEFAULT_SETTINGS,
+    transcriber: 'deepgram',
+  } as const;
+
   it('reports both missing BYOK credentials next to their fields', () => {
-    expect(validateSettingsForStart(DEFAULT_SETTINGS)).toEqual({
+    expect(validateSettingsForStart(deepgramDefaults)).toEqual({
       deepgramApiKey: '請輸入 Deepgram API Key',
       deeplApiKey: '請輸入 DeepL API Key',
     });
@@ -101,9 +120,24 @@ describe('validateSettingsForStart', () => {
   it('returns no errors when both credentials are present', () => {
     expect(
       validateSettingsForStart({
-        ...DEFAULT_SETTINGS,
+        ...deepgramDefaults,
         deepgramApiKey: 'dg',
         deeplApiKey: 'dl',
+      }),
+    ).toEqual({});
+  });
+
+  // The Gemini path replaces both other providers, so asking for their keys
+  // would block a session that has everything it needs.
+  it('asks only for the Gemini key when Gemini does both jobs', () => {
+    expect(
+      validateSettingsForStart({ ...DEFAULT_SETTINGS, transcriber: 'gemini' }),
+    ).toEqual({ geminiApiKey: '請輸入 Gemini API Key' });
+    expect(
+      validateSettingsForStart({
+        ...DEFAULT_SETTINGS,
+        geminiApiKey: 'gm',
+        transcriber: 'gemini',
       }),
     ).toEqual({});
   });

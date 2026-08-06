@@ -3,14 +3,15 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   OffscreenCaptureController,
   type AudioPipeline,
-  type TranscriptionSession,
+  type CaptureEvent,
+  type CaptureSession,
 } from '../../src/audio/offscreen-capture-controller';
 import type { TranscriptEvent } from '../../src/core/transcript-stabilizer';
 
-function createHarness() {
+function createHarness(audioChunkMs = 40) {
   let samplesListener: ((samples: Float32Array) => void) | undefined;
-  let transcriptListener: ((event: TranscriptEvent) => void) | undefined;
-  let disconnectListener: (() => void) | undefined;
+  let eventListener: ((event: CaptureEvent) => void) | undefined;
+  let disconnectListener: ((code?: string) => void) | undefined;
   let pipelineEndedListener: (() => void) | undefined;
   const pipeline: AudioPipeline = {
     close: vi.fn().mockResolvedValue(undefined),
@@ -20,11 +21,12 @@ function createHarness() {
     }),
     sampleRate: 16_000,
   };
-  const session: TranscriptionSession = {
+  const session: CaptureSession = {
+    audioChunkMs,
     close: vi.fn(),
     connect: vi.fn().mockResolvedValue(undefined),
-    onTranscript: vi.fn((listener) => {
-      transcriptListener = listener;
+    onEvent: vi.fn((listener) => {
+      eventListener = listener;
       return vi.fn();
     }),
     onDisconnect: vi.fn((listener) => {
@@ -38,25 +40,26 @@ function createHarness() {
     return pipeline;
   });
   const createSession = vi.fn(() => session);
-  const emitTranscript = vi.fn();
+  const emitEvent = vi.fn();
   const emitDisconnect = vi.fn();
   const controller = new OffscreenCaptureController({
     createPipeline,
     createSession,
     emitDisconnect,
-    emitTranscript,
+    emitEvent,
   });
   return {
     controller,
     createPipeline,
     createSession,
-    emitTranscript,
+    emitEvent,
     emitDisconnect,
     pipeline,
     samples: (samples: Float32Array) => samplesListener?.(samples),
     session,
-    transcript: (event: TranscriptEvent) => transcriptListener?.(event),
-    disconnect: () => disconnectListener?.(),
+    transcript: (event: TranscriptEvent) =>
+      eventListener?.({ event, kind: 'transcript' }),
+    disconnect: (code?: string) => disconnectListener?.(code),
     endPipeline: () => pipelineEndedListener?.(),
   };
 }
@@ -68,6 +71,7 @@ describe('OffscreenCaptureController', () => {
     await harness.controller.start({
       apiKey: 'deepgram-key',
       language: 'en-US',
+      provider: 'deepgram',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -75,6 +79,9 @@ describe('OffscreenCaptureController', () => {
     expect(harness.createSession).toHaveBeenCalledWith({
       apiKey: 'deepgram-key',
       language: 'en-US',
+      provider: 'deepgram',
+      sessionId: 'session-1',
+      streamId: 'tab-stream',
     });
     expect(harness.session.connect).toHaveBeenCalledOnce();
     expect(harness.createPipeline).toHaveBeenCalledWith(
@@ -91,6 +98,7 @@ describe('OffscreenCaptureController', () => {
     await harness.controller.start({
       apiKey: 'deepgram-key',
       language: 'en-US',
+      provider: 'deepgram',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -106,10 +114,47 @@ describe('OffscreenCaptureController', () => {
     expect(harness.session.sendAudio).toHaveBeenCalledWith(
       expect.objectContaining({ byteLength: 1_280 }),
     );
-    expect(harness.emitTranscript).toHaveBeenCalledWith(
-      'session-1',
-      expect.objectContaining({ text: 'Hello' }),
+    expect(harness.emitEvent).toHaveBeenCalledWith('session-1', {
+      event: expect.objectContaining({ text: 'Hello' }),
+      kind: 'transcript',
+    });
+  });
+
+  it('sizes audio chunks to what the chosen provider asks for', async () => {
+    const harness = createHarness(100);
+    await harness.controller.start({
+      apiKey: 'gemini-key',
+      provider: 'gemini',
+      sessionId: 'session-1',
+      streamId: 'tab-stream',
+      targetLanguage: 'zh-Hant',
+    });
+
+    harness.samples(new Float32Array(1_600).fill(0.5));
+
+    expect(harness.session.sendAudio).toHaveBeenCalledWith(
+      expect.objectContaining({ byteLength: 3_200 }),
     );
+  });
+
+  it('reports the provider error code with an unexpected disconnect', async () => {
+    const harness = createHarness();
+    await harness.controller.start({
+      apiKey: 'gemini-key',
+      provider: 'gemini',
+      sessionId: 'session-1',
+      streamId: 'tab-stream',
+      targetLanguage: 'zh-Hant',
+    });
+
+    harness.disconnect('gemini_quota_exceeded');
+
+    await vi.waitFor(() => {
+      expect(harness.emitDisconnect).toHaveBeenCalledWith(
+        'session-1',
+        'gemini_quota_exceeded',
+      );
+    });
   });
 
   it('closes every owned resource when capture stops', async () => {
@@ -117,6 +162,7 @@ describe('OffscreenCaptureController', () => {
     await harness.controller.start({
       apiKey: 'deepgram-key',
       language: 'en-US',
+      provider: 'deepgram',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -143,6 +189,7 @@ describe('OffscreenCaptureController', () => {
     const starting = harness.controller.start({
       apiKey: 'deepgram-key',
       language: 'en-US',
+      provider: 'deepgram',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -165,6 +212,7 @@ describe('OffscreenCaptureController', () => {
     const starting = harness.controller.start({
       apiKey: 'deepgram-key',
       language: 'en-US',
+      provider: 'deepgram',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -190,6 +238,7 @@ describe('OffscreenCaptureController', () => {
       harness.controller.start({
         apiKey: 'deepgram-key',
         language: 'en-US',
+        provider: 'deepgram',
         sessionId: 'session-1',
         streamId: 'tab-stream',
       }),
@@ -208,6 +257,7 @@ describe('OffscreenCaptureController', () => {
       harness.controller.start({
         apiKey: 'deepgram-key',
         language: 'en-US',
+        provider: 'deepgram',
         sessionId: 'session-1',
         streamId: 'tab-stream',
       }),
@@ -224,6 +274,7 @@ describe('OffscreenCaptureController', () => {
     await harness.controller.start({
       apiKey: 'deepgram-key',
       language: 'en-US',
+      provider: 'deepgram',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -238,6 +289,7 @@ describe('OffscreenCaptureController', () => {
     await harness.controller.start({
       apiKey: 'deepgram-key',
       language: 'en-US',
+      provider: 'deepgram',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -246,7 +298,10 @@ describe('OffscreenCaptureController', () => {
     await vi.waitFor(() => {
       expect(harness.pipeline.close).toHaveBeenCalledOnce();
       expect(harness.session.close).toHaveBeenCalledOnce();
-      expect(harness.emitDisconnect).toHaveBeenCalledWith('session-1');
+      expect(harness.emitDisconnect).toHaveBeenCalledWith(
+        'session-1',
+        undefined,
+      );
     });
   });
 
@@ -255,6 +310,7 @@ describe('OffscreenCaptureController', () => {
     await harness.controller.start({
       apiKey: 'deepgram-key',
       language: 'en-US',
+      provider: 'deepgram',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -264,7 +320,10 @@ describe('OffscreenCaptureController', () => {
     await vi.waitFor(() => {
       expect(harness.pipeline.close).toHaveBeenCalledOnce();
       expect(harness.session.close).toHaveBeenCalledOnce();
-      expect(harness.emitDisconnect).toHaveBeenCalledWith('session-1');
+      expect(harness.emitDisconnect).toHaveBeenCalledWith(
+        'session-1',
+        undefined,
+      );
     });
   });
 
@@ -273,6 +332,7 @@ describe('OffscreenCaptureController', () => {
     await harness.controller.start({
       apiKey: 'deepgram-key',
       language: 'en-US',
+      provider: 'deepgram',
       sessionId: 'current-session',
       streamId: 'tab-stream',
     });

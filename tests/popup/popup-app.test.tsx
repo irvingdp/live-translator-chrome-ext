@@ -16,21 +16,40 @@ function createApi(overrides: Partial<PopupApi> = {}): PopupApi {
   };
 }
 
-describe('PopupApp', () => {
-  it('shows the future transcriber as a disabled coming-soon option', async () => {
-    render(<PopupApp api={createApi()} />);
-
-    expect(await screen.findByText('本地 Whisper（即將推出）')).toBeDisabled();
+// Gemini is the default provider, so anything about the Deepgram + DeepL pair
+// has to say so rather than lean on the defaults.
+function createDeepgramApi(settings: Record<string, unknown> = {}): PopupApi {
+  return createApi({
+    loadSettings: vi.fn().mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      transcriber: 'deepgram',
+      ...settings,
+    }),
   });
+}
 
+describe('PopupApp', () => {
   it('offers no translator we are not actually shipping', async () => {
-    render(<PopupApp api={createApi()} />);
+    render(<PopupApp api={createDeepgramApi()} />);
 
     const translator = await screen.findByLabelText('翻譯');
 
     expect(
       [...translator.querySelectorAll('option')].map((option) => option.textContent),
     ).toEqual(['DeepL API']);
+  });
+
+  it('offers only the transcribers that actually work', async () => {
+    render(<PopupApp api={createApi()} />);
+
+    const transcriber = await screen.findByLabelText('語音辨識');
+
+    expect(
+      [...transcriber.querySelectorAll('option')].map(
+        (option) => option.textContent,
+      ),
+    ).toEqual(['Gemini live translate 3.5', 'Deepgram Nova-3']);
+    expect(transcriber).toHaveValue('gemini');
   });
 
   it('removes API Key fields and directs unconfigured users to options', async () => {
@@ -48,13 +67,7 @@ describe('PopupApp', () => {
   it('shows configured status when both stored keys are non-empty', async () => {
     render(
       <PopupApp
-        api={createApi({
-          loadSettings: vi.fn().mockResolvedValue({
-            ...DEFAULT_SETTINGS,
-            deepgramApiKey: 'dg',
-            deeplApiKey: 'dl',
-          }),
-        })}
+        api={createDeepgramApi({ deepgramApiKey: 'dg', deeplApiKey: 'dl' })}
       />,
     );
 
@@ -80,8 +93,21 @@ describe('PopupApp', () => {
     ).toBeVisible();
   });
 
-  it('blocks startup with guidance when an API Key is missing', async () => {
+  it('names the key the selected provider actually needs', async () => {
     const api = createApi();
+    render(<PopupApp api={api} />);
+    await screen.findByText('API Key 尚未設定');
+
+    fireEvent.click(screen.getByRole('button', { name: '開始即時字幕' }));
+
+    expect(
+      await screen.findByText('請先在設定頁輸入 Gemini API Key。'),
+    ).toBeVisible();
+    expect(api.start).not.toHaveBeenCalled();
+  });
+
+  it('blocks startup with guidance when an API Key is missing', async () => {
+    const api = createDeepgramApi();
     render(<PopupApp api={api} />);
     await screen.findByText('API Key 尚未設定');
 
@@ -96,13 +122,7 @@ describe('PopupApp', () => {
   });
 
   it('starts with normalized settings and changes the CTA to stop', async () => {
-    const api = createApi({
-      loadSettings: vi.fn().mockResolvedValue({
-        ...DEFAULT_SETTINGS,
-        deepgramApiKey: 'dg',
-        deeplApiKey: 'dl',
-      }),
-    });
+    const api = createDeepgramApi({ deepgramApiKey: 'dg', deeplApiKey: 'dl' });
     render(<PopupApp api={api} />);
 
     fireEvent.click(
@@ -192,7 +212,9 @@ describe('PopupApp', () => {
   });
 
   it('saves each layout setting when its slider moves', async () => {
-    const api = createApi();
+    // The line-width sliders only exist for the provider that chunks its own
+    // rows.
+    const api = createDeepgramApi();
     render(<PopupApp api={api} />);
 
     fireEvent.change(await screen.findByLabelText('每行長度上限'), {
@@ -223,8 +245,24 @@ describe('PopupApp', () => {
     );
   });
 
+  it('stops the minimum line width slider at the current maximum', async () => {
+    const api = createDeepgramApi();
+    render(<PopupApp api={api} />);
+
+    const minimum = await screen.findByLabelText('每行長度下限');
+    // Anything past the maximum is clamped away on save, so a handle that can
+    // be dragged there only springs back.
+    expect(minimum).toHaveAttribute('max', String(DEFAULT_SETTINGS.maxLineWidth));
+
+    fireEvent.change(screen.getByLabelText('每行長度上限'), {
+      target: { value: '50' },
+    });
+
+    await waitFor(() => expect(minimum).toHaveAttribute('max', '50'));
+  });
+
   it('links each selected provider to where its API key is issued', async () => {
-    render(<PopupApp api={createApi()} />);
+    render(<PopupApp api={createDeepgramApi()} />);
 
     const deepgram = await screen.findByRole('link', {
       name: /console\.deepgram\.com/,
@@ -238,6 +276,74 @@ describe('PopupApp', () => {
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noreferrer');
     }
+  });
+
+  it('drops the translator step when Gemini already does the translating', async () => {
+    const api = createApi();
+    render(<PopupApp api={api} />);
+
+    fireEvent.change(await screen.findByLabelText('語音辨識'), {
+      target: { value: 'gemini' },
+    });
+
+    await waitFor(() =>
+      expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ transcriber: 'gemini' }),
+      ),
+    );
+    expect(screen.queryByLabelText('翻譯')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /aistudio\.google\.com/ }),
+    ).toHaveAttribute('href', 'https://aistudio.google.com/');
+    // Gemini cuts its own lines, so the chunker widths would do nothing.
+    expect(screen.queryByLabelText('每行長度上限')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('每行長度下限')).not.toBeInTheDocument();
+  });
+
+  it('offers Google languages and no source choice in Gemini mode', async () => {
+    const api = createApi({
+      loadSettings: vi.fn().mockResolvedValue({
+        ...DEFAULT_SETTINGS,
+        transcriber: 'gemini',
+      }),
+    });
+    render(<PopupApp api={api} />);
+
+    const source = await screen.findByLabelText('來源語言');
+    const target = screen.getByLabelText('目標語言');
+
+    // The model detects the source itself; offering the choice would be a lie.
+    expect(source).toBeDisabled();
+    expect(source).toHaveValue('auto');
+    expect(target).toHaveValue('zh-Hant');
+    expect([...target.querySelectorAll('option')].length).toBeGreaterThan(70);
+
+    fireEvent.change(target, { target: { value: 'pt-BR' } });
+    await waitFor(() =>
+      expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          geminiTargetLanguage: 'pt-BR',
+          // The DeepL target is left alone, so switching back restores it.
+          targetLanguage: DEFAULT_SETTINGS.targetLanguage,
+        }),
+      ),
+    );
+  });
+
+  it('needs only the Gemini key once Gemini is the chosen provider', async () => {
+    render(
+      <PopupApp
+        api={createApi({
+          loadSettings: vi.fn().mockResolvedValue({
+            ...DEFAULT_SETTINGS,
+            geminiApiKey: 'gm',
+            transcriber: 'gemini',
+          }),
+        })}
+      />,
+    );
+
+    expect(await screen.findByText('API Key 已設定')).toBeVisible();
   });
 
   it('saves the caption width independently of the line length', async () => {
@@ -259,7 +365,7 @@ describe('PopupApp', () => {
   });
 
   it('saves the row count and the minimum line width', async () => {
-    const api = createApi();
+    const api = createDeepgramApi();
     render(<PopupApp api={api} />);
 
     fireEvent.change(await screen.findByLabelText('顯示行數'), {
@@ -298,8 +404,7 @@ describe('PopupApp', () => {
     const api = createApi({
       loadSettings: vi.fn().mockResolvedValue({
         ...DEFAULT_SETTINGS,
-        deepgramApiKey: 'dg',
-        deeplApiKey: 'dl',
+        geminiApiKey: 'gm',
       }),
       start: vi.fn().mockReturnValue(
         new Promise((resolve) => { releaseStart = resolve; }),

@@ -1,5 +1,10 @@
 # Gemini as a Translation Provider — Evaluation
 
+> **Superseded in part.** This document is about Gemini as a *text* translator,
+> and that conclusion still holds. The audio path it flags under "If Gemini is
+> revisited" was later verified and adopted — see
+> `2026-08-06-gemini-live-translate-adoption.md`.
+
 **Decision: not adopted.** The "Gemini 3.5 Live（即將推出）" option has been
 removed from the popup rather than left as a promise we are not keeping.
 

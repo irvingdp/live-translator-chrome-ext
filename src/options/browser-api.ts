@@ -7,6 +7,7 @@ import {
 export interface ApiKeySettings {
   deepgramApiKey: string;
   deeplApiKey: string;
+  geminiApiKey: string;
 }
 
 export interface OptionsApi {
@@ -23,8 +24,8 @@ async function loadSettings(): Promise<AppSettings> {
 
 export const browserOptionsApi: OptionsApi = {
   async loadKeys() {
-    const { deepgramApiKey, deeplApiKey } = await loadSettings();
-    return { deepgramApiKey, deeplApiKey };
+    const { deepgramApiKey, deeplApiKey, geminiApiKey } = await loadSettings();
+    return { deepgramApiKey, deeplApiKey, geminiApiKey };
   },
   async saveKeys(keys) {
     const current = await loadSettings();

@@ -16,12 +16,15 @@ const settings: AppSettings = {
   captionWidth: 80,
   deepgramApiKey: 'deepgram-key',
   deeplApiKey: 'deepl-key:fx',
+  geminiApiKey: 'gemini-key',
+  geminiTargetLanguage: 'zh-Hant',
   maxLineWidth: 90,
   minLineWidth: 40,
   originalFontSize: 24,
   sourceLanguage: 'EN',
   sourceLocale: 'en-US',
   targetLanguage: 'ZH-HANT',
+  transcriber: 'deepgram',
   translationFontSize: 22,
 };
 

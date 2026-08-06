@@ -336,20 +336,41 @@ export class CaptionChunker {
       input.maxWidth,
       input.minWidth ?? 0,
     );
-    // A live width change, or a final whose text is shorter than the interim
-    // that preceded it, can make the recomputed span count lower than what
-    // is already frozen. Freeze only forward, from state.closed.length up to
-    // whatever the recompute supports right now; when the recompute is
-    // smaller, freeze nothing rather than unclosing units the viewer already
-    // read.
-    const targetClosedCount = input.isFinal
+    // Which span to freeze next is normally just the next index: at an
+    // unchanged width the cuts are prefix-stable, so the recompute reproduces
+    // every frozen unit in place. A live width change breaks that -- it
+    // renumbers every span, and the index then lands on text the viewer has
+    // already read, which both rewrites the row being read and spends another
+    // translation on it. So trust the index only while the recompute still
+    // agrees with the last frozen unit, and fall back to the text offset when
+    // it does not.
+    const lastFrozen = state.closed.at(-1);
+    const recomputeAgrees =
+      lastFrozen === undefined ||
+      spans[state.closed.length - 1]?.text === lastFrozen;
+    let cursor: number;
+    if (recomputeAgrees) {
+      cursor = state.closed.length;
+    } else {
+      // Anchored on closedEnd rather than openStartIn: openStartIn answers a
+      // different question and reports 0 when the frozen text is gone
+      // entirely, which here would mean re-freezing from the top.
+      const found = spans.findIndex((span) => span.start >= state.closedEnd);
+      // Nothing begins past the frozen text, so the recompute is coarser than
+      // what is frozen (a widening). Freeze nothing rather than unclosing
+      // units the viewer already read; the remainder still reaches the window
+      // as the open unit, and through the isFinal fallback below.
+      cursor = found < 0 ? spans.length : found;
+    }
+    const freezeUntil = input.isFinal
       ? spans.length
       : Math.max(spans.length - 1, 0);
     const closedCountBefore = state.closed.length;
     const changed: CaptionUnit[] = [];
 
-    for (let index = state.closed.length; index < targetClosedCount; index += 1) {
-      const span = spans[index]!;
+    for (; cursor < freezeUntil; cursor += 1) {
+      const span = spans[cursor]!;
+      const index = state.closed.length;
       state.closed.push(span.text);
       state.closedEnd = span.end;
       changed.push({
@@ -404,7 +425,10 @@ export class CaptionChunker {
       ? input.rawText
       : input.stableText;
     const displayText = source.slice(openStartIn(source, state)).trim();
-    const translateText = spans[openIndex]?.text ?? '';
+    // `cursor` came to rest on the first span left unfrozen, which is the open
+    // unit's span. Indexing by openIndex instead would repeat the same
+    // width-change mistake the freeze loop just avoided.
+    const translateText = spans[cursor]?.text ?? '';
 
     if (
       displayText &&

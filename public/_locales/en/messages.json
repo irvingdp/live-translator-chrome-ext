@@ -1,0 +1,359 @@
+{
+  "extName": {
+    "message": "Bilingual Live Captions",
+    "description": "Extension name shown in Chrome and on the Web Store."
+  },
+  "extDescription": {
+    "message": "Live bilingual captions for any tab: the original line and its translation, from your own Gemini or Deepgram + DeepL key.",
+    "description": "Extension description shown in Chrome and on the Web Store. Must stay under 132 characters."
+  },
+
+  "uiLanguage": {
+    "message": "en",
+    "description": "BCP-47 tag for THIS catalogue's language, used for the document lang attribute. Translators: set it to your own locale, not to a translation of the word."
+  },
+
+  "loadingSettings": {
+    "message": "Loading settings…",
+    "description": "Shown while the popup or options page reads stored settings."
+  },
+  "openOptions": {
+    "message": "Open settings",
+    "description": "Button in the popup that opens the options page."
+  },
+  "keyStorageNote": {
+    "message": "API keys are kept only in this device's local Chrome storage.",
+    "description": "Reassurance shown at the bottom of the popup and options page."
+  },
+
+  "statusIdle": {
+    "message": "Idle",
+    "description": "Popup status pill: no captioning session is running."
+  },
+  "statusStarting": {
+    "message": "Connecting",
+    "description": "Popup status pill: a session is being established."
+  },
+  "statusRunning": {
+    "message": "Running",
+    "description": "Popup status pill: captions are being produced."
+  },
+  "statusRetry": {
+    "message": "Retry needed",
+    "description": "Popup status pill: the session failed and must be restarted."
+  },
+  "statusTranslationFailed": {
+    "message": "Translation error",
+    "description": "Popup status pill: captions continue but translation is failing."
+  },
+  "statusTranslationDisabled": {
+    "message": "Translation off",
+    "description": "Popup status pill: translation gave up after repeated failures."
+  },
+
+  "providerHeading": {
+    "message": "Providers",
+    "description": "Heading of the provider section in the popup and options page."
+  },
+  "transcriberLabel": {
+    "message": "Speech recognition",
+    "description": "Label for the dropdown that picks the speech provider."
+  },
+  "translatorLabel": {
+    "message": "Translation",
+    "description": "Label for the dropdown that picks the translation provider."
+  },
+  "keysConfigured": {
+    "message": "API key set",
+    "description": "Popup line telling the user the selected provider has its key."
+  },
+  "keysMissing": {
+    "message": "API key not set",
+    "description": "Popup line telling the user the selected provider has no key yet."
+  },
+  "providerSignupLink": {
+    "message": "Get an API key: $1",
+    "description": "Link under a provider dropdown. $1 is the provider's sign-up domain.",
+    "placeholders": {
+      "domain": { "content": "$1", "example": "aistudio.google.com" }
+    }
+  },
+
+  "languageHeading": {
+    "message": "Languages",
+    "description": "Heading of the language section in the popup."
+  },
+  "sourceLanguageLabel": {
+    "message": "Source language",
+    "description": "Label for the spoken-language dropdown."
+  },
+  "targetLanguageLabel": {
+    "message": "Target language",
+    "description": "Label for the translation-language dropdown."
+  },
+  "autoDetect": {
+    "message": "Auto-detect",
+    "description": "The only source-language option in Gemini mode, which detects it itself."
+  },
+
+  "startCaptions": {
+    "message": "Start live captions",
+    "description": "Main popup button when no session is running."
+  },
+  "stopCaptions": {
+    "message": "Stop captions",
+    "description": "Main popup button while a session is running."
+  },
+  "working": {
+    "message": "Working…",
+    "description": "Main popup button while a start or stop request is in flight."
+  },
+
+  "sizeHeading": {
+    "message": "Caption size",
+    "description": "Heading of the font-size section in the popup."
+  },
+  "originalFontSizeLabel": {
+    "message": "Original text size",
+    "description": "Slider label for the source-language font size."
+  },
+  "translationFontSizeLabel": {
+    "message": "Translation text size",
+    "description": "Slider label for the translated-language font size."
+  },
+
+  "layoutHeading": {
+    "message": "Caption layout",
+    "description": "Heading of the layout section in the popup."
+  },
+  "captionRowsLabel": {
+    "message": "Rows shown",
+    "description": "Label for the dropdown that picks how many caption rows are visible."
+  },
+  "captionRows1": {
+    "message": "1 row (original + translation)",
+    "description": "Caption row count option, spelling out that a row is a pair of lines."
+  },
+  "captionRows2": {
+    "message": "2 rows",
+    "description": "Caption row count option."
+  },
+  "captionRows3": {
+    "message": "3 rows",
+    "description": "Caption row count option."
+  },
+  "captionWidthLabel": {
+    "message": "Caption width",
+    "description": "Slider label for the caption box width, as a share of the video."
+  },
+  "maxLineWidthLabel": {
+    "message": "Max line length",
+    "description": "Slider label for the widest a caption row may be cut."
+  },
+  "minLineWidthLabel": {
+    "message": "Min line length",
+    "description": "Slider label for the shortest a caption row may stay before merging."
+  },
+  "backgroundOpacityLabel": {
+    "message": "Background opacity",
+    "description": "Slider label for how opaque the caption box background is."
+  },
+  "bottomOffsetLabel": {
+    "message": "Distance from bottom",
+    "description": "Slider label for how far above the bottom edge the captions sit."
+  },
+  "unitColumns": {
+    "message": " cols",
+    "description": "Unit appended to the line-length sliders. Counted in character widths: CJK counts as two. Keep the leading space."
+  },
+
+  "privacyGemini": {
+    "message": "Once started, the tab's audio is sent to Google Gemini, which returns both the original text and the translation.",
+    "description": "Popup footer explaining where audio goes in Gemini mode."
+  },
+  "privacyDeepgram": {
+    "message": "Once started, the tab's audio is sent to Deepgram and the recognised text is sent to DeepL.",
+    "description": "Popup footer explaining where audio and text go in Deepgram mode."
+  },
+
+  "settingsLoadFailed": {
+    "message": "Could not load settings. Please reopen the extension.",
+    "description": "Popup error when stored settings cannot be read."
+  },
+  "settingsSaveFailed": {
+    "message": "Could not save settings. Please try again.",
+    "description": "Popup error when a setting change cannot be written."
+  },
+  "optionsOpenFailed": {
+    "message": "Could not open the settings page. Choose \"Options\" from the extension menu instead.",
+    "description": "Popup error when chrome.runtime.openOptionsPage fails."
+  },
+  "captionsStopped": {
+    "message": "Captions stopped",
+    "description": "Popup confirmation after the user stops a session."
+  },
+  "stopFailed": {
+    "message": "Could not stop captions",
+    "description": "Popup error when stopping a session fails."
+  },
+  "needGeminiKey": {
+    "message": "Enter your Gemini API key on the settings page first.",
+    "description": "Popup error when starting in Gemini mode without a key."
+  },
+  "needDeepgramAndDeeplKeys": {
+    "message": "Enter your Deepgram and DeepL API keys on the settings page first.",
+    "description": "Popup error when starting in Deepgram mode without both keys."
+  },
+  "startFailed": {
+    "message": "Could not start. Check your API key and the current tab.",
+    "description": "Popup error when starting a session fails for an unknown reason."
+  },
+  "backgroundNoResponse": {
+    "message": "The extension's background service did not respond",
+    "description": "Error when a message to the service worker gets no usable reply."
+  },
+  "needHttpsTab": {
+    "message": "Switch to an https tab that can play video, then start",
+    "description": "Error when the active tab cannot be captioned."
+  },
+  "needDeepgramKeyField": {
+    "message": "Enter a Deepgram API key",
+    "description": "Field-level validation message for the Deepgram key."
+  },
+  "needDeeplKeyField": {
+    "message": "Enter a DeepL API key",
+    "description": "Field-level validation message for the DeepL key."
+  },
+  "needGeminiKeyField": {
+    "message": "Enter a Gemini API key",
+    "description": "Field-level validation message for the Gemini key."
+  },
+
+  "optionsTitle": {
+    "message": "API key settings",
+    "description": "Heading and document title of the options page."
+  },
+  "optionsKeyHint": {
+    "message": "You can clear a key and save. Only the selected provider's key is needed: Deepgram and DeepL work as a pair, Gemini live translate 3.5 works on its own.",
+    "description": "Explanation under the key fields on the options page."
+  },
+  "save": {
+    "message": "Save settings",
+    "description": "Options page submit button."
+  },
+  "saving": {
+    "message": "Saving…",
+    "description": "Options page submit button while a save is in flight."
+  },
+  "keysLoadFailed": {
+    "message": "Could not load your API keys. Please reload and try again.",
+    "description": "Options page error when stored keys cannot be read."
+  },
+  "keysSaved": {
+    "message": "API keys saved",
+    "description": "Options page confirmation after a successful save."
+  },
+  "keysSaveFailed": {
+    "message": "Could not save your API keys. Please try again.",
+    "description": "Options page error when a save fails."
+  },
+  "show": {
+    "message": "Show",
+    "description": "Button that reveals a masked API key field."
+  },
+  "hide": {
+    "message": "Hide",
+    "description": "Button that masks a revealed API key field."
+  },
+  "showSecret": {
+    "message": "Show $1",
+    "description": "Accessible name for the reveal button. $1 is the field's label.",
+    "placeholders": {
+      "field": { "content": "$1", "example": "Gemini API Key" }
+    }
+  },
+  "hideSecret": {
+    "message": "Hide $1",
+    "description": "Accessible name for the mask button. $1 is the field's label.",
+    "placeholders": {
+      "field": { "content": "$1", "example": "Gemini API Key" }
+    }
+  },
+
+  "captionTrackLabel": {
+    "message": "Bilingual live captions",
+    "description": "Name of the native text track used when a video itself goes fullscreen."
+  },
+  "errorDeepgramDisconnected": {
+    "message": "Deepgram disconnected. Please restart captions.",
+    "description": "Caption overlay error."
+  },
+  "errorGeminiDisconnected": {
+    "message": "Gemini disconnected. Please restart captions.",
+    "description": "Caption overlay error."
+  },
+  "errorGeminiInvalidCredentials": {
+    "message": "That Gemini API key was rejected. Update it on the settings page.",
+    "description": "Caption overlay error."
+  },
+  "errorGeminiQuotaExceeded": {
+    "message": "Gemini quota is used up. Try later, or switch provider.",
+    "description": "Caption overlay error."
+  },
+  "errorGeminiUnavailable": {
+    "message": "Gemini is unavailable right now.",
+    "description": "Caption overlay error."
+  },
+  "errorInvalidCredentials": {
+    "message": "That DeepL API key was rejected. Update it on the settings page.",
+    "description": "Caption overlay error."
+  },
+  "errorInvalidResponse": {
+    "message": "DeepL returned something unreadable.",
+    "description": "Caption overlay error."
+  },
+  "errorProviderUnavailable": {
+    "message": "DeepL is unavailable right now.",
+    "description": "Caption overlay error."
+  },
+  "errorQuotaExceeded": {
+    "message": "This month's DeepL translation quota is used up.",
+    "description": "Caption overlay error."
+  },
+  "errorRateLimited": {
+    "message": "Too many requests to DeepL. Please wait a moment.",
+    "description": "Caption overlay error."
+  },
+  "errorTranslationDisabled": {
+    "message": "DeepL failed 5 times in a row; translation is off for this session.",
+    "description": "Caption overlay error."
+  },
+  "errorTranslationFailed": {
+    "message": "DeepL translation failed. The original captions continue.",
+    "description": "Caption overlay error."
+  },
+  "errorUnknown": {
+    "message": "The captioning service hit an unknown error. Please restart.",
+    "description": "Caption overlay fallback for an unrecognised error code."
+  },
+
+  "geminiConnectionTimedOut": {
+    "message": "Gemini connection timed out",
+    "description": "Reason reported when Gemini never answers the setup message."
+  },
+  "geminiSocketError": {
+    "message": "Gemini WebSocket network error",
+    "description": "Reason reported when the Gemini socket raises an error event."
+  },
+  "geminiApiError": {
+    "message": "Gemini API error",
+    "description": "Reason reported when Gemini sends an error frame with no message."
+  },
+  "socketClosed": {
+    "message": "WebSocket closed ($1)",
+    "description": "Reason reported when the socket closes without giving one. $1 is the close code.",
+    "placeholders": {
+      "code": { "content": "$1", "example": "1006" }
+    }
+  }
+}

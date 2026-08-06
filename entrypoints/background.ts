@@ -39,7 +39,8 @@ export default defineBackground(() => {
       await chrome.offscreen.createDocument({
         url: 'offscreen.html',
         reasons: [chrome.offscreen.Reason.USER_MEDIA],
-        justification: '擷取使用者選定分頁的音訊以產生即時字幕',
+        justification:
+          'Capture the audio of the tab the user selected to produce live captions',
       });
     },
     getStreamId: (tabId) =>
@@ -131,9 +132,18 @@ export default defineBackground(() => {
               message.payload.event,
             );
             return { ok: true };
+          case 'CAPTION_PAIR_EVENT':
+            await controller.acceptCaptionPair(
+              message.payload.sessionId,
+              message.payload.event,
+            );
+            return { ok: true };
           case 'CAPTURE_DISCONNECTED':
             return enqueueLifecycle(async () => {
-              await controller.handleDisconnect(message.payload.sessionId);
+              await controller.handleDisconnect(
+                message.payload.sessionId,
+                message.payload.code,
+              );
               if (!controller.snapshot()) {
                 await chrome.storage.session.remove(activeSessionKey);
                 await closeOffscreenIfUnused();

@@ -301,12 +301,16 @@ describe('splitIntoUnits prefix stability', () => {
   // measured across widths 8-30 for the Latin sample below); it just never
   // surfaces at widths the settings can produce, and fixing it would mean
   // redesigning the packing stage, which is out of scope here.
-  function assertPrefixStability(full: string, width: number): void {
+  function assertPrefixStability(
+    full: string,
+    width: number,
+    minWidth = 0,
+  ): void {
     const closed: CaptionUnitSpan[] = [];
     let previousClosedCount = 0;
 
     for (let length = 1; length <= full.length; length += 1) {
-      const units = splitIntoUnits(full.slice(0, length), width);
+      const units = splitIntoUnits(full.slice(0, length), width, minWidth);
       const closedCount = Math.max(units.length - 1, 0);
 
       // A closed unit vanishing would be the worst possible failure here,
@@ -333,10 +337,23 @@ describe('splitIntoUnits prefix stability', () => {
     const cjk =
       '今天我們要討論的主題是關於人工智慧的發展，還有它對整個社會的影響，以及我們應該如何面對未來。' +
       '希望大家可以從中得到一些啟發，並且在日常生活中實踐這些想法，讓世界變得更加美好。';
+    // Short sentences are what make mergeShortUnits act at all, and merging is
+    // the one place units may join across a sentence boundary -- so it is the
+    // stage most likely to break this invariant in a later change.
+    const shortSentences =
+      'Hi. Bye now. Ok then. Yes. No. Maybe so. Right. Sure thing. Well, alright. Mhmm. Got it. Thanks a lot everyone.';
+    const cjkShortSentences =
+      '好。對啊。是這樣沒錯。嗯。我知道了。那我們就先這樣，謝謝大家今天的參與。好的。沒問題。';
 
     for (const width of [40, 90]) {
-      assertPrefixStability(latin, width);
-      assertPrefixStability(cjk, width);
+      // The shipped default minimum is 40, so 0 alone does not cover what
+      // users actually run.
+      for (const minWidth of [0, 40]) {
+        assertPrefixStability(latin, width, minWidth);
+        assertPrefixStability(cjk, width, minWidth);
+        assertPrefixStability(shortSentences, width, minWidth);
+        assertPrefixStability(cjkShortSentences, width, minWidth);
+      }
     }
   });
 });
@@ -707,6 +724,56 @@ describe('CaptionChunker', () => {
         translateText: 'dog near the river',
       },
     ]);
+  });
+
+  // The widening case above recomputes to *fewer* spans, which the
+  // freeze-forward guard already handles. Narrowing recomputes to more, and an
+  // index-based freeze start then points at spans belonging to text the viewer
+  // has already read.
+  it('re-cuts only the unfrozen tail when the width narrows mid-segment', () => {
+    const chunker = new CaptionChunker();
+    const text =
+      'One two three four five six seven. Eight nine ten eleven twelve. Thirteen fourteen now';
+
+    const wide = chunker.ingest({
+      isFinal: false,
+      maxWidth: 90,
+      rawText: text,
+      segmentId: 'segment-1',
+      stableText: text,
+    });
+    const frozen = wide.filter((unit) => unit.isClosed);
+    expect(frozen.map((unit) => unit.displayText)).toEqual([
+      'One two three four five six seven.',
+      'Eight nine ten eleven twelve.',
+    ]);
+
+    const narrowed = chunker.ingest({
+      isFinal: false,
+      maxWidth: 20,
+      rawText: text,
+      segmentId: 'segment-1',
+      stableText: text,
+    });
+
+    // Nothing already frozen may come back under a new id: re-showing it both
+    // rewrites the row being read and spends another translation on text that
+    // was already translated.
+    for (const unit of narrowed) {
+      expect(frozen.map((earlier) => earlier.displayText)).not.toContain(
+        unit.displayText,
+      );
+    }
+    // The tail past the frozen boundary is covered exactly once.
+    expect(narrowed.map((unit) => unit.displayText).join(' ')).toBe(
+      'Thirteen fourteen now',
+    );
+    // Ids keep climbing from where the frozen units stopped.
+    expect(narrowed.map((unit) => unit.id)).toEqual([
+      'segment-1#2',
+      'segment-1#3',
+    ]);
+    expect(narrowed.at(-1)!.isClosed).toBe(false);
   });
 
   it('still delivers the remaining text when a final revises to fewer units than were already frozen', () => {

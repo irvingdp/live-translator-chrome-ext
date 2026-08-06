@@ -1,8 +1,6 @@
 import type { TranscriptEvent } from '../core/transcript-stabilizer';
-import {
-  DeepgramSession,
-  type DeepgramSessionConfig,
-} from '../providers/deepgram-session';
+import { DeepgramSession } from '../providers/deepgram-session';
+import { GeminiLiveSession } from '../providers/gemini-live-session';
 import { Pcm16Chunker } from './pcm16-chunker';
 
 export interface AudioPipeline {
@@ -11,27 +9,44 @@ export interface AudioPipeline {
   onEnded?(listener: () => void): () => void;
 }
 
-export interface TranscriptionSession {
+// A row of caption straight from the provider. Gemini Live Translate returns
+// the source line and its translation together, so nothing downstream has to
+// transcribe, chunk, or translate it.
+export interface CaptionPairEvent {
+  original: string;
+  translation: string;
+  turnId: string;
+}
+
+export type CaptureEvent =
+  | { event: CaptionPairEvent; kind: 'pair' }
+  | { event: TranscriptEvent; kind: 'transcript' };
+
+export interface CaptureSession {
+  readonly audioChunkMs: number;
   close(): void;
   connect(): Promise<void>;
-  onTranscript(listener: (event: TranscriptEvent) => void): () => void;
-  onDisconnect(listener: () => void): () => void;
+  onDisconnect(listener: (code?: string) => void): () => void;
+  onEvent(listener: (event: CaptureEvent) => void): () => void;
   sendAudio(audio: ArrayBuffer): boolean;
 }
 
-export interface CaptureStartRequest extends DeepgramSessionConfig {
+export type CaptureStartRequest = {
   sessionId: string;
   streamId: string;
-}
+} & (
+  | { apiKey: string; language: string; provider: 'deepgram' }
+  | { apiKey: string; provider: 'gemini'; targetLanguage: string }
+);
 
 export interface OffscreenCaptureDependencies {
   createPipeline(
     streamId: string,
     onSamples: (samples: Float32Array) => void,
   ): Promise<AudioPipeline>;
-  createSession(config: DeepgramSessionConfig): TranscriptionSession;
-  emitDisconnect(sessionId: string): void;
-  emitTranscript(sessionId: string, event: TranscriptEvent): void;
+  createSession(request: CaptureStartRequest): CaptureSession;
+  emitDisconnect(sessionId: string, code?: string): void;
+  emitEvent(sessionId: string, event: CaptureEvent): void;
 }
 
 export class OffscreenCaptureController {
@@ -49,24 +64,21 @@ export class OffscreenCaptureController {
       await this.release(previous);
     }
 
-    const session = this.dependencies.createSession({
-      apiKey: request.apiKey,
-      language: request.language,
-    });
+    const session = this.dependencies.createSession(request);
     const capture: ActiveCapture = {
       connected: false,
       pendingAudio: [],
       pendingSamples: [],
       removeDisconnectListener: () => undefined,
-      removeTranscriptListener: () => undefined,
+      removeEventListener: () => undefined,
       session,
       sessionId: request.sessionId,
     };
-    capture.removeTranscriptListener = session.onTranscript((event) =>
-      this.dependencies.emitTranscript(request.sessionId, event),
+    capture.removeEventListener = session.onEvent((event) =>
+      this.dependencies.emitEvent(request.sessionId, event),
     );
-    capture.removeDisconnectListener = session.onDisconnect(() => {
-      this.terminateUnexpected(capture, request.sessionId);
+    capture.removeDisconnectListener = session.onDisconnect((code) => {
+      this.terminateUnexpected(capture, request.sessionId, code);
     });
     this.active = capture;
 
@@ -87,7 +99,11 @@ export class OffscreenCaptureController {
         return;
       }
       capture.pipeline = pipeline;
-      capture.chunker = new Pcm16Chunker(pipeline.sampleRate);
+      capture.chunker = new Pcm16Chunker(
+        pipeline.sampleRate,
+        16_000,
+        session.audioChunkMs,
+      );
       for (const samples of capture.pendingSamples) {
         this.forwardSamples(capture, samples);
       }
@@ -118,7 +134,7 @@ export class OffscreenCaptureController {
   private async release(capture: ActiveCapture): Promise<void> {
     const finalChunk = capture.chunker?.flush();
     if (finalChunk) capture.session.sendAudio(finalChunk);
-    capture.removeTranscriptListener();
+    capture.removeEventListener();
     capture.removeDisconnectListener();
     capture.removePipelineEndedListener?.();
     try {
@@ -144,13 +160,17 @@ export class OffscreenCaptureController {
     }
   }
 
-  private terminateUnexpected(capture: ActiveCapture, sessionId: string): void {
+  private terminateUnexpected(
+    capture: ActiveCapture,
+    sessionId: string,
+    code?: string,
+  ): void {
     if (this.active !== capture) return;
     this.generation += 1;
     this.active = undefined;
     void this.release(capture)
       .catch(() => undefined)
-      .finally(() => this.dependencies.emitDisconnect(sessionId));
+      .finally(() => this.dependencies.emitDisconnect(sessionId, code));
   }
 }
 
@@ -161,14 +181,23 @@ interface ActiveCapture {
   pendingSamples: Float32Array[];
   pipeline?: AudioPipeline;
   removeDisconnectListener: () => void;
+  removeEventListener: () => void;
   removePipelineEndedListener?: () => void;
-  removeTranscriptListener: () => void;
-  session: TranscriptionSession;
+  session: CaptureSession;
   sessionId: string;
 }
 
-export function createDeepgramSession(
-  config: DeepgramSessionConfig,
-): TranscriptionSession {
-  return new DeepgramSession(config);
+export function createCaptureSession(
+  request: CaptureStartRequest,
+): CaptureSession {
+  if (request.provider === 'gemini') {
+    return new GeminiLiveSession({
+      apiKey: request.apiKey,
+      targetLanguage: request.targetLanguage,
+    });
+  }
+  return new DeepgramSession({
+    apiKey: request.apiKey,
+    language: request.language,
+  });
 }

@@ -1,22 +1,33 @@
 import type { CaptionPair } from '../core/caption-window';
+import { t, type MessageKey } from '../core/i18n';
 
 export interface CaptionAppearance {
   backgroundOpacity: number;
   bottomOffset: number;
   captionWidth: number;
+  // How many rows' worth of height the caption box may occupy, or 0 to let it
+  // grow with its content. Only providers whose rows grow on their own need a
+  // ceiling; see the `.viewport.clamped` rule.
+  maxVisibleRows: number;
   originalFontSize: number;
   translationFontSize: number;
 }
 
-const SESSION_ERROR_MESSAGES: Record<string, string> = {
-  deepgram_disconnected: 'Deepgram 字幕連線中斷，請重新啟動',
-  invalid_credentials: 'DeepL API Key 無效，請到設定頁更新',
-  invalid_response: 'DeepL 回傳了無法辨識的資料',
-  provider_unavailable: 'DeepL 服務暫時無法使用',
-  quota_exceeded: 'DeepL 本月翻譯額度已用完',
-  rate_limited: 'DeepL 請求過於頻繁，請稍後再試',
-  translation_disabled: 'DeepL 連續失敗 5 次，本次字幕已停止翻譯',
-  translation_failed: 'DeepL 翻譯失敗，英文字幕仍會繼續',
+// Codes travel from the background; the wording is looked up here so it lands
+// in the language the page is being read in.
+const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
+  deepgram_disconnected: 'errorDeepgramDisconnected',
+  gemini_disconnected: 'errorGeminiDisconnected',
+  gemini_invalid_credentials: 'errorGeminiInvalidCredentials',
+  gemini_quota_exceeded: 'errorGeminiQuotaExceeded',
+  gemini_unavailable: 'errorGeminiUnavailable',
+  invalid_credentials: 'errorInvalidCredentials',
+  invalid_response: 'errorInvalidResponse',
+  provider_unavailable: 'errorProviderUnavailable',
+  quota_exceeded: 'errorQuotaExceeded',
+  rate_limited: 'errorRateLimited',
+  translation_disabled: 'errorTranslationDisabled',
+  translation_failed: 'errorTranslationFailed',
 };
 
 function videoCandidates(document: Document): HTMLVideoElement[] {
@@ -59,6 +70,12 @@ const OVERLAY_CSS = `
     width: 100%;
   }
   .captions {
+    /* Declared rather than written inline because the clamped viewport height
+       is computed from these three; a divergence would size the box to a row
+       height the rows do not actually have. */
+    --caption-line-height: 1.35;
+    --caption-pair-padding: 2px;
+    --caption-translation-gap: 3px;
     align-self: center;
     background: rgba(3, 7, 18, var(--caption-bg-opacity, 0.78));
     border: 1px solid rgba(255, 255, 255, 0.18);
@@ -67,7 +84,7 @@ const OVERLAY_CSS = `
     box-sizing: border-box;
     color: #fff;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    line-height: 1.35;
+    line-height: var(--caption-line-height);
     /* Sized from its own setting rather than its content, so the box stops
        resizing on every caption. A share of the video width keeps it
        independent of the font size and of how many characters a line holds. */
@@ -82,8 +99,45 @@ const OVERLAY_CSS = `
     justify-content: flex-end;
     overflow: hidden;
   }
+  /* Only for providers whose row grows on its own: Gemini keeps one turn open
+     across continuous speech, so without a ceiling that single row eats the
+     screen. Deepgram's rows are already cut to about a line by the chunker,
+     and clamping them would crop the wrap README documents as expected.
+     column-reverse is what pins content to the bottom and sends the overflow
+     off the top; with a single child it lays out identically to the unclamped
+     rule whenever the content fits.
+
+     The two halves are capped separately rather than the pair as a whole:
+     capping only the pair keeps its bottom, which is entirely translation, and
+     the source line disappears — half the point of a bilingual caption. */
+  .viewport.clamped .original,
+  .viewport.clamped .translation {
+    display: flex;
+    flex-direction: column-reverse;
+    max-height: calc(
+      var(--caption-max-rows, 2) * var(--caption-line-height) * 1em
+    );
+    overflow: hidden;
+  }
+  /* Restated because the rule above out-specifies the shared :empty rule. */
+  .viewport.clamped .original:empty,
+  .viewport.clamped .translation:empty { display: none; }
+  /* The pair budget above already fits one row inside this, so this only
+     trims older rows off the top when several are on screen at once. */
+  .viewport.clamped {
+    flex-direction: column-reverse;
+    justify-content: flex-start;
+    max-height: calc(
+      var(--caption-max-rows, 2) * (
+        (var(--caption-original-size, 24px) + var(--caption-translation-size, 22px))
+          * var(--caption-line-height)
+        + var(--caption-translation-gap)
+        + 2 * var(--caption-pair-padding)
+      )
+    );
+  }
   .track { display: flex; flex-direction: column; }
-  .pair { padding: 2px 0; }
+  .pair { padding: var(--caption-pair-padding) 0; }
   .original {
     font-size: var(--caption-original-size, 24px);
     font-weight: 650;
@@ -94,7 +148,7 @@ const OVERLAY_CSS = `
     color: #fde68a;
     font-size: var(--caption-translation-size, 22px);
     font-weight: 550;
-    margin-top: 3px;
+    margin-top: var(--caption-translation-gap);
     overflow-wrap: break-word;
     text-shadow: 0 1px 2px #000;
   }
@@ -163,6 +217,11 @@ export class CaptionOverlay {
     );
     style.setProperty('--caption-bottom-offset', `${appearance.bottomOffset}%`);
     style.setProperty('--caption-width', `${appearance.captionWidth}%`);
+    style.setProperty('--caption-max-rows', `${appearance.maxVisibleRows}`);
+    this.viewportElement?.classList.toggle(
+      'clamped',
+      appearance.maxVisibleRows > 0,
+    );
   }
 
   // Idempotent: the background owns accumulation and sends the whole window on
@@ -257,8 +316,7 @@ export class CaptionOverlay {
   }
 
   setSessionError(code: string): void {
-    this.statusTextValue =
-      SESSION_ERROR_MESSAGES[code] ?? '字幕服務發生未知錯誤，請重新啟動';
+    this.statusTextValue = t(SESSION_ERROR_KEYS[code] ?? 'errorUnknown');
 
     if (this.statusElement) {
       this.statusElement.textContent = this.statusTextValue;
@@ -383,7 +441,7 @@ export class CaptionOverlay {
     this.disableNativeTextTrack();
     const Cue = this.document.defaultView?.VTTCue;
     if (!Cue) return;
-    const track = video.addTextTrack('captions', '雙語即時字幕');
+    const track = video.addTextTrack('captions', t('captionTrackLabel'));
     track.mode = 'showing';
     const cue = new Cue(0, 1_000_000_000, '');
     track.addCue(cue);

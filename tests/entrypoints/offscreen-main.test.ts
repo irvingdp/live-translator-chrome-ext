@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AudioPipeline, TranscriptionSession } from '../../src/audio/offscreen-capture-controller';
+import type { AudioPipeline, CaptureSession } from '../../src/audio/offscreen-capture-controller';
 import type { ExtensionMessage } from '../../src/core/messages';
 
 const audio = vi.hoisted(() => ({
@@ -18,7 +18,7 @@ vi.mock('../../src/audio/offscreen-capture-controller', async () => {
   >('../../src/audio/offscreen-capture-controller');
   return {
     ...actual,
-    createDeepgramSession: audio.createSession,
+    createCaptureSession: audio.createSession,
   };
 });
 
@@ -32,7 +32,7 @@ let listener: OffscreenListener;
 let fetcher: ReturnType<typeof vi.fn<typeof fetch>>;
 let pipeline: AudioPipeline;
 let runtimeSendMessage: ReturnType<typeof vi.fn>;
-let transcriptionSession: TranscriptionSession;
+let transcriptionSession: CaptureSession;
 let emitUnexpectedDisconnect: () => void;
 
 beforeEach(async () => {
@@ -48,13 +48,14 @@ beforeEach(async () => {
   };
   emitUnexpectedDisconnect = () => undefined;
   transcriptionSession = {
+    audioChunkMs: 40,
     close: vi.fn(),
     connect: vi.fn().mockResolvedValue(undefined),
     onDisconnect: vi.fn((registered) => {
       emitUnexpectedDisconnect = registered;
       return vi.fn();
     }),
-    onTranscript: vi.fn(() => vi.fn()),
+    onEvent: vi.fn(() => vi.fn()),
     sendAudio: vi.fn().mockReturnValue(true),
   };
   audio.createPipeline.mockResolvedValue(pipeline);
@@ -278,6 +279,7 @@ function captureStartMessage(
     payload: {
       apiKey: 'deepgram-key',
       language: 'en-US',
+      provider: 'deepgram',
       sessionId,
       streamId: `stream-${sessionId}`,
     },
