@@ -1,0 +1,73 @@
+name: Release
+
+# Tagging is the release trigger. workflow_dispatch is here so the build can be
+# exercised without burning a tag — a workflow that only ever runs on a tag is
+# first proven broken at the worst moment.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          cache: npm
+          node-version-file: .nvmrc
+
+      - run: npm ci
+
+      # The tag and package.json both end up naming the build, and the Chrome
+      # Web Store rejects an upload whose version is not higher than the last.
+      # A mismatch here is far cheaper to find than after a submission.
+      - name: Check the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          package_version="$(node -p "require('./package.json').version")"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $package_version"
+            exit 1
+          fi
+          echo "version $package_version"
+
+      # compile + test + zip. Building without the tests would let a broken
+      # build reach a release asset.
+      - run: npm run release
+
+      - name: Locate the package
+        id: package
+        run: echo "path=$(ls output/*.zip)" >> "$GITHUB_OUTPUT"
+
+      # The manifest has to sit at the root of the zip or the store refuses it,
+      # and _locales has to survive or every label renders empty.
+      - name: Check the package layout
+        run: |
+          unzip -l "${{ steps.package.outputs.path }}"
+          unzip -p "${{ steps.package.outputs.path }}" manifest.json > /dev/null
+          unzip -p "${{ steps.package.outputs.path }}" _locales/en/messages.json > /dev/null
+          unzip -p "${{ steps.package.outputs.path }}" _locales/zh_TW/messages.json > /dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chrome-extension
+          path: output/*.zip
+          if-no-files-found: error
+
+      # The store upload is manual either way, so the release exists to give
+      # that upload one durable, addressable file per version.
+      - name: Attach the package to a release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${{ steps.package.outputs.path }}" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
