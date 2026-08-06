@@ -65,9 +65,13 @@ export class TranscriptStabilizer {
 
     state.lastRevision = event.revision;
     state.lastText = event.text;
+    // Interim stable text never shrinks, or a unit the chunker already froze
+    // would fall outside the text it came from. An equal-length candidate is
+    // still taken: same-length corrections are ordinary in speech recognition
+    // ("their" for "there"), and accepting one cannot shrink anything.
     state.stableText = event.isFinal
       ? candidate
-      : candidate.length > state.stableText.length
+      : candidate.length >= state.stableText.length
         ? candidate
         : state.stableText;
     this.segments.set(event.segmentId, state);

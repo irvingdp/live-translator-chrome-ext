@@ -129,7 +129,7 @@ describe('TranscriptStabilizer', () => {
     });
   });
 
-  it('pins length-only comparison: a same-length but unrelated candidate is discarded, keeping stale text', () => {
+  it('accepts a same-length correction rather than keeping stale text', () => {
     const stabilizer = new TranscriptStabilizer();
     // 'Ready set go' is 12 characters and becomes the stored stable text.
     stabilizer.ingest(event('Ready set go', 1));
@@ -146,16 +146,13 @@ describe('TranscriptStabilizer', () => {
     // stable text's length exactly.
     const update = stabilizer.ingest(event('Sunny day hi there', 4));
 
-    // candidate.length (12) is not strictly greater than the stored
-    // stableText.length (12), so the `>` guard's else-branch keeps the old
-    // value. The result: stale, unrelated text ('Ready set go') wins over a
-    // fully word-complete new candidate ('Sunny day hi') purely because the
-    // comparison is by length, not content. This is a latent problem: any
-    // correction whose stable prefix happens to tie the previous prefix's
-    // character count is silently dropped instead of replacing it.
+    // The candidate ties the stored length exactly. Comparing with `>` would
+    // keep the stale text forever; same-length corrections are ordinary in
+    // speech recognition ("their" for "there"), and taking the newer text
+    // still cannot shrink what was already stable.
     expect(update).toEqual({
       originalText: 'Sunny day hi there',
-      stableText: 'Ready set go',
+      stableText: 'Sunny day hi',
     });
   });
 });
