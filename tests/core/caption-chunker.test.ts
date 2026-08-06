@@ -711,20 +711,14 @@ describe('CaptionChunker', () => {
     ]);
   });
 
-  // These pin a real, deliberately-accepted cost of freezing at a production
-  // width (90, inside the 40-140 range splitIntoUnits is stable at -- see
-  // its "prefix stability" tests above). state.closedEnd anchors the open
-  // unit's displayText to a fixed character offset recorded when the
-  // previous unit froze. If a later revision changes the *length* of the
-  // text at or before that offset (not just appends after it -- e.g. a
-  // provider revising an early word once more context arrives), the anchor
-  // no longer lines up with a real word boundary in the new text, and the
-  // open unit's raw preview can duplicate or garble already-frozen content.
-  // translateText is unaffected in both cases: it always comes from a fresh
-  // splitIntoUnits span, never from the stale offset. Do not use these to
-  // justify making things worse; they exist so a future change can't erode
-  // this further unnoticed.
-  describe('boundary-shift cost of freezing at maxWidth 90', () => {
+  // A revision can change the *length* of text at or before a frozen
+  // boundary -- a provider revising an early word once more context arrives,
+  // not just appending after it. A numeric offset recorded at freeze time
+  // then no longer lines up with a word boundary in the new text, so the
+  // open unit is anchored by the frozen text itself and only falls back to
+  // the offset when that text cannot be found at all. translateText is never
+  // affected either way: it always comes from a fresh splitIntoUnits span.
+  describe('boundary shifts at maxWidth 90', () => {
     const ingest90 = (chunker: CaptionChunker, stableText: string) =>
       chunker.ingest({
         isFinal: false,
@@ -734,41 +728,46 @@ describe('CaptionChunker', () => {
         stableText,
       });
 
-    it('can duplicate already-frozen text in the open unit when a revision lengthens the prefix', () => {
+    it('relocates the open unit when a revision shifts the frozen text along', () => {
       const chunker = new CaptionChunker();
       ingest90(chunker, 'Yes. Right now then');
 
-      // The revision prepends "Um, " (4 characters) before "Yes.". The
-      // frozen segment-1#0 correctly stays "Yes." -- but the open unit's
-      // displayText, sliced from the old numeric closedEnd (4, the width of
-      // "Yes." itself), now lands on the *new* string's "Yes." and shows it
-      // a second time.
-      const units = ingest90(chunker, 'Um, Yes. Right now then');
+      // The revision prepends "Um, " before the frozen "Yes.", so the offset
+      // recorded at freeze time now points into the middle of the new text.
+      // Finding the frozen text itself keeps the open unit starting after it
+      // rather than repeating it -- so the open unit reads exactly as before
+      // and there is nothing to emit.
+      expect(ingest90(chunker, 'Um, Yes. Right now then')).toEqual([]);
+
+      // Growing the shifted text proves the anchor really did relocate: a
+      // stale offset would prepend "Yes. " here, and a lost anchor would
+      // prepend "Um, Yes. " as well.
+      const units = ingest90(chunker, 'Um, Yes. Right now then and more');
 
       expect(units).toEqual([
         {
-          displayText: 'Yes. Right now then',
+          displayText: 'Right now then and more',
           id: 'segment-1#1',
           index: 1,
           isClosed: false,
-          translateText: 'Right now then',
+          translateText: 'Right now then and more',
         },
       ]);
     });
 
-    it('can garble the open unit when a revision changes the prefix by an odd number of characters', () => {
+    it('shows whole text rather than a mid-word cut when the frozen text is gone', () => {
       const chunker = new CaptionChunker();
       ingest90(chunker, 'Yes. Right now then');
 
-      // The revision inserts "Oh " and lowercases "yes" -- a 3-character
-      // change before a 4-character offset, so the stale closedEnd (4)
-      // lands mid-word ("yes") instead of on a boundary, chopping "Y"/"y"
-      // off the front of the open unit's displayText.
+      // Here the revision rewrites the frozen text itself ("Yes." becomes
+      // "yes."), so there is nothing left to anchor on. Repeating a few words
+      // is readable; slicing at the stale offset would chop a word in half
+      // and put "es. Right now then" on screen.
       const units = ingest90(chunker, 'Oh yes. Right now then');
 
       expect(units).toEqual([
         {
-          displayText: 'es. Right now then',
+          displayText: 'Oh yes. Right now then',
           id: 'segment-1#1',
           index: 1,
           isClosed: false,

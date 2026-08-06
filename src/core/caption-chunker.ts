@@ -252,6 +252,34 @@ interface SegmentUnits {
   openTranslate: string;
 }
 
+// Where the open unit starts within `source`. state.closedEnd is an offset
+// captured when the previous unit froze, so a revision that changes the
+// length of text at or before it leaves that number pointing mid-word.
+// Anchoring on the frozen text itself survives such a shift; when even that
+// text is gone, repeating a few words is far more readable than emitting a
+// word chopped in half.
+function openStartIn(source: string, state: SegmentUnits): number {
+  const anchor = state.closed.at(-1);
+  if (anchor === undefined) return 0;
+
+  const expected = state.closedEnd - anchor.length;
+  if (expected >= 0 && source.startsWith(anchor, expected)) return state.closedEnd;
+
+  const relocated = source.lastIndexOf(anchor);
+  if (relocated >= 0) return relocated + anchor.length;
+
+  // The frozen text was rewritten outright, so there is nothing to find. A
+  // revision that kept the same length (a re-cased word) leaves the offset
+  // usable; one that changed it leaves the offset inside a word, and showing
+  // a few repeated words beats putting half a word on screen.
+  const cutsMidWord =
+    state.closedEnd > 0 &&
+    state.closedEnd < source.length &&
+    !WHITESPACE.test(source[state.closedEnd - 1]!) &&
+    !WHITESPACE.test(source[state.closedEnd]!);
+  return cutsMidWord ? 0 : Math.min(state.closedEnd, source.length);
+}
+
 export class CaptionChunker {
   // One entry per in-progress segment. Bounded in practice: the background
   // controller calls clear() on session start and stop, so this never
@@ -323,6 +351,7 @@ export class CaptionChunker {
     }
 
     const openIndex = state.closed.length;
+
     // Stabilized text is a prefix of the raw interim text, so an offset in
     // one is an offset in the other. Fall back if a provider ever breaks
     // that -- and note the fallback is sticky, not a one-update blip: if the
@@ -332,7 +361,7 @@ export class CaptionChunker {
     const source = input.rawText.startsWith(input.stableText)
       ? input.rawText
       : input.stableText;
-    const displayText = source.slice(Math.min(state.closedEnd, source.length)).trim();
+    const displayText = source.slice(openStartIn(source, state)).trim();
     const translateText = spans[openIndex]?.text ?? '';
 
     if (
