@@ -28,10 +28,6 @@ Chrome 116+ 的 Manifest V3 擴充功能：擷取目前分頁的音訊，顯示�
 | 字幕分行 | 依「每行長度上下限」切行 | 一段話一列，由瀏覽器斷行；原文與譯文各自最多顯示「顯示行數」行，較舊的內容從上方裁掉。兩個長度滑桿不適用並自動隱藏 |
 | 原文推進 | 逐字成長 | 整句一次到位 |
 
-設計與評估記錄放在 `docs/`（**本機工作筆記，不進版控**）：以 Gemini 當純文字翻譯器
-為何不採用，見 `superpowers/specs/2026-08-06-gemini-translation-evaluation.md`；改採
-Live Translate 音訊路徑的理由，見
-`superpowers/specs/2026-08-06-gemini-live-translate-adoption.md`。
 
 ## Gemini Live API 
 
