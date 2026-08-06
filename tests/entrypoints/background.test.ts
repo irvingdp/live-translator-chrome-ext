@@ -13,6 +13,7 @@ const settings: AppSettings = {
   backgroundOpacity: 78,
   bottomOffset: 8,
   captionRows: 2,
+  captionWidth: 80,
   deepgramApiKey: 'deepgram-key',
   deeplApiKey: 'deepl-key:fx',
   maxLineWidth: 90,

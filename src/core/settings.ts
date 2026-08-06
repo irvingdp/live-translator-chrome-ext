@@ -12,6 +12,7 @@ export const SETTING_RANGES = {
   backgroundOpacity: { max: 100, min: 0 },
   bottomOffset: { max: 60, min: 0 },
   captionRows: { max: 3, min: 1 },
+  captionWidth: { max: 100, min: 20 },
   maxLineWidth: { max: 140, min: 40 },
   minLineWidth: { max: 120, min: 0 },
   originalFontSize: { max: 48, min: 16 },
@@ -22,6 +23,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   backgroundOpacity: 78,
   bottomOffset: 8,
   captionRows: 2,
+  captionWidth: 80,
   deepgramApiKey: '',
   deeplApiKey: '',
   maxLineWidth: 90,
@@ -81,6 +83,11 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       raw.captionRows,
       SETTING_RANGES.captionRows,
       DEFAULT_SETTINGS.captionRows,
+    ),
+    captionWidth: clamped(
+      raw.captionWidth,
+      SETTING_RANGES.captionWidth,
+      DEFAULT_SETTINGS.captionWidth,
     ),
     deepgramApiKey: stringValue(
       raw.deepgramApiKey,

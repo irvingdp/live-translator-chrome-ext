@@ -244,6 +244,16 @@ export function PopupApp({ api }: { api: PopupApi }) {
           </select>
         </div>
         <RangeField
+          id="caption-width"
+          label="字幕寬度"
+          max={SETTING_RANGES.captionWidth.max}
+          min={SETTING_RANGES.captionWidth.min}
+          step={5}
+          unit="%"
+          value={settings.captionWidth}
+          onChange={(value) => update('captionWidth', value)}
+        />
+        <RangeField
           id="max-line-width"
           label="每行長度上限"
           max={SETTING_RANGES.maxLineWidth.max}

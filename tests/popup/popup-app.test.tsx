@@ -214,6 +214,24 @@ describe('PopupApp', () => {
     );
   });
 
+  it('saves the caption width independently of the line length', async () => {
+    const api = createApi();
+    render(<PopupApp api={api} />);
+
+    fireEvent.change(await screen.findByLabelText('字幕寬度'), {
+      target: { value: '45' },
+    });
+
+    await waitFor(() =>
+      expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          captionWidth: 45,
+          maxLineWidth: DEFAULT_SETTINGS.maxLineWidth,
+        }),
+      ),
+    );
+  });
+
   it('saves the row count and the minimum line width', async () => {
     const api = createApi();
     render(<PopupApp api={api} />);

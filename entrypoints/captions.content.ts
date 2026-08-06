@@ -38,7 +38,7 @@ export default defineContentScript({
       return {
         backgroundOpacity: settings.backgroundOpacity,
         bottomOffset: settings.bottomOffset,
-        maxLineWidth: settings.maxLineWidth,
+        captionWidth: settings.captionWidth,
         originalFontSize: settings.originalFontSize,
         translationFontSize: settings.translationFontSize,
       };

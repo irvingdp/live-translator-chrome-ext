@@ -16,6 +16,7 @@ export interface SessionSettings {
   backgroundOpacity: number;
   bottomOffset: number;
   captionRows: number;
+  captionWidth: number;
   deepgramApiKey: string;
   deeplApiKey: string;
   maxLineWidth: number;

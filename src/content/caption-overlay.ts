@@ -3,7 +3,7 @@ import type { CaptionPair } from '../core/caption-window';
 export interface CaptionAppearance {
   backgroundOpacity: number;
   bottomOffset: number;
-  maxLineWidth: number;
+  captionWidth: number;
   originalFontSize: number;
   translationFontSize: number;
 }
@@ -68,17 +68,13 @@ const OVERLAY_CSS = `
     color: #fff;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     line-height: 1.35;
-    /* The box is sized from the line-width setting rather than its content,
-       so it stops resizing on every caption. 1ch is one column of the
-       chunker's width budget: a Latin character counts 1 and a CJK character,
-       which is about 2ch wide, counts 2. font-size is set here so ch resolves
-       against the original line rather than an inherited size. */
-    box-sizing: content-box;
-    font-size: var(--caption-original-size, 24px);
-    max-width: 92%;
+    /* Sized from its own setting rather than its content, so the box stops
+       resizing on every caption. A share of the video width keeps it
+       independent of the font size and of how many characters a line holds. */
+    box-sizing: border-box;
     padding: 8px 14px;
     text-align: center;
-    width: calc(var(--caption-max-columns, 90) * 1ch);
+    width: var(--caption-width, 80%);
   }
   .viewport {
     display: flex;
@@ -166,7 +162,7 @@ export class CaptionOverlay {
       `${appearance.backgroundOpacity / 100}`,
     );
     style.setProperty('--caption-bottom-offset', `${appearance.bottomOffset}%`);
-    style.setProperty('--caption-max-columns', `${appearance.maxLineWidth}`);
+    style.setProperty('--caption-width', `${appearance.captionWidth}%`);
   }
 
   // Idempotent: the background owns accumulation and sends the whole window on
