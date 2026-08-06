@@ -33,6 +33,8 @@ label { color: #dbe4f0; display: block; font-size: 12px; font-weight: 650; margi
 input, select { background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: var(--text); min-height: 42px; outline: none; padding: 9px 10px; width: 100%; }
 input:focus-visible, select:focus-visible, button:focus-visible { box-shadow: 0 0 0 3px rgba(94,234,212,.28); border-color: var(--focus); outline: none; }
 select:disabled { cursor: not-allowed; opacity: .65; }
+.provider-link { color: #5eead4; font-size: 12px; margin-top: -2px; text-decoration: none; }
+.provider-link:hover { text-decoration: underline; }
 .field { margin-top: 2px; }
 .secret-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .secret-row button { background: #243146; border: 1px solid #475569; border-radius: 8px; color: #e2e8f0; min-height: 42px; min-width: 54px; padding: 0 10px; }

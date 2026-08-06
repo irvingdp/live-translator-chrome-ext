@@ -24,6 +24,8 @@ export function PopupApp({ api }: { api: PopupApi }) {
   const [status, setStatus] = useState<SessionStatus>({ state: 'idle' });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [transcriber, setTranscriber] = useState('deepgram');
+  const [translator, setTranslator] = useState('deepl');
   const saveTail = useRef<Promise<void>>(Promise.resolve());
   const sessionAttempt = useRef(0);
 
@@ -140,16 +142,28 @@ export function PopupApp({ api }: { api: PopupApi }) {
       <section className="card" aria-labelledby="provider-heading">
         <h2 id="provider-heading">服務提供者</h2>
         <label htmlFor="transcriber">語音辨識</label>
-        <select id="transcriber" defaultValue="deepgram" disabled={running}>
+        <select
+          id="transcriber"
+          disabled={running}
+          value={transcriber}
+          onChange={(event) => setTranscriber(event.target.value)}
+        >
           <option value="deepgram">Deepgram Nova-3</option>
           <option disabled>本地 Whisper（即將推出）</option>
         </select>
+        <ProviderLink provider={transcriber} />
 
         <label htmlFor="translator">翻譯</label>
-        <select id="translator" defaultValue="deepl" disabled={running}>
+        <select
+          id="translator"
+          disabled={running}
+          value={translator}
+          onChange={(event) => setTranslator(event.target.value)}
+        >
           <option value="deepl">DeepL API</option>
           <option disabled>Gemini 3.5 Live（即將推出）</option>
         </select>
+        <ProviderLink provider={translator} />
         <div className="provider-summary">
           <p className={`provider-state ${keysConfigured ? 'configured' : ''}`}>
             {keysConfigured ? 'API Key 已設定' : 'API Key 尚未設定'}
@@ -309,6 +323,28 @@ export function PopupApp({ api }: { api: PopupApi }) {
         僅保存在這台裝置的 Chrome 本機儲存空間。
       </p>
     </main>
+  );
+}
+
+// Where to go to sign up for the selected provider. A provider with no entry
+// renders nothing, so a future option cannot ship a dead link.
+const PROVIDER_SIGNUP: Record<string, { href: string; label: string }> = {
+  deepgram: { href: 'https://console.deepgram.com/', label: 'console.deepgram.com' },
+  deepl: { href: 'https://www.deepl.com/', label: 'www.deepl.com' },
+};
+
+function ProviderLink({ provider }: { provider: string }) {
+  const signup = PROVIDER_SIGNUP[provider];
+  if (!signup) return null;
+  return (
+    <a
+      className="provider-link"
+      href={signup.href}
+      rel="noreferrer"
+      target="_blank"
+    >
+      前往申請 API Key：{signup.label}
+    </a>
   );
 }
 

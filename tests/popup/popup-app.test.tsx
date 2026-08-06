@@ -214,6 +214,23 @@ describe('PopupApp', () => {
     );
   });
 
+  it('links each selected provider to where its API key is issued', async () => {
+    render(<PopupApp api={createApi()} />);
+
+    const deepgram = await screen.findByRole('link', {
+      name: /console\.deepgram\.com/,
+    });
+    const deepl = screen.getByRole('link', { name: /www\.deepl\.com/ });
+
+    expect(deepgram).toHaveAttribute('href', 'https://console.deepgram.com/');
+    expect(deepl).toHaveAttribute('href', 'https://www.deepl.com/');
+    // The popup closes when a tab opens, so these must not navigate it.
+    for (const link of [deepgram, deepl]) {
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noreferrer');
+    }
+  });
+
   it('saves the caption width independently of the line length', async () => {
     const api = createApi();
     render(<PopupApp api={api} />);
