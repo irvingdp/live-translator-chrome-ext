@@ -5,6 +5,7 @@ import {
   DEFAULT_SETTINGS,
   LANGUAGE_OPTIONS,
   normalizeSettings,
+  SETTING_RANGES,
   type AppSettings,
   validateSettingsForStart,
 } from '../core/settings';
@@ -209,14 +210,53 @@ export function PopupApp({ api }: { api: PopupApi }) {
         <RangeField
           id="original-size"
           label="原文字級"
+          max={SETTING_RANGES.originalFontSize.max}
+          min={SETTING_RANGES.originalFontSize.min}
+          unit="px"
           value={settings.originalFontSize}
           onChange={(value) => update('originalFontSize', value)}
         />
         <RangeField
           id="translation-size"
           label="譯文字級"
+          max={SETTING_RANGES.translationFontSize.max}
+          min={SETTING_RANGES.translationFontSize.min}
+          unit="px"
           value={settings.translationFontSize}
           onChange={(value) => update('translationFontSize', value)}
+        />
+      </section>
+
+      <section className="card" aria-labelledby="layout-heading">
+        <h2 id="layout-heading">字幕版面</h2>
+        <RangeField
+          id="max-line-width"
+          label="每行長度上限"
+          max={SETTING_RANGES.maxLineWidth.max}
+          min={SETTING_RANGES.maxLineWidth.min}
+          step={5}
+          unit=" 字寬"
+          value={settings.maxLineWidth}
+          onChange={(value) => update('maxLineWidth', value)}
+        />
+        <RangeField
+          id="background-opacity"
+          label="背景透明度"
+          max={SETTING_RANGES.backgroundOpacity.max}
+          min={SETTING_RANGES.backgroundOpacity.min}
+          step={5}
+          unit="%"
+          value={settings.backgroundOpacity}
+          onChange={(value) => update('backgroundOpacity', value)}
+        />
+        <RangeField
+          id="bottom-offset"
+          label="距底部位置"
+          max={SETTING_RANGES.bottomOffset.max}
+          min={SETTING_RANGES.bottomOffset.min}
+          unit="%"
+          value={settings.bottomOffset}
+          onChange={(value) => update('bottomOffset', value)}
         />
       </section>
 
@@ -240,18 +280,37 @@ export function PopupApp({ api }: { api: PopupApi }) {
 function RangeField({
   id,
   label,
+  max,
+  min,
   onChange,
+  step = 1,
+  unit,
   value,
 }: {
   id: string;
   label: string;
+  max: number;
+  min: number;
   onChange(value: number): void;
+  step?: number;
+  unit: string;
   value: number;
 }) {
   return (
     <div className="range-field">
-      <div className="range-label"><label htmlFor={id}>{label}</label><output>{value}px</output></div>
-      <input id={id} max="48" min="16" type="range" value={value} onChange={(event) => onChange(Number(event.target.value))} />
+      <div className="range-label">
+        <label htmlFor={id}>{label}</label>
+        <output>{`${value}${unit}`}</output>
+      </div>
+      <input
+        id={id}
+        max={max}
+        min={min}
+        step={step}
+        type="range"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
     </div>
   );
 }
