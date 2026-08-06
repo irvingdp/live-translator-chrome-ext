@@ -112,6 +112,145 @@ describe('CaptionOverlay', () => {
     ]);
   });
 
+  it('slides the track up and removes the outgoing unit when the window is full', async () => {
+    vi.useFakeTimers();
+    try {
+      const overlay = new CaptionOverlay(document);
+      overlay.show(appearance);
+      overlay.setWindow([
+        { id: 'a', original: 'A', translation: '甲' },
+        { id: 'b', original: 'B', translation: '乙' },
+      ]);
+
+      overlay.setWindow([
+        { id: 'b', original: 'B', translation: '乙' },
+        { id: 'c', original: 'C', translation: '丙' },
+      ]);
+
+      const host = document.querySelector('[data-bilingual-caption-root]');
+      const track = host?.shadowRoot?.querySelector<HTMLElement>('.track');
+      expect(pairsOf(document).map((pair) => pair.id)).toEqual(['a', 'b', 'c']);
+      expect(track?.classList.contains('instant')).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(400);
+
+      expect(pairsOf(document).map((pair) => pair.id)).toEqual(['b', 'c']);
+      expect(track?.classList.contains('instant')).toBe(false);
+      expect(track?.style.transform).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not push when a unit only joins a window that was not full', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show(appearance);
+    overlay.setWindow([{ id: 'a', original: 'A', translation: '甲' }]);
+
+    overlay.setWindow([
+      { id: 'a', original: 'A', translation: '甲' },
+      { id: 'b', original: 'B', translation: '乙' },
+    ]);
+
+    const track = document
+      .querySelector('[data-bilingual-caption-root]')
+      ?.shadowRoot?.querySelector<HTMLElement>('.track');
+    expect(pairsOf(document).map((pair) => pair.id)).toEqual(['a', 'b']);
+    expect(track?.classList.contains('instant')).toBe(false);
+    expect(track?.style.transform).toBe('');
+  });
+
+  it('drops outgoing units without a push when nothing was appended', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show(appearance);
+    overlay.setWindow([
+      { id: 'a', original: 'A', translation: '甲' },
+      { id: 'b', original: 'B', translation: '乙' },
+    ]);
+
+    overlay.setWindow([]);
+
+    expect(pairsOf(document)).toEqual([]);
+  });
+
+  it('leaves no orphaned elements after two pushes in a row', async () => {
+    vi.useFakeTimers();
+    try {
+      const overlay = new CaptionOverlay(document);
+      overlay.show(appearance);
+      overlay.setWindow([
+        { id: 'a', original: 'A', translation: '甲' },
+        { id: 'b', original: 'B', translation: '乙' },
+      ]);
+      overlay.setWindow([
+        { id: 'b', original: 'B', translation: '乙' },
+        { id: 'c', original: 'C', translation: '丙' },
+      ]);
+      overlay.setWindow([
+        { id: 'c', original: 'C', translation: '丙' },
+        { id: 'd', original: 'D', translation: '丁' },
+      ]);
+
+      await vi.advanceTimersByTimeAsync(400);
+
+      const track = document
+        .querySelector('[data-bilingual-caption-root]')
+        ?.shadowRoot?.querySelector<HTMLElement>('.track');
+      expect(pairsOf(document).map((pair) => pair.id)).toEqual(['c', 'd']);
+      expect(track?.classList.contains('instant')).toBe(false);
+      expect(track?.style.transform).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('survives hiding while a push is still in flight', async () => {
+    vi.useFakeTimers();
+    try {
+      const overlay = new CaptionOverlay(document);
+      overlay.show(appearance);
+      overlay.setWindow([
+        { id: 'a', original: 'A', translation: '甲' },
+        { id: 'b', original: 'B', translation: '乙' },
+      ]);
+      overlay.setWindow([
+        { id: 'b', original: 'B', translation: '乙' },
+        { id: 'c', original: 'C', translation: '丙' },
+      ]);
+
+      overlay.hide();
+      // The pending push timer still holds references to the discarded host.
+      await vi.advanceTimersByTimeAsync(400);
+
+      overlay.show(appearance);
+      expect(pairsOf(document)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('drops the outgoing unit immediately when motion is reduced', () => {
+    const matchMedia = vi.fn().mockReturnValue({ matches: true });
+    vi.stubGlobal('matchMedia', matchMedia);
+    try {
+      const overlay = new CaptionOverlay(document);
+      overlay.show(appearance);
+      overlay.setWindow([
+        { id: 'a', original: 'A', translation: '甲' },
+        { id: 'b', original: 'B', translation: '乙' },
+      ]);
+
+      overlay.setWindow([
+        { id: 'b', original: 'B', translation: '乙' },
+        { id: 'c', original: 'C', translation: '丙' },
+      ]);
+
+      expect(pairsOf(document).map((pair) => pair.id)).toEqual(['b', 'c']);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('renders a window that arrived before the overlay was shown', () => {
     const overlay = new CaptionOverlay(document);
 

@@ -43,6 +43,8 @@ export function findLargestVisibleVideo(
     )[0]?.video;
 }
 
+const PUSH_DURATION_MS = 220;
+
 const OVERLAY_CSS = `
   :host { all: initial; }
   .stage {
@@ -100,8 +102,10 @@ const OVERLAY_CSS = `
     text-shadow: 0 1px 2px #000;
   }
   .original:empty, .translation:empty, .status-message:empty { display: none; }
+  .track.instant { transition: none; }
   @media (prefers-reduced-motion: no-preference) {
     .captions { transition: opacity 160ms ease-out; }
+    .track { transition: transform 220ms ease-out; }
   }
 `;
 
@@ -171,6 +175,7 @@ export class CaptionOverlay {
         child instanceof HTMLElement && !incoming.has(child.dataset.pairId ?? ''),
     );
 
+    let appended = false;
     for (const pair of pairs) {
       const existing = this.pairElements.get(pair.id);
       if (existing) {
@@ -180,10 +185,61 @@ export class CaptionOverlay {
       const element = this.createPair(pair);
       track.append(element);
       this.pairElements.set(pair.id, element);
+      appended = true;
     }
 
     if (outgoing.length === 0) return;
-    this.removePairs(outgoing);
+    // Nothing was pushed in, so there is no motion to cover the drop.
+    if (!appended || this.prefersReducedMotion()) {
+      this.removePairs(outgoing);
+      return;
+    }
+    this.animatePush(outgoing);
+  }
+
+  private prefersReducedMotion(): boolean {
+    const view = this.document.defaultView;
+    return (
+      view?.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+    );
+  }
+
+  // The track is bottom-aligned, so appending already moved the older units up
+  // by the outgoing height. Offsetting the track by that measured distance and
+  // releasing it on the next frame replays that jump as a slide, which keeps
+  // the animation in step with the real layout instead of a guessed height.
+  private animatePush(outgoing: HTMLElement[]): void {
+    const track = this.trackElement;
+    const viewport = this.viewportElement;
+    if (!track || !viewport) {
+      this.removePairs(outgoing);
+      return;
+    }
+    const distance = outgoing.reduce(
+      (total, element) => total + element.offsetHeight,
+      0,
+    );
+    const pinnedHeight = viewport.offsetHeight;
+    if (pinnedHeight > 0) viewport.style.height = `${pinnedHeight}px`;
+    track.classList.add('instant');
+    track.style.transform = `translateY(${distance}px)`;
+    void track.offsetHeight;
+
+    const view = this.document.defaultView;
+    const release = () => {
+      track.classList.remove('instant');
+      track.style.transform = '';
+    };
+    if (view?.requestAnimationFrame) view.requestAnimationFrame(release);
+    else release();
+
+    const finish = () => {
+      this.removePairs(outgoing);
+      release();
+      viewport.style.height = '';
+    };
+    if (view?.setTimeout) view.setTimeout(finish, PUSH_DURATION_MS + 40);
+    else finish();
   }
 
   setSessionError(code: string): void {
