@@ -17,11 +17,20 @@ function createApi(overrides: Partial<PopupApi> = {}): PopupApi {
 }
 
 describe('PopupApp', () => {
-  it('shows future providers as disabled coming-soon options', async () => {
+  it('shows the future transcriber as a disabled coming-soon option', async () => {
     render(<PopupApp api={createApi()} />);
 
     expect(await screen.findByText('本地 Whisper（即將推出）')).toBeDisabled();
-    expect(screen.getByText('Gemini 3.5 Live（即將推出）')).toBeDisabled();
+  });
+
+  it('offers no translator we are not actually shipping', async () => {
+    render(<PopupApp api={createApi()} />);
+
+    const translator = await screen.findByLabelText('翻譯');
+
+    expect(
+      [...translator.querySelectorAll('option')].map((option) => option.textContent),
+    ).toEqual(['DeepL API']);
   });
 
   it('removes API Key fields and directs unconfigured users to options', async () => {

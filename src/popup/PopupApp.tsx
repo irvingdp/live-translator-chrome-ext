@@ -161,7 +161,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
           onChange={(event) => setTranslator(event.target.value)}
         >
           <option value="deepl">DeepL API</option>
-          <option disabled>Gemini 3.5 Live（即將推出）</option>
         </select>
         <ProviderLink provider={translator} />
         <div className="provider-summary">

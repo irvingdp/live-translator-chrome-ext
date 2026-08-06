@@ -14,7 +14,7 @@ Chrome 116+ 的 Manifest V3 擴充功能：擷取目前分頁的音訊，以 Dee
 - 字幕框寬度固定，由「字幕寬度」單獨決定，不隨句子長短或字級伸縮
 - API Key 僅存放於 `chrome.storage.local`
 
-本地 Whisper、Gemini Live、系統音訊與跨 App 置頂字幕目前只在介面標示為後續功能。
+本地 Whisper、系統音訊與跨 App 置頂字幕目前只在介面標示為後續功能。翻譯目前只支援 DeepL；Gemini 已評估後排除，理由見 `docs/superpowers/specs/2026-08-06-gemini-translation-evaluation.md`。
 
 ## 本機執行
 
