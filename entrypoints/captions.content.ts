@@ -1,5 +1,13 @@
 import type { TabMessage } from '../src/core/capture-session-controller';
-import { CaptionOverlay } from '../src/content/caption-overlay';
+import {
+  DEFAULT_SETTINGS,
+  normalizeSettings,
+  type AppSettings,
+} from '../src/core/settings';
+import {
+  CaptionOverlay,
+  type CaptionAppearance,
+} from '../src/content/caption-overlay';
 
 export default defineContentScript({
   matches: ['https://*/*'],
@@ -21,25 +29,40 @@ export default defineContentScript({
     window.addEventListener('scroll', requestPosition, { passive: true });
     document.addEventListener('fullscreenchange', requestPosition);
 
+    const readAppearance = async (): Promise<CaptionAppearance> => {
+      const stored = await chrome.storage.local.get('settings');
+      const settings = normalizeSettings(
+        (stored.settings as Partial<AppSettings> | undefined) ??
+          DEFAULT_SETTINGS,
+      );
+      return {
+        backgroundOpacity: settings.backgroundOpacity,
+        bottomOffset: settings.bottomOffset,
+        originalFontSize: settings.originalFontSize,
+        translationFontSize: settings.translationFontSize,
+      };
+    };
+
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local' || !changes.settings) return;
+      void readAppearance().then((appearance) =>
+        overlay.setAppearance(appearance),
+      );
+    });
+
     chrome.runtime.onMessage.addListener((message: TabMessage, _sender, sendResponse) => {
       switch (message.type) {
         case 'CONTENT_PING':
           sendResponse({ ok: true });
           break;
         case 'OVERLAY_SHOW':
-          overlay.show(message.payload);
+          void readAppearance().then((appearance) => overlay.show(appearance));
           break;
         case 'OVERLAY_HIDE':
           overlay.hide();
           break;
-        case 'CAPTION_ORIGINAL':
-          overlay.setOriginal(
-            message.payload.segmentId,
-            message.payload.text,
-          );
-          break;
-        case 'CAPTION_TRANSLATION':
-          overlay.setTranslation(message.payload);
+        case 'CAPTION_WINDOW':
+          overlay.setWindow(message.payload.pairs);
           break;
         case 'SESSION_ERROR':
           overlay.setSessionError(message.payload.code);
