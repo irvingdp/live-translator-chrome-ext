@@ -88,6 +88,7 @@ export class CaptureSessionController {
   private settings?: SessionSettings;
   private readonly captionWindow = new CaptionWindow();
   private readonly chunker = new CaptionChunker();
+  private readonly translatedSources = new Map<string, string>();
   private stabilizer = new TranscriptStabilizer();
   private currentStatus: SessionStatus = { state: 'idle' };
   private currentTranslationErrorAttemptId?: number;
@@ -120,6 +121,7 @@ export class CaptureSessionController {
     this.settings = snapshot.settings;
     this.stabilizer = new TranscriptStabilizer();
     this.captionWindow.clear();
+    this.translatedSources.clear();
     this.chunker.clear();
     this.currentTranslationErrorAttemptId = undefined;
     this.lastSuccessfulTranslationAttemptId = 0;
@@ -156,6 +158,7 @@ export class CaptureSessionController {
     this.lastSuccessfulTranslationAttemptId = 0;
     this.translationAttemptSequence = 0;
     this.captionWindow.clear();
+    this.translatedSources.clear();
     this.chunker.clear();
     this.translationCoordinator = this.createTranslationCoordinator(
       sessionId,
@@ -249,6 +252,11 @@ export class CaptureSessionController {
 
     for (const unit of units) {
       if (!unit.translateText) continue;
+      // A unit is translated while it is still open and re-emitted when it
+      // closes, usually with byte-identical text. Sending it twice spends
+      // provider quota to receive an answer we already have.
+      if (this.translatedSources.get(unit.id) === unit.translateText) continue;
+      this.translatedSources.set(unit.id, unit.translateText);
       await this.translateUnit(unit, event.revision, tabId, generation);
     }
   }
@@ -360,6 +368,7 @@ export class CaptureSessionController {
       this.settings = undefined;
       this.activeSessionId = undefined;
       this.captionWindow.clear();
+      this.translatedSources.clear();
       this.chunker.clear();
       this.currentTranslationErrorAttemptId = undefined;
       this.lastSuccessfulTranslationAttemptId = 0;

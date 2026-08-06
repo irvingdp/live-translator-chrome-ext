@@ -283,6 +283,40 @@ describe('CaptureSessionController', () => {
     expect(harness.dependencies.translate).not.toHaveBeenCalled();
   });
 
+  it('does not pay for a second translation of text it already translated', async () => {
+    const harness = createHarness();
+    vi.mocked(harness.dependencies.translate).mockImplementation(
+      async (_sessionId, request) => `[${request.text}]`,
+    );
+    const sessionId = await startSession(harness, { maxLineWidth: 20 });
+
+    // Unit 0 is translated while it is still open, then the third event
+    // closes it with byte-identical text. Re-sending that would spend
+    // provider quota to receive an answer we already have.
+    for (const [index, text] of [
+      'Hello there.',
+      'Hello there. And now we',
+      'Hello there. And now we go. Then more',
+    ].entries()) {
+      await harness.controller.acceptTranscript(sessionId, {
+        isFinal: false,
+        revision: index + 1,
+        segmentId: 'segment-1',
+        text,
+      });
+    }
+
+    const translated = vi
+      .mocked(harness.dependencies.translate)
+      .mock.calls.map(([, request]) => request.text);
+
+    expect(translated).toEqual([...new Set(translated)]);
+    expect(windowsSentTo(harness).at(-1)!.payload.pairs[0]).toMatchObject({
+      id: 'segment-1#0',
+      translation: '[Hello there.]',
+    });
+  });
+
   it('replays the current window when the content script reports ready', async () => {
     const harness = createHarness();
     const sessionId = await startSession(harness);
