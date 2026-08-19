@@ -1,5 +1,5 @@
 import type { CaptionPairUpdate } from '../audio/offscreen-capture-controller';
-import { isWideCharacter, splitIntoUnits } from '../core/caption-chunker';
+import { isWideCharacter, splitIntoSentences } from '../core/caption-chunker';
 import { t } from '../core/i18n';
 
 export const GEMINI_MODEL = 'models/gemini-3.5-live-translate-preview';
@@ -180,6 +180,34 @@ interface SentenceUpdate {
   text: string;
 }
 
+// Live transcription is mostly delivered as either cumulative text or clean
+// append-only fragments, but Gemini occasionally revises the tail by sending a
+// fragment whose beginning repeats text already near the end of the open
+// sentence. Appending that frame creates a phantom source row and shifts every
+// later translation by one. Replace from the longest repeated prefix instead.
+function mergeOverlappingFragment(previous: string, fragment: string): string {
+  if (!previous || !fragment) return previous + fragment;
+  const trimmed = fragment.trimStart();
+  if (!trimmed) return previous;
+  const haystack = previous.toLocaleLowerCase();
+  const needle = trimmed.toLocaleLowerCase();
+  const searchFrom = Math.max(
+    0,
+    previous.length - 240,
+    Math.floor(previous.length * 0.45),
+  );
+  const longest = Math.min(needle.length, 120);
+  for (let length = longest; length >= 8; length -= 1) {
+    const prefix = needle.slice(0, length);
+    const index = haystack.lastIndexOf(prefix);
+    if (index < searchFrom) continue;
+    const before = previous[index - 1];
+    if (before && /[\p{L}\p{N}]/u.test(before)) continue;
+    return previous.slice(0, index) + trimmed;
+  }
+  return previous + fragment;
+}
+
 // One of Gemini's two independent transcription streams. It accepts both the
 // cumulative updates used by Live Translate and fragment updates used by other
 // Live models, then consumes every frozen sentence so a long turn retains only
@@ -191,7 +219,7 @@ class SentenceStream {
   private openText = '';
   private text = '';
 
-  ingest(next: string, maxWidth: number): SentenceUpdate[] {
+  ingest(next: string, _maxWidth: number): SentenceUpdate[] {
     const tail =
       next.length >= this.consumed ? next.slice(this.consumed) : undefined;
     const previous = this.text;
@@ -202,19 +230,19 @@ class SentenceStream {
       if (tail === undefined) return [];
       this.text = tail;
     } else if (this.mode === 'fragment') {
-      this.text += next;
+      this.text = mergeOverlappingFragment(this.text, next);
     } else if (tail !== undefined && this.looksCumulative(previous, tail)) {
       this.text = tail;
       if (previous) this.mode = 'cumulative';
     } else {
-      this.text += next;
+      this.text = mergeOverlappingFragment(this.text, next);
       if (previous) this.mode = 'fragment';
     }
-    return this.segment(maxWidth, false);
+    return this.segment(false);
   }
 
-  finalize(maxWidth: number): SentenceUpdate[] {
-    return this.segment(maxWidth, true);
+  finalize(_maxWidth: number): SentenceUpdate[] {
+    return this.segment(true);
   }
 
   reset(): void {
@@ -237,8 +265,8 @@ class SentenceStream {
     return common >= 3;
   }
 
-  private segment(maxWidth: number, isFinal: boolean): SentenceUpdate[] {
-    const spans = splitIntoUnits(this.text, maxWidth);
+  private segment(isFinal: boolean): SentenceUpdate[] {
+    const spans = splitIntoSentences(this.text);
     const freezeUntil = isFinal
       ? spans.length
       : Math.max(spans.length - 1, 0);
@@ -307,15 +335,18 @@ function joinSentenceParts(parts: string[]): string {
 }
 
 // Converts Gemini's independently-timed source and target streams into stable
-// bilingual sentence rows. Source sentences establish rows; target-only
-// updates are cached so a late translation cannot resurrect an evicted row.
+// bilingual rows. A target sentence locks to the newest source row that exists
+// when it first appears; its later revisions keep that assignment. One bad
+// source split can therefore leave one untranslated row, but cannot shift all
+// subsequent translations.
 export class GeminiCaptionAccumulator {
   private maxLineWidth: number;
   private readonly original = new SentenceStream();
   private pendingRollover = false;
   private sourceCount = 0;
-  private sourceFinal = false;
   private readonly translation = new SentenceStream();
+  private readonly translationAssignments = new Map<number, number>();
+  private readonly translationPrefixes = new Map<number, string>();
   private readonly translations = new Map<number, TranslationSentence>();
   private turnIndex = 0;
 
@@ -355,9 +386,7 @@ export class GeminiCaptionAccumulator {
         this.original.finalize(this.maxLineWidth),
         pending,
       );
-      this.sourceFinal = true;
       this.pendingRollover = true;
-      this.emitTranslationTail(pending);
     }
     return [...pending.values()];
   }
@@ -368,9 +397,7 @@ export class GeminiCaptionAccumulator {
   closeTurn(): CaptionPairUpdate[] {
     const pending = new Map<string, CaptionPairUpdate>();
     this.acceptOriginal(this.original.finalize(this.maxLineWidth), pending);
-    this.sourceFinal = true;
     this.pendingRollover = true;
-    this.emitTranslationTail(pending);
     return [...pending.values()];
   }
 
@@ -381,11 +408,9 @@ export class GeminiCaptionAccumulator {
     for (const update of updates) {
       this.sourceCount = Math.max(this.sourceCount, update.index + 1);
       this.queue(pending, update.index, { original: update.text });
-      const translated = this.translations.get(update.index);
-      if (translated) {
-        this.queue(pending, update.index, { translation: translated.text });
-      }
     }
+    this.assignWaitingTranslations(pending);
+    this.compactAssignedTranslations();
     this.trimTranslations();
   }
 
@@ -398,32 +423,66 @@ export class GeminiCaptionAccumulator {
         isClosed: update.isClosed,
         text: update.text,
       });
-      if (this.sourceFinal) {
-        if (update.index < this.sourceCount - 1) {
-          this.queue(pending, update.index, { translation: update.text });
-        } else {
-          this.emitTranslationTail(pending);
-        }
-      } else if (update.index < this.sourceCount) {
-        this.queue(pending, update.index, { translation: update.text });
+      let sourceIndex = this.translationAssignments.get(update.index);
+      if (sourceIndex === undefined && this.sourceCount > 0) {
+        sourceIndex = this.sourceCount - 1;
+        this.translationAssignments.set(update.index, sourceIndex);
+      }
+      if (sourceIndex !== undefined) {
+        this.emitAssignedTranslation(sourceIndex, pending);
       }
     }
+    this.compactAssignedTranslations();
     this.trimTranslations();
   }
 
-  private emitTranslationTail(
+  private assignWaitingTranslations(
     pending: Map<string, CaptionPairUpdate>,
   ): void {
     if (this.sourceCount === 0) return;
-    const lastSourceIndex = this.sourceCount - 1;
-    const tail = [...this.translations.entries()]
-      .filter(([index]) => index >= lastSourceIndex)
+    const latestSourceIndex = this.sourceCount - 1;
+    let assigned = false;
+    for (const targetIndex of this.translations.keys()) {
+      if (this.translationAssignments.has(targetIndex)) continue;
+      this.translationAssignments.set(targetIndex, latestSourceIndex);
+      assigned = true;
+    }
+    if (assigned) this.emitAssignedTranslation(latestSourceIndex, pending);
+  }
+
+  private emitAssignedTranslation(
+    sourceIndex: number,
+    pending: Map<string, CaptionPairUpdate>,
+  ): void {
+    const prefix = this.translationPrefixes.get(sourceIndex);
+    const parts = [...this.translations.entries()]
+      .filter(
+        ([targetIndex]) =>
+          this.translationAssignments.get(targetIndex) === sourceIndex,
+      )
       .sort(([left], [right]) => left - right)
       .map(([, sentence]) => sentence.text);
-    if (tail.length > 0) {
-      this.queue(pending, lastSourceIndex, {
-        translation: joinSentenceParts(tail),
-      });
+    if (prefix) parts.unshift(prefix);
+    if (parts.length === 0) return;
+    this.queue(pending, sourceIndex, {
+      translation: joinSentenceParts(parts),
+    });
+  }
+
+  private compactAssignedTranslations(): void {
+    for (const [targetIndex, sentence] of this.translations) {
+      if (!sentence.isClosed) continue;
+      const sourceIndex = this.translationAssignments.get(targetIndex);
+      if (sourceIndex === undefined) continue;
+      const previous = this.translationPrefixes.get(sourceIndex);
+      this.translationPrefixes.set(
+        sourceIndex,
+        joinSentenceParts(
+          previous ? [previous, sentence.text] : [sentence.text],
+        ),
+      );
+      this.translations.delete(targetIndex);
+      this.translationAssignments.delete(targetIndex);
     }
   }
 
@@ -441,10 +500,10 @@ export class GeminiCaptionAccumulator {
       this.translation.finalize(this.maxLineWidth),
       pending,
     );
-    this.emitTranslationTail(pending);
     this.pendingRollover = false;
     this.sourceCount = 0;
-    this.sourceFinal = false;
+    this.translationAssignments.clear();
+    this.translationPrefixes.clear();
     this.translations.clear();
     this.turnIndex += 1;
     this.original.reset();
@@ -452,20 +511,13 @@ export class GeminiCaptionAccumulator {
   }
 
   private trimTranslations(): void {
-    // Once the source advances, only its latest sentence can still become the
-    // merged tail. Older closed translations have already reached their rows.
-    for (const [index, sentence] of this.translations) {
-      if (index < this.sourceCount - 1 && sentence.isClosed) {
-        this.translations.delete(index);
-      }
-    }
     let retained = [...this.translations.values()].reduce(
       (total, sentence) => total + sentence.text.length,
       0,
     );
     for (const [index, sentence] of this.translations) {
       if (retained <= MAX_RETAINED_TRANSLATION_CHARACTERS) break;
-      if (index < this.sourceCount) continue;
+      if (this.translationAssignments.has(index)) continue;
       this.translations.delete(index);
       retained -= sentence.text.length;
     }

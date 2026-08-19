@@ -189,6 +189,58 @@ describe('GeminiCaptionAccumulator', () => {
     ]);
   });
 
+  it('replaces an overlapping tail revision instead of creating a phantom row', () => {
+    const accumulator = new GeminiCaptionAccumulator();
+
+    accumulator.ingest({
+      original:
+        'Every generation will have a desktop, a laptop, a workstation, and a desktop.',
+      turnComplete: false,
+    });
+    const revised = accumulator.ingest({
+      original: ' a laptop, and workstation.',
+      turnComplete: false,
+    });
+
+    expect(revised).toEqual([{
+      id: 'turn-0#0',
+      original: 'Every generation will have a desktop, a laptop, and workstation.',
+    }]);
+    expect(revised.some((update) => update.id === 'turn-0#1')).toBe(false);
+  });
+
+  it('keeps later translations aligned after an overlapping source revision', () => {
+    const accumulator = new GeminiCaptionAccumulator();
+    accumulator.ingest({
+      original:
+        'Every generation will have a desktop, a laptop, a workstation, and a desktop.',
+      turnComplete: false,
+    });
+    accumulator.ingest({
+      translation: '每一代都會有桌面機、筆記型電腦和工作站。',
+      turnComplete: false,
+    });
+    accumulator.ingest({
+      original: ' a laptop, and workstation.',
+      turnComplete: false,
+    });
+    accumulator.ingest({
+      original: ' And the whole industry joined us.',
+      turnComplete: false,
+    });
+
+    const translated = accumulator.ingest({
+      translation: '而整個產業都加入了我們。',
+      turnComplete: false,
+    });
+
+    expect(translated.at(-1)).toEqual({
+      id: 'turn-0#1',
+      translation: '而整個產業都加入了我們。',
+    });
+    expect(translated.some((update) => update.id === 'turn-0#2')).toBe(false);
+  });
+
   it('keeps the last sentence editable until the following sentence arrives', () => {
     const accumulator = new GeminiCaptionAccumulator();
 
@@ -214,7 +266,7 @@ describe('GeminiCaptionAccumulator', () => {
     ).toEqual([{ id: 'turn-0#0', original: 'Hello' }]);
   });
 
-  it('splits CJK punctuation and long unpunctuated text into readable rows', () => {
+  it('splits at sentence punctuation without turning visual wraps into rows', () => {
     const accumulator = new GeminiCaptionAccumulator(10);
 
     expect(
@@ -225,9 +277,28 @@ describe('GeminiCaptionAccumulator', () => {
     ).toEqual([
       { id: 'turn-0#0', original: '第一句。' },
       { id: 'turn-0#1', original: '第二句。' },
-      { id: 'turn-0#2', original: 'abcdefghij' },
-      { id: 'turn-0#3', original: 'k' },
+      { id: 'turn-0#2', original: 'abcdefghijk' },
     ]);
+  });
+
+  it('keeps different-length source and target sentences on one bilingual row', () => {
+    const accumulator = new GeminiCaptionAccumulator(10);
+
+    expect(accumulator.ingest({
+      original: 'This sentence is much wider than ten columns.',
+      turnComplete: true,
+    })).toEqual([{
+      id: 'turn-0#0',
+      original: 'This sentence is much wider than ten columns.',
+    }]);
+
+    expect(accumulator.ingest({
+      translation: '這是一個比十個字寬更長的句子。',
+      turnComplete: false,
+    })).toEqual([{
+      id: 'turn-0#0',
+      translation: '這是一個比十個字寬更長的句子。',
+    }]);
   });
 
   it('keeps a late translation on the row it belongs to', () => {
@@ -258,7 +329,7 @@ describe('GeminiCaptionAccumulator', () => {
     ]);
   });
 
-  it('pairs by sentence order and merges excess target sentences into the tail', () => {
+  it('anchors a batch of new target sentences to the latest source row', () => {
     const accumulator = new GeminiCaptionAccumulator();
 
     accumulator.ingest({ original: 'One. Two.', turnComplete: true });
@@ -268,9 +339,59 @@ describe('GeminiCaptionAccumulator', () => {
     });
 
     expect(translated).toEqual([
-      { id: 'turn-0#0', translation: '一。' },
-      { id: 'turn-0#1', translation: '二。三。' },
+      { id: 'turn-0#1', translation: '一。二。三。' },
     ]);
+  });
+
+  it('recovers after an extra source row without shifting later translations', () => {
+    const accumulator = new GeminiCaptionAccumulator();
+
+    accumulator.ingest({ original: 'First sentence.', turnComplete: false });
+    accumulator.ingest({ translation: '第一句。', turnComplete: false });
+    accumulator.ingest({ original: ' Phantom fragment.', turnComplete: false });
+    accumulator.ingest({ original: ' Second real sentence.', turnComplete: false });
+
+    const second = accumulator.ingest({
+      translation: '第二句。',
+      turnComplete: false,
+    });
+    expect(second.at(-1)).toEqual({
+      id: 'turn-0#2',
+      translation: '第二句。',
+    });
+
+    accumulator.ingest({ original: ' Third real sentence.', turnComplete: false });
+    const third = accumulator.ingest({
+      translation: '第三句。',
+      turnComplete: false,
+    });
+    expect(third.at(-1)).toEqual({
+      id: 'turn-0#3',
+      translation: '第三句。',
+    });
+    expect([...second, ...third].some((update) => update.id === 'turn-0#1'))
+      .toBe(false);
+  });
+
+  it('keeps a target revision on its locked row after a newer source arrives', () => {
+    const accumulator = new GeminiCaptionAccumulator();
+
+    accumulator.ingest({ original: 'First.', turnComplete: false });
+    accumulator.ingest({ translation: '第一。', turnComplete: false });
+    accumulator.ingest({ original: ' Second.', turnComplete: false });
+    accumulator.ingest({ translation: '第二', turnComplete: false });
+    accumulator.ingest({ original: ' Third.', turnComplete: false });
+
+    const revision = accumulator.ingest({
+      translation: '句。',
+      turnComplete: false,
+    });
+
+    expect(revision.at(-1)).toEqual({
+      id: 'turn-0#1',
+      translation: '第二句。',
+    });
+    expect(revision.some((update) => update.id === 'turn-0#2')).toBe(false);
   });
 
   it('opens a new row once the next utterance starts', () => {
@@ -298,22 +419,22 @@ describe('GeminiCaptionAccumulator', () => {
   });
 
   describe('retention', () => {
-    it('keeps cumulative and fragment updates aligned after frozen text is dropped', () => {
+    it('keeps cumulative and fragment updates aligned after a sentence is frozen', () => {
       const cumulative = new GeminiCaptionAccumulator(10);
       const fragments = new GeminiCaptionAccumulator(10);
 
-      cumulative.ingest({ original: 'abcdefghijklmno', turnComplete: false });
-      fragments.ingest({ original: 'abcdefghijklmno', turnComplete: false });
+      cumulative.ingest({ original: 'First sentence. second', turnComplete: false });
+      fragments.ingest({ original: 'First sentence. second', turnComplete: false });
 
       expect(
         cumulative.ingest({
-          original: 'abcdefghijklmnopqrst',
+          original: 'First sentence. second grows',
           turnComplete: false,
         }),
-      ).toEqual([{ id: 'turn-0#1', original: 'klmnopqrst' }]);
+      ).toEqual([{ id: 'turn-0#1', original: 'second grows' }]);
       expect(
-        fragments.ingest({ original: 'pqrst', turnComplete: false }),
-      ).toEqual([{ id: 'turn-0#1', original: 'klmnopqrst' }]);
+        fragments.ingest({ original: ' grows', turnComplete: false }),
+      ).toEqual([{ id: 'turn-0#1', original: 'second grows' }]);
     });
 
     it('restarts the offset with the next turn', () => {
@@ -335,7 +456,7 @@ describe('GeminiCaptionAccumulator', () => {
     });
   });
 
-  it('applies a live width change only to the still-open tail', () => {
+  it('does not change semantic row identity when visual width changes', () => {
     const accumulator = new GeminiCaptionAccumulator(10);
 
     accumulator.ingest({ original: 'abcdefgh', turnComplete: false });
@@ -344,8 +465,7 @@ describe('GeminiCaptionAccumulator', () => {
     expect(
       accumulator.ingest({ original: 'abcdefghij', turnComplete: false }),
     ).toEqual([
-      { id: 'turn-0#0', original: 'abcde' },
-      { id: 'turn-0#1', original: 'fghij' },
+      { id: 'turn-0#0', original: 'abcdefghij' },
     ]);
   });
 

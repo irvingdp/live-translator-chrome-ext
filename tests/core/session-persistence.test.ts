@@ -10,9 +10,6 @@ describe('session persistence', () => {
       tabId: 42,
       settings: {
         backgroundOpacity: 78,
-        bottomOffset: 8,
-        captionRows: 2,
-        captionWidth: 80,
         deepgramApiKey: 'deepgram-secret',
         deeplApiKey: 'deepl-secret',
         geminiApiKey: 'gemini-secret',
@@ -36,9 +33,6 @@ describe('session persistence', () => {
       tabId: 42,
       settings: {
         backgroundOpacity: 78,
-        bottomOffset: 8,
-        captionRows: 2,
-        captionWidth: 80,
         geminiTargetLanguage: 'zh-Hant',
         maxLineWidth: 90,
         minLineWidth: 40,

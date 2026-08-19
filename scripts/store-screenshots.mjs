@@ -186,13 +186,7 @@ try {
   await stage.route('https://captions.example/**', (route) =>
     route.fulfill({ body: STAGE_PAGE, contentType: 'text/html' }),
   );
-  // Lifted off the default 1% so the box clears the mock player controls.
-  await settings({
-    bottomOffset: 10,
-    captionRows: 2,
-    captionWidth: 70,
-    transcriber: 'gemini',
-  });
+  await settings({ transcriber: 'gemini' });
   await stage.goto('https://captions.example/talk');
   await stage.addScriptTag({ path: join(extension, 'captions.js') });
   await stage.evaluate((pair) => {
@@ -206,11 +200,18 @@ try {
       payload: {
         appearance: {
           backgroundOpacity: 50,
-          bottomOffset: 10,
-          captionWidth: 70,
-          maxVisibleRows: 2,
           originalFontSize: 24,
           translationFontSize: 22,
+        },
+        layout: {
+          floatingRect: {
+            heightRatio: 0.25,
+            widthRatio: 0.7,
+            xRatio: 0.15,
+            yRatio: 0.62,
+          },
+          mode: 'floating',
+          version: 1,
         },
       },
     });

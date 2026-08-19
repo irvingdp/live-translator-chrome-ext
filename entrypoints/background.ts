@@ -6,6 +6,15 @@ import {
   isTopFrameContentScript,
 } from '../src/core/message-security';
 import type { ExtensionMessage } from '../src/core/messages';
+import {
+  DEFAULT_OVERLAY_LAYOUT,
+  httpsOrigin,
+  layoutForOrigin,
+  normalizeOverlayLayout,
+  OVERLAY_LAYOUTS_KEY,
+  saveLayoutForOrigin,
+  type OverlayLayout,
+} from '../src/core/overlay-layout';
 import { normalizeSettings, type AppSettings } from '../src/core/settings';
 import { redactSessionSnapshot } from '../src/core/session-persistence';
 import { createOffscreenTranslationTransport } from '../src/providers/offscreen-translation-transport';
@@ -15,6 +24,8 @@ export default defineBackground(() => {
   let lifecycleTail: Promise<void> = Promise.resolve();
   const offscreenUrl = chrome.runtime.getURL('offscreen.html');
   const popupUrl = chrome.runtime.getURL('popup.html');
+  const sidePanelUrl = chrome.runtime.getURL('sidepanel.html');
+  const sidePanelPorts = new Set<chrome.runtime.Port>();
   const translateOffscreen = createOffscreenTranslationTransport(
     (message) => chrome.runtime.sendMessage(message),
   );
@@ -36,6 +47,29 @@ export default defineBackground(() => {
       },
       ping: () => chrome.tabs.sendMessage(tabId, { type: 'CONTENT_PING' }),
     });
+  const tabOrigin = async (tabId: number) =>
+    httpsOrigin((await chrome.tabs.get(tabId)).url);
+  const getOverlayLayout = async (tabId: number) => {
+    const origin = await tabOrigin(tabId);
+    if (!origin) return undefined;
+    const stored = await chrome.storage.local.get(OVERLAY_LAYOUTS_KEY);
+    return layoutForOrigin(stored[OVERLAY_LAYOUTS_KEY], origin);
+  };
+  const persistOverlayLayout = async (
+    tabId: number,
+    layout: OverlayLayout,
+  ) => {
+    const origin = await tabOrigin(tabId);
+    if (!origin) return normalizeOverlayLayout(layout);
+    const stored = await chrome.storage.local.get(OVERLAY_LAYOUTS_KEY);
+    const next = saveLayoutForOrigin(
+      stored[OVERLAY_LAYOUTS_KEY],
+      origin,
+      layout,
+    );
+    await chrome.storage.local.set({ [OVERLAY_LAYOUTS_KEY]: next });
+    return next.layouts[origin]!;
+  };
   const controller = new CaptureSessionController({
     ensureContentScript: ensureTabContentScript,
     async ensureOffscreen() {
@@ -53,11 +87,44 @@ export default defineBackground(() => {
     },
     getStreamId: (tabId) =>
       chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }),
+    getOverlayLayout,
     sendToOffscreen,
     sendToTab: (tabId, message) => chrome.tabs.sendMessage(tabId, message),
     translate: (sessionId, request, signal) =>
       translateOffscreen(sessionId, request, signal),
   });
+
+  async function sidePanelState() {
+    const status = controller.status();
+    if (status.state !== 'running') {
+      return {
+        type: 'SIDE_PANEL_STATE' as const,
+        payload: { active: false, pairs: [], status },
+      };
+    }
+    const layout = await getOverlayLayout(status.tabId);
+    return {
+      type: 'SIDE_PANEL_STATE' as const,
+      payload: {
+        active: layout?.mode === 'native',
+        appearance: controller.appearance(),
+        pairs: controller.captionPairs(),
+        status,
+      },
+    };
+  }
+
+  async function broadcastSidePanel(): Promise<void> {
+    if (sidePanelPorts.size === 0) return;
+    const state = await sidePanelState();
+    for (const port of sidePanelPorts) {
+      try {
+        port.postMessage(state);
+      } catch {
+        sidePanelPorts.delete(port);
+      }
+    }
+  }
 
   function enqueueLifecycle<T>(operation: () => Promise<T>): Promise<T> {
     const result = lifecycleTail.then(operation, operation);
@@ -126,9 +193,27 @@ export default defineBackground(() => {
         }),
         tabId: snapshot.tabId,
       });
+      await chrome.sidePanel.setOptions({
+        enabled: true,
+        path: 'sidepanel.html',
+        tabId: snapshot.tabId,
+      });
     }
   });
   void ready.catch(() => undefined);
+
+  chrome.runtime.onConnect.addListener((port) => {
+    if (
+      port.name !== 'caption-side-panel' ||
+      !isExtensionPage(port.sender ?? {}, chrome.runtime.id, sidePanelUrl)
+    ) return;
+    sidePanelPorts.add(port);
+    port.onDisconnect.addListener(() => sidePanelPorts.delete(port));
+    void ready
+      .then(() => sidePanelState())
+      .then((state) => port.postMessage(state))
+      .catch(() => sidePanelPorts.delete(port));
+  });
 
   const offscreenMessageTypes = new Set([
     'CAPTION_PAIR_UPDATES',
@@ -140,6 +225,11 @@ export default defineBackground(() => {
     'SESSION_START',
     'SESSION_STATUS',
     'SESSION_STOP',
+  ]);
+  const contentMessageTypes = new Set([
+    'CONTENT_READY',
+    'OPEN_SIDE_PANEL',
+    'OVERLAY_LAYOUT_CHANGED',
   ]);
 
   function isAuthorizedMessage(
@@ -156,7 +246,10 @@ export default defineBackground(() => {
     if (popupMessageTypes.has(message.type)) {
       return isExtensionPage(sender, chrome.runtime.id, popupUrl);
     }
-    return message.type === 'CONTENT_READY' &&
+    if (message.type === 'SET_CAPTION_SURFACE') {
+      return isExtensionPage(sender, chrome.runtime.id, sidePanelUrl);
+    }
+    return contentMessageTypes.has(message.type) &&
       isTopFrameContentScript(sender, chrome.runtime.id);
   }
 
@@ -169,6 +262,17 @@ export default defineBackground(() => {
         return false;
       }
       const message = incoming as ExtensionMessage;
+
+      // Chrome only permits sidePanel.open() in the direct call stack of a
+      // user gesture. Capture its promise before entering any awaited work.
+      const sidePanelOpen = message.type === 'OPEN_SIDE_PANEL' &&
+        sender.tab?.id !== undefined
+        ? chrome.sidePanel.open({ tabId: sender.tab.id })
+        : undefined;
+      // A stale content instance can race with session shutdown. Keep Chrome's
+      // rejected open promise observed even when the status check returns
+      // before this operation needs to await it.
+      void sidePanelOpen?.catch(() => undefined);
 
       const operation = (async () => {
         await ready;
@@ -210,9 +314,66 @@ export default defineBackground(() => {
               await controller.handleContentReady(sender.tab.id);
             }
             return { ok: true };
+          case 'OVERLAY_LAYOUT_CHANGED': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            const status = controller.status();
+            if (status.state !== 'running' || status.tabId !== tabId) {
+              return { error: 'inactive_tab', ok: false };
+            }
+            const layout = await persistOverlayLayout(
+              tabId,
+              message.payload.layout,
+            );
+            return { layout, ok: true };
+          }
+          case 'OPEN_SIDE_PANEL': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined || !sidePanelOpen) {
+              return { error: 'missing_tab', ok: false };
+            }
+            const status = controller.status();
+            if (status.state !== 'running' || status.tabId !== tabId) {
+              return { error: 'inactive_tab', ok: false };
+            }
+            await sidePanelOpen;
+            const layout = await persistOverlayLayout(tabId, {
+              ...message.payload.layout,
+              mode: 'native',
+            });
+            await chrome.tabs.sendMessage(tabId, {
+              type: 'OVERLAY_LAYOUT',
+              payload: { layout },
+            });
+            return { layout, ok: true };
+          }
+          case 'SET_CAPTION_SURFACE': {
+            const status = controller.status();
+            if (status.state !== 'running') {
+              return { error: 'inactive_session', ok: false };
+            }
+            const current = await getOverlayLayout(status.tabId) ??
+              DEFAULT_OVERLAY_LAYOUT;
+            const layout = await persistOverlayLayout(status.tabId, {
+              ...current,
+              mode: message.payload.mode,
+            });
+            await chrome.tabs.sendMessage(status.tabId, {
+              type: 'OVERLAY_LAYOUT',
+              payload: { layout },
+            });
+            return { layout, ok: true };
+          }
           case 'SESSION_START':
             return enqueueLifecycle(async () => {
               try {
+                const savedLayout = await getOverlayLayout(message.payload.tabId);
+                if (savedLayout?.mode === 'native') {
+                  await persistOverlayLayout(message.payload.tabId, {
+                    ...savedLayout,
+                    mode: 'floating',
+                  });
+                }
                 await controller.start(
                   message.payload.tabId,
                   normalizeSettings(message.payload.settings),
@@ -224,6 +385,11 @@ export default defineBackground(() => {
               }
               const snapshot = controller.snapshot();
               if (snapshot) {
+                await chrome.sidePanel.setOptions({
+                  enabled: true,
+                  path: 'sidepanel.html',
+                  tabId: snapshot.tabId,
+                });
                 await chrome.storage.session.set({
                   [activeSessionKey]: redactSessionSnapshot(snapshot),
                 });
@@ -233,9 +399,10 @@ export default defineBackground(() => {
           case 'SESSION_STOP':
             return enqueueLifecycle(async () => {
               await controller.stop();
+              const status = controller.status();
               await chrome.storage.session.remove(activeSessionKey);
               await closeOffscreenIfUnused();
-              return { ok: true, status: controller.status() };
+              return { ok: true, status };
             });
           case 'SESSION_STATUS':
             return { ok: true, status: controller.status() };
@@ -244,12 +411,19 @@ export default defineBackground(() => {
         }
       })();
 
-      void operation.then(sendResponse, (error: unknown) =>
-        sendResponse({
-          error: error instanceof Error ? error.message : 'unknown_error',
-          ok: false,
-          status: controller.status(),
-        }),
+      void operation.then(
+        async (response) => {
+          await broadcastSidePanel().catch(() => undefined);
+          sendResponse(response);
+        },
+        (error: unknown) => {
+          void broadcastSidePanel();
+          sendResponse({
+            error: error instanceof Error ? error.message : 'unknown_error',
+            ok: false,
+            status: controller.status(),
+          });
+        },
       );
       return true;
     },
@@ -296,9 +470,6 @@ export default defineBackground(() => {
     );
     controller.applyLayout({
       backgroundOpacity: next.backgroundOpacity,
-      bottomOffset: next.bottomOffset,
-      captionRows: next.captionRows,
-      captionWidth: next.captionWidth,
       maxLineWidth: next.maxLineWidth,
       minLineWidth: next.minLineWidth,
       originalFontSize: next.originalFontSize,

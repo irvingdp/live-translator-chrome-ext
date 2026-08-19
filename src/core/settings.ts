@@ -8,9 +8,6 @@ export interface AppSettings extends SessionSettings {
 
 export interface CaptionAppearance {
   backgroundOpacity: number;
-  bottomOffset: number;
-  captionWidth: number;
-  maxVisibleRows: number;
   originalFontSize: number;
   translationFontSize: number;
 }
@@ -19,20 +16,12 @@ export function captionAppearance(
   settings: Pick<
     SessionSettings,
     | 'backgroundOpacity'
-    | 'bottomOffset'
-    | 'captionRows'
-    | 'captionWidth'
     | 'originalFontSize'
-    | 'transcriber'
     | 'translationFontSize'
   >,
 ): CaptionAppearance {
   return {
     backgroundOpacity: settings.backgroundOpacity,
-    bottomOffset: settings.bottomOffset,
-    captionWidth: settings.captionWidth,
-    maxVisibleRows:
-      settings.transcriber === 'gemini' ? settings.captionRows : 0,
     originalFontSize: settings.originalFontSize,
     translationFontSize: settings.translationFontSize,
   };
@@ -43,9 +32,6 @@ export function captionAppearance(
 // ~30, so this range must not widen.
 export const SETTING_RANGES = {
   backgroundOpacity: { max: 100, min: 0 },
-  bottomOffset: { max: 60, min: 0 },
-  captionRows: { max: 3, min: 1 },
-  captionWidth: { max: 100, min: 20 },
   maxLineWidth: { max: 140, min: 40 },
   minLineWidth: { max: 120, min: 0 },
   originalFontSize: { max: 48, min: 16 },
@@ -54,9 +40,6 @@ export const SETTING_RANGES = {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   backgroundOpacity: 50,
-  bottomOffset: 1,
-  captionRows: 2,
-  captionWidth: 70,
   deepgramApiKey: '',
   deeplApiKey: '',
   geminiApiKey: '',
@@ -121,21 +104,6 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       raw.backgroundOpacity,
       SETTING_RANGES.backgroundOpacity,
       DEFAULT_SETTINGS.backgroundOpacity,
-    ),
-    bottomOffset: clamped(
-      raw.bottomOffset,
-      SETTING_RANGES.bottomOffset,
-      DEFAULT_SETTINGS.bottomOffset,
-    ),
-    captionRows: clamped(
-      raw.captionRows,
-      SETTING_RANGES.captionRows,
-      DEFAULT_SETTINGS.captionRows,
-    ),
-    captionWidth: clamped(
-      raw.captionWidth,
-      SETTING_RANGES.captionWidth,
-      DEFAULT_SETTINGS.captionWidth,
     ),
     deepgramApiKey: stringValue(
       raw.deepgramApiKey,

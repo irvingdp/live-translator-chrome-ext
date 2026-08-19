@@ -235,14 +235,6 @@ describe('PopupApp', () => {
       ),
     );
 
-    fireEvent.change(screen.getByLabelText('距底部位置'), {
-      target: { value: '20' },
-    });
-    await waitFor(() =>
-      expect(api.saveSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ bottomOffset: 20 }),
-      ),
-    );
   });
 
   it('stops the minimum line width slider at the current maximum', async () => {
@@ -295,9 +287,9 @@ describe('PopupApp', () => {
     expect(
       screen.getByRole('link', { name: /aistudio\.google\.com/ }),
     ).toHaveAttribute('href', 'https://aistudio.google.com/');
-    // Gemini uses the maximum for long-sentence fallback, but never merges two
-    // short complete sentences to satisfy a minimum.
-    expect(screen.getByLabelText('每行長度上限')).toBeInTheDocument();
+    // Gemini pairs complete semantic sentences; visual wrapping must not
+    // create different source and target row counts.
+    expect(screen.queryByLabelText('每行長度上限')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('每行長度下限')).not.toBeInTheDocument();
   });
 
@@ -347,36 +339,14 @@ describe('PopupApp', () => {
     expect(await screen.findByText('API Key 已設定')).toBeVisible();
   });
 
-  it('saves the caption width independently of the line length', async () => {
-    const api = createApi();
-    render(<PopupApp api={api} />);
-
-    fireEvent.change(await screen.findByLabelText('字幕寬度'), {
-      target: { value: '45' },
-    });
-
-    await waitFor(() =>
-      expect(api.saveSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          captionWidth: 45,
-          maxLineWidth: DEFAULT_SETTINGS.maxLineWidth,
-        }),
-      ),
-    );
-  });
-
-  it('saves the row count and the minimum line width', async () => {
+  it('removes direct layout controls and still saves minimum line width', async () => {
     const api = createDeepgramApi();
     render(<PopupApp api={api} />);
 
-    fireEvent.change(await screen.findByLabelText('顯示行數'), {
-      target: { value: '3' },
-    });
-    await waitFor(() =>
-      expect(api.saveSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ captionRows: 3 }),
-      ),
-    );
+    await screen.findByLabelText('每行長度下限');
+    expect(screen.queryByLabelText('顯示行數')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('字幕寬度')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('距底部位置')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('每行長度下限'), {
       target: { value: '25' },

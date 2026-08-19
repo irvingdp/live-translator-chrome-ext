@@ -6,6 +6,7 @@ import type { TranslationRequest } from '../providers/deepl';
 import { CaptionChunker, type CaptionUnit } from './caption-chunker';
 import { CaptionWindow, type CaptionPair } from './caption-window';
 import type { ExtensionMessage } from './messages';
+import type { OverlayLayout } from './overlay-layout';
 import {
   captionAppearance,
   type CaptionAppearance,
@@ -22,9 +23,6 @@ import {
 
 export interface SessionSettings {
   backgroundOpacity: number;
-  bottomOffset: number;
-  captionRows: number;
-  captionWidth: number;
   deepgramApiKey: string;
   deeplApiKey: string;
   geminiApiKey: string;
@@ -41,8 +39,12 @@ export interface SessionSettings {
 
 export type TabMessage =
   | { type: 'CONTENT_PING' }
-  | { type: 'OVERLAY_SHOW'; payload: { appearance: CaptionAppearance } }
+  | {
+      type: 'OVERLAY_SHOW';
+      payload: { appearance: CaptionAppearance; layout?: OverlayLayout };
+    }
   | { type: 'OVERLAY_APPEARANCE'; payload: { appearance: CaptionAppearance } }
+  | { type: 'OVERLAY_LAYOUT'; payload: { layout: OverlayLayout } }
   | { type: 'OVERLAY_HIDE' }
   | { type: 'CAPTION_WINDOW'; payload: { pairs: CaptionPair[] } }
   | {
@@ -81,6 +83,7 @@ export interface CaptureSessionDependencies {
   ensureContentScript(tabId: number): Promise<void>;
   ensureOffscreen(): Promise<void>;
   getStreamId(tabId: number): Promise<string>;
+  getOverlayLayout(tabId: number): Promise<OverlayLayout | undefined>;
   sendToOffscreen(message: ExtensionMessage): Promise<unknown>;
   sendToTab(tabId: number, message: TabMessage): Promise<unknown>;
   translate(
@@ -101,7 +104,7 @@ export class CaptureSessionController {
   private generation = 0;
   private lifecycleTail: Promise<void> = Promise.resolve();
   private settings?: SessionSettings;
-  private readonly captionWindow = new CaptionWindow();
+  private readonly captionWindow = new CaptionWindow(50);
   private readonly chunker = new CaptionChunker();
   private readonly translatedSources = new Map<string, string>();
   private stabilizer = new TranscriptStabilizer();
@@ -135,7 +138,6 @@ export class CaptureSessionController {
     this.activeSessionId = snapshot.sessionId;
     this.settings = snapshot.settings;
     this.stabilizer = new TranscriptStabilizer();
-    this.captionWindow.setCapacity(snapshot.settings.captionRows);
     this.captionWindow.clear();
     this.translatedSources.clear();
     this.chunker.clear();
@@ -152,18 +154,14 @@ export class CaptureSessionController {
   // Units already in the window keep the width they were cut at; recutting
   // them would renumber ids the overlay is already showing.
   applyLayout(layout: {
-    captionRows: number;
     maxLineWidth: number;
     minLineWidth: number;
     backgroundOpacity?: number;
-    bottomOffset?: number;
-    captionWidth?: number;
     originalFontSize?: number;
     translationFontSize?: number;
   }): void {
     if (!this.settings) return;
     this.settings = { ...this.settings, ...layout };
-    this.captionWindow.setCapacity(layout.captionRows);
     if (this.activeSessionId && this.settings.transcriber === 'gemini') {
       void this.dependencies.sendToOffscreen({
         target: 'offscreen',
@@ -200,7 +198,6 @@ export class CaptureSessionController {
     this.currentTranslationErrorAttemptId = undefined;
     this.lastSuccessfulTranslationAttemptId = 0;
     this.translationAttemptSequence = 0;
-    this.captionWindow.setCapacity(settings.captionRows);
     this.captionWindow.clear();
     this.translatedSources.clear();
     this.chunker.clear();
@@ -250,9 +247,10 @@ export class CaptureSessionController {
           .catch(() => undefined);
         return;
       }
+      const layout = await this.dependencies.getOverlayLayout(tabId);
       await this.dependencies.sendToTab(tabId, {
         type: 'OVERLAY_SHOW',
-        payload: { appearance: captionAppearance(settings) },
+        payload: { appearance: captionAppearance(settings), layout },
       });
       this.currentStatus = { state: 'running', tabId };
     } catch (error) {
@@ -356,6 +354,14 @@ export class CaptureSessionController {
       type: 'CAPTION_WINDOW',
       payload: { pairs: this.captionWindow.pairs() },
     });
+  }
+
+  captionPairs(): CaptionPair[] {
+    return this.captionWindow.pairs();
+  }
+
+  appearance(): CaptionAppearance | undefined {
+    return this.settings ? captionAppearance(this.settings) : undefined;
   }
 
   private async translateUnit(
@@ -500,9 +506,10 @@ export class CaptureSessionController {
       this.currentStatus.tabId !== tabId ||
       !this.settings
     ) return;
+    const layout = await this.dependencies.getOverlayLayout(tabId);
     await this.dependencies.sendToTab(tabId, {
       type: 'OVERLAY_SHOW',
-      payload: { appearance: captionAppearance(this.settings) },
+      payload: { appearance: captionAppearance(this.settings), layout },
     });
     await this.sendWindow(tabId);
     if (

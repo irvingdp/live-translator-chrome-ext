@@ -236,7 +236,7 @@ export function splitIntoUnits(
   minWidth = 0,
 ): CaptionUnitSpan[] {
   const units: CaptionUnitSpan[] = [];
-  for (const sentence of boundarySpans(text, 0, text.length, isSentenceEnder)) {
+  for (const sentence of splitIntoSentences(text)) {
     if (visualWidth(sentence.text) <= maxWidth) {
       units.push(sentence);
       continue;
@@ -261,6 +261,14 @@ export function splitIntoUnits(
     units.push(...packSpans(text, pieces, maxWidth));
   }
   return mergeShortUnits(text, units, maxWidth, minWidth);
+}
+
+// Gemini returns source and target transcription as independent streams. Their
+// visual lengths can differ dramatically, so pairing must use semantic
+// sentence boundaries rather than hard-wrap chunks; the renderer wraps each
+// paired sentence to its available width afterwards.
+export function splitIntoSentences(text: string): CaptionUnitSpan[] {
+  return boundarySpans(text, 0, text.length, isSentenceEnder);
 }
 
 export interface CaptionUnit {

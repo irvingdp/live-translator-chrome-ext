@@ -4,6 +4,7 @@ import type {
 } from '../audio/offscreen-capture-controller';
 import type { TranslationRequest } from '../providers/deepl';
 import type { AppSettings } from './settings';
+import type { OverlayLayout } from './overlay-layout';
 import type { TranscriptEvent } from './transcript-stabilizer';
 
 export type ExtensionMessage =
@@ -40,6 +41,17 @@ export type ExtensionMessage =
     }
   | { target: 'background'; type: 'CAPTURE_KEEPALIVE'; payload: { sessionId: string } }
   | { target: 'background'; type: 'CONTENT_READY' }
+  | {
+      target: 'background';
+      type: 'OPEN_SIDE_PANEL';
+      payload: { layout: OverlayLayout };
+    }
+  | {
+      target: 'background';
+      type: 'OVERLAY_LAYOUT_CHANGED';
+      payload: { layout: OverlayLayout };
+    }
+  | { target: 'background'; type: 'SET_CAPTION_SURFACE'; payload: { mode: 'floating' } }
   | { target: 'background'; type: 'TRANSCRIPT_EVENT'; payload: { event: TranscriptEvent; sessionId: string } }
   | {
       target: 'background';

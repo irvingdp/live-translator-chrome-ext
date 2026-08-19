@@ -18,9 +18,6 @@ describe('captionAppearance', () => {
 
     expect(appearance).toEqual({
       backgroundOpacity: 50,
-      bottomOffset: 1,
-      captionWidth: 70,
-      maxVisibleRows: 2,
       originalFontSize: 24,
       translationFontSize: 22,
     });
@@ -64,19 +61,15 @@ describe('normalizeSettings', () => {
   it('defaults the layout settings to a visible caption box', () => {
     expect(DEFAULT_SETTINGS).toMatchObject({
       backgroundOpacity: 50,
-      bottomOffset: 1,
-      captionRows: 2,
-      captionWidth: 70,
       maxLineWidth: 90,
     });
   });
 
   it('clamps the layout settings to their ranges', () => {
     expect(
-      normalizeSettings({ backgroundOpacity: 150, bottomOffset: -5, maxLineWidth: 999 }),
+      normalizeSettings({ backgroundOpacity: 150, maxLineWidth: 999 }),
     ).toMatchObject({
       backgroundOpacity: 100,
-      bottomOffset: 0,
       maxLineWidth: 140,
     });
   });
@@ -91,12 +84,10 @@ describe('normalizeSettings', () => {
     expect(
       normalizeSettings({
         backgroundOpacity: Number.NaN,
-        bottomOffset: Number.POSITIVE_INFINITY,
         maxLineWidth: Number.NEGATIVE_INFINITY,
       }),
     ).toMatchObject({
       backgroundOpacity: DEFAULT_SETTINGS.backgroundOpacity,
-      bottomOffset: DEFAULT_SETTINGS.bottomOffset,
       maxLineWidth: DEFAULT_SETTINGS.maxLineWidth,
     });
   });
@@ -105,11 +96,9 @@ describe('normalizeSettings', () => {
     expect(
       normalizeSettings({
         backgroundOpacity: '90' as unknown as number,
-        bottomOffset: null as unknown as number,
       }),
     ).toMatchObject({
       backgroundOpacity: DEFAULT_SETTINGS.backgroundOpacity,
-      bottomOffset: DEFAULT_SETTINGS.bottomOffset,
     });
   });
 });

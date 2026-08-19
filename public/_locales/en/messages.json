@@ -126,26 +126,6 @@
     "message": "Caption layout",
     "description": "Heading of the layout section in the popup."
   },
-  "captionRowsLabel": {
-    "message": "Rows shown",
-    "description": "Label for the dropdown that picks how many caption rows are visible."
-  },
-  "captionRows1": {
-    "message": "1 row (original + translation)",
-    "description": "Caption row count option, spelling out that a row is a pair of lines."
-  },
-  "captionRows2": {
-    "message": "2 rows",
-    "description": "Caption row count option."
-  },
-  "captionRows3": {
-    "message": "3 rows",
-    "description": "Caption row count option."
-  },
-  "captionWidthLabel": {
-    "message": "Caption width",
-    "description": "Slider label for the caption box width, as a share of the video."
-  },
   "maxLineWidthLabel": {
     "message": "Max line length",
     "description": "Slider label for the widest a caption row may be cut."
@@ -158,13 +138,38 @@
     "message": "Background opacity",
     "description": "Slider label for how opaque the caption box background is."
   },
-  "bottomOffsetLabel": {
-    "message": "Distance from bottom",
-    "description": "Slider label for how far above the bottom edge the captions sit."
-  },
   "unitColumns": {
     "message": " cols",
     "description": "Unit appended to the line-length sliders. Counted in character widths: CJK counts as two. Keep the leading space."
+  },
+
+  "openSidePanel": {
+    "message": "Open captions in Side Panel",
+    "description": "Accessible label for the caption overlay Side Panel button."
+  },
+  "sidePanelTitle": {
+    "message": "Live caption history",
+    "description": "Heading in the Chrome Side Panel."
+  },
+  "returnToFloating": {
+    "message": "Return to floating captions",
+    "description": "Button that moves captions from Side Panel back to the webpage overlay."
+  },
+  "sidePanelWaiting": {
+    "message": "Start captions from the extension popup to see them here.",
+    "description": "Side Panel empty state when there is no live session."
+  },
+  "sidePanelInactive": {
+    "message": "Captions are now floating on the webpage. Chrome 116 may require you to close this panel manually.",
+    "description": "Side Panel notice after switching back to the floating overlay."
+  },
+  "sidePanelEmpty": {
+    "message": "Listening for the first caption…",
+    "description": "Side Panel empty state while a session is active."
+  },
+  "newCaptions": {
+    "message": "New captions",
+    "description": "Button that jumps a scrolled caption history to the newest caption."
   },
 
   "privacyGemini": {

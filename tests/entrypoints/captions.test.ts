@@ -8,6 +8,7 @@ const overlay = vi.hoisted(() => ({
   hide: vi.fn(),
   position: vi.fn(),
   setAppearance: vi.fn(),
+  setLayout: vi.fn(),
   setSessionError: vi.fn(),
   setWindow: vi.fn(),
   show: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock('../../src/content/caption-overlay', () => ({
     hide = overlay.hide;
     position = overlay.position;
     setAppearance = overlay.setAppearance;
+    setLayout = overlay.setLayout;
     setSessionError = overlay.setSessionError;
     setWindow = overlay.setWindow;
     show = overlay.show;
@@ -27,9 +29,6 @@ vi.mock('../../src/content/caption-overlay', () => ({
 
 const appearance: CaptionAppearance = {
   backgroundOpacity: 50,
-  bottomOffset: 1,
-  captionWidth: 70,
-  maxVisibleRows: 2,
   originalFontSize: 24,
   translationFontSize: 22,
 };
@@ -90,7 +89,7 @@ describe('captions unlisted entrypoint', () => {
   it('observes the page only while the overlay is visible', () => {
     dispatch({ type: 'OVERLAY_SHOW', payload: { appearance } });
 
-    expect(overlay.show).toHaveBeenCalledWith(appearance);
+    expect(overlay.show).toHaveBeenCalledWith(appearance, undefined);
     expect(observe).toHaveBeenCalledWith(document.documentElement, {
       childList: true,
       subtree: true,
@@ -98,11 +97,11 @@ describe('captions unlisted entrypoint', () => {
 
     dispatch({
       type: 'OVERLAY_APPEARANCE',
-      payload: { appearance: { ...appearance, captionWidth: 80 } },
+      payload: { appearance: { ...appearance, backgroundOpacity: 80 } },
     });
     expect(overlay.setAppearance).toHaveBeenCalledWith({
       ...appearance,
-      captionWidth: 80,
+      backgroundOpacity: 80,
     });
 
     dispatch({ type: 'OVERLAY_HIDE' });

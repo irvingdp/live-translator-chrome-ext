@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "caption-surfaces": {
+      "targetKind": "existing-ui",
+      "projectId": "032d16a3-673b-4772-8cf7-ee370802a4c2",
+      "baselineDraftId": "859f4bdf-e457-47c6-b343-8ec7958d7aba",
+      "activeDraftId": "859f4bdf-e457-47c6-b343-8ec7958d7aba",
+      "designSystemPath": ".superdesign/design-system.md",
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "src/content/caption-overlay.ts",
+        "src/popup/PopupApp.tsx",
+        "entrypoints/popup/style.css",
+        "src/core/settings.ts"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "1aff7aab708f26b163695d0f744956a724d0c5c3f054fc7816eb9b142691c23e",
+        "src/content/caption-overlay.ts": "e04c1324f1972852ad7f12200edc38f3acfb4bd79478a98f89a22e9bc2338c61",
+        "src/popup/PopupApp.tsx": "3d76dfcdef4e0feb7961274f6ce5b2828b80293b254b06ff650f376d857a0444",
+        "entrypoints/popup/style.css": "fe38390bdcd13c63d59fbf71b41f5f7e35e453fc09c96162f3d93598fa42ad0d",
+        "src/core/settings.ts": "e7ac344dd3e9dbf402dd0fbd73d13263dc8de82e5611851cf5bb7ef52bdaed60"
+      },
+      "components": [],
+      "drafts": {
+        "859f4bdf-e457-47c6-b343-8ec7958d7aba": {
+          "title": "Live Translator Interaction Spec",
+          "visualDirection": "titleless draggable/resizable floating captions and Chrome native Side Panel only",
+          "currentVersion": 4
+        }
+      },
+      "updatedAt": "2026-08-19T19:05:39Z"
+    }
+  }
+}

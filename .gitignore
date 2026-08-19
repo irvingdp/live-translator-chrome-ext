@@ -3,6 +3,7 @@ coverage/
 docs/
 output/
 .wxt/
+.superdesign/tmp/
 .superpowers/
 .worktrees/
 playwright-report/

@@ -287,59 +287,35 @@ export function PopupApp({ api }: { api: PopupApi }) {
 
       <section className="card" aria-labelledby="layout-heading">
         <h2 id="layout-heading">{t('layoutHeading')}</h2>
-        <div>
-          <label htmlFor="caption-rows">{t('captionRowsLabel')}</label>
-          <select
-            id="caption-rows"
-            value={settings.captionRows}
-            onChange={(event) =>
-              update('captionRows', Number(event.target.value))
-            }
-          >
-            <option value={1}>{t('captionRows1')}</option>
-            <option value={2}>{t('captionRows2')}</option>
-            <option value={3}>{t('captionRows3')}</option>
-          </select>
-        </div>
-        <RangeField
-          id="caption-width"
-          label={t('captionWidthLabel')}
-          max={SETTING_RANGES.captionWidth.max}
-          min={SETTING_RANGES.captionWidth.min}
-          step={5}
-          unit="%"
-          value={settings.captionWidth}
-          onChange={(value) => update('captionWidth', value)}
-        />
-        <RangeField
-          id="max-line-width"
-          label={t('maxLineWidthLabel')}
-          max={SETTING_RANGES.maxLineWidth.max}
-          min={SETTING_RANGES.maxLineWidth.min}
-          step={5}
-          unit={t('unitColumns')}
-          value={settings.maxLineWidth}
-          onChange={(value) => update('maxLineWidth', value)}
-        />
-        {/* Gemini preserves one complete sentence per row, so merging short
-            sentences to meet a minimum width would defeat that mode. */}
         {!isGemini && (
-          <RangeField
-            id="min-line-width"
-            label={t('minLineWidthLabel')}
-            // A minimum above the maximum is clamped away on save, so
-            // offering the full range lets the handle be dragged somewhere
-            // it only springs back from.
-            max={Math.min(
-              SETTING_RANGES.minLineWidth.max,
-              settings.maxLineWidth,
-            )}
-            min={SETTING_RANGES.minLineWidth.min}
-            step={5}
-            unit={t('unitColumns')}
-            value={settings.minLineWidth}
-            onChange={(value) => update('minLineWidth', value)}
-          />
+          <>
+            <RangeField
+              id="max-line-width"
+              label={t('maxLineWidthLabel')}
+              max={SETTING_RANGES.maxLineWidth.max}
+              min={SETTING_RANGES.maxLineWidth.min}
+              step={5}
+              unit={t('unitColumns')}
+              value={settings.maxLineWidth}
+              onChange={(value) => update('maxLineWidth', value)}
+            />
+            <RangeField
+              id="min-line-width"
+              label={t('minLineWidthLabel')}
+              // A minimum above the maximum is clamped away on save, so
+              // offering the full range lets the handle be dragged somewhere
+              // it only springs back from.
+              max={Math.min(
+                SETTING_RANGES.minLineWidth.max,
+                settings.maxLineWidth,
+              )}
+              min={SETTING_RANGES.minLineWidth.min}
+              step={5}
+              unit={t('unitColumns')}
+              value={settings.minLineWidth}
+              onChange={(value) => update('minLineWidth', value)}
+            />
+          </>
         )}
         <RangeField
           id="background-opacity"
@@ -350,15 +326,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
           unit="%"
           value={settings.backgroundOpacity}
           onChange={(value) => update('backgroundOpacity', value)}
-        />
-        <RangeField
-          id="bottom-offset"
-          label={t('bottomOffsetLabel')}
-          max={SETTING_RANGES.bottomOffset.max}
-          min={SETTING_RANGES.bottomOffset.min}
-          unit="%"
-          value={settings.bottomOffset}
-          onChange={(value) => update('bottomOffset', value)}
         />
       </section>
 

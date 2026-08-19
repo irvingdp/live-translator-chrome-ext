@@ -126,26 +126,6 @@
     "message": "字幕版面",
     "description": "Heading of the layout section in the popup."
   },
-  "captionRowsLabel": {
-    "message": "顯示行數",
-    "description": "Label for the dropdown that picks how many caption rows are visible."
-  },
-  "captionRows1": {
-    "message": "1 行（原文＋譯文）",
-    "description": "Caption row count option, spelling out that a row is a pair of lines."
-  },
-  "captionRows2": {
-    "message": "2 行",
-    "description": "Caption row count option."
-  },
-  "captionRows3": {
-    "message": "3 行",
-    "description": "Caption row count option."
-  },
-  "captionWidthLabel": {
-    "message": "字幕寬度",
-    "description": "Slider label for the caption box width, as a share of the video."
-  },
   "maxLineWidthLabel": {
     "message": "每行長度上限",
     "description": "Slider label for the widest a caption row may be cut."
@@ -158,13 +138,38 @@
     "message": "背景透明度",
     "description": "Slider label for how opaque the caption box background is."
   },
-  "bottomOffsetLabel": {
-    "message": "距底部位置",
-    "description": "Slider label for how far above the bottom edge the captions sit."
-  },
   "unitColumns": {
     "message": " 字寬",
     "description": "Unit appended to the line-length sliders. Counted in character widths: CJK counts as two. Keep the leading space."
+  },
+
+  "openSidePanel": {
+    "message": "在側邊面板顯示字幕",
+    "description": "Accessible label for the caption overlay Side Panel button."
+  },
+  "sidePanelTitle": {
+    "message": "即時字幕紀錄",
+    "description": "Heading in the Chrome Side Panel."
+  },
+  "returnToFloating": {
+    "message": "回到浮動字幕",
+    "description": "Button that moves captions from Side Panel back to the webpage overlay."
+  },
+  "sidePanelWaiting": {
+    "message": "請先從擴充功能彈出視窗啟動字幕。",
+    "description": "Side Panel empty state when there is no live session."
+  },
+  "sidePanelInactive": {
+    "message": "字幕已回到網頁浮動顯示。Chrome 116 可能需要由你手動關閉此面板。",
+    "description": "Side Panel notice after switching back to the floating overlay."
+  },
+  "sidePanelEmpty": {
+    "message": "正在等待第一句字幕…",
+    "description": "Side Panel empty state while a session is active."
+  },
+  "newCaptions": {
+    "message": "有新字幕",
+    "description": "Button that jumps a scrolled caption history to the newest caption."
   },
 
   "privacyGemini": {

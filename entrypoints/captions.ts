@@ -2,7 +2,26 @@ import type { TabMessage } from '../src/core/capture-session-controller';
 import { CaptionOverlay } from '../src/content/caption-overlay';
 
 export default defineUnlistedScript(() => {
-  const overlay = new CaptionOverlay(document);
+  const overlay = new CaptionOverlay(document, {
+    onLayoutChanged(layout) {
+      void chrome.runtime.sendMessage({
+        target: 'background',
+        type: 'OVERLAY_LAYOUT_CHANGED',
+        payload: { layout },
+      } satisfies import('../src/core/messages').ExtensionMessage);
+    },
+    async onOpenSidePanel(layout) {
+      const response = await chrome.runtime.sendMessage({
+        target: 'background',
+        type: 'OPEN_SIDE_PANEL',
+        payload: { layout },
+      } satisfies import('../src/core/messages').ExtensionMessage) as {
+        error?: string;
+        ok?: boolean;
+      };
+      if (!response?.ok) throw new Error(response?.error ?? 'side_panel_failed');
+    },
+  });
   let frameId: number | undefined;
   let observer: MutationObserver | undefined;
 
@@ -54,10 +73,16 @@ export default defineUnlistedScript(() => {
           break;
         case 'OVERLAY_SHOW':
           startPositioning();
-          overlay.show(tabMessage.payload.appearance);
+          overlay.show(
+            tabMessage.payload.appearance,
+            tabMessage.payload.layout,
+          );
           break;
         case 'OVERLAY_APPEARANCE':
           overlay.setAppearance(tabMessage.payload.appearance);
+          break;
+        case 'OVERLAY_LAYOUT':
+          overlay.setLayout(tabMessage.payload.layout);
           break;
         case 'OVERLAY_HIDE':
           stopPositioning();

@@ -11,9 +11,6 @@ type BackgroundListener = (
 
 const settings: AppSettings = {
   backgroundOpacity: 78,
-  bottomOffset: 8,
-  captionRows: 2,
-  captionWidth: 80,
   deepgramApiKey: 'deepgram-key',
   deeplApiKey: 'deepl-key:fx',
   geminiApiKey: 'gemini-key',
@@ -33,6 +30,7 @@ let onSettingsChanged: (
   changes: Record<string, { newValue?: unknown }>,
   area: string,
 ) => void;
+let onRuntimeConnect: (port: chrome.runtime.Port) => void;
 let onTabRemoved: (tabId: number) => void;
 let onTabUpdated: (
   tabId: number,
@@ -43,9 +41,12 @@ let closeDocument: ReturnType<typeof vi.fn>;
 let createDocument: ReturnType<typeof vi.fn>;
 let executeScript: ReturnType<typeof vi.fn>;
 let getStreamId: ReturnType<typeof vi.fn>;
+let localStorageData: Record<string, unknown>;
 let removeSessionStorage: ReturnType<typeof vi.fn>;
 let runtimeSendMessage: ReturnType<typeof vi.fn>;
 let setLocalAccessLevel: ReturnType<typeof vi.fn>;
+let sidePanelOpen: ReturnType<typeof vi.fn>;
+let sidePanelSetOptions: ReturnType<typeof vi.fn>;
 let tabsSendMessage: ReturnType<typeof vi.fn>;
 
 beforeEach(async () => {
@@ -59,8 +60,11 @@ beforeEach(async () => {
   });
   executeScript = vi.fn().mockResolvedValue(undefined);
   getStreamId = vi.fn().mockResolvedValue('stream-id');
+  localStorageData = {};
   removeSessionStorage = vi.fn().mockResolvedValue(undefined);
   setLocalAccessLevel = vi.fn().mockResolvedValue(undefined);
+  sidePanelOpen = vi.fn().mockResolvedValue(undefined);
+  sidePanelSetOptions = vi.fn().mockResolvedValue(undefined);
   runtimeSendMessage = vi.fn(async (message: ExtensionMessage) => {
     if (message.target === 'offscreen') return { ok: true };
     return undefined;
@@ -85,6 +89,11 @@ beforeEach(async () => {
           listener = registered;
         }),
       },
+      onConnect: {
+        addListener: vi.fn((registered: (port: chrome.runtime.Port) => void) => {
+          onRuntimeConnect = registered;
+        }),
+      },
       sendMessage: runtimeSendMessage,
     },
     scripting: {
@@ -92,7 +101,10 @@ beforeEach(async () => {
     },
     storage: {
       local: {
-        get: vi.fn().mockResolvedValue({}),
+        get: vi.fn(async (key: string) => ({ [key]: localStorageData[key] })),
+        set: vi.fn(async (values: Record<string, unknown>) => {
+          Object.assign(localStorageData, values);
+        }),
         setAccessLevel: setLocalAccessLevel,
       },
       onChanged: {
@@ -114,7 +126,15 @@ beforeEach(async () => {
       },
     },
     tabCapture: { getMediaStreamId: getStreamId },
+    sidePanel: {
+      open: sidePanelOpen,
+      setOptions: sidePanelSetOptions,
+    },
     tabs: {
+      get: vi.fn(async (tabId: number) => ({
+        id: tabId,
+        url: 'https://example.com/watch',
+      })),
       onUpdated: {
         addListener: vi.fn(
           (
@@ -337,7 +357,7 @@ describe('background offscreen document lifecycle', () => {
         settings: {
           newValue: {
             ...settings,
-            captionWidth: 88,
+            backgroundOpacity: 88,
             geminiApiKey: 'must-not-leak',
           },
         },
@@ -349,7 +369,7 @@ describe('background offscreen document lifecycle', () => {
       expect(tabsSendMessage).toHaveBeenCalledWith(42, {
         type: 'OVERLAY_APPEARANCE',
         payload: {
-          appearance: expect.objectContaining({ captionWidth: 88 }),
+          appearance: expect.objectContaining({ backgroundOpacity: 88 }),
         },
       });
     });
@@ -370,12 +390,161 @@ describe('background offscreen document lifecycle', () => {
     await vi.waitFor(() => {
       expect(tabsSendMessage).toHaveBeenCalledWith(42, {
         type: 'OVERLAY_SHOW',
-        payload: { appearance: expect.any(Object) },
+        payload: {
+          appearance: expect.any(Object),
+          layout: undefined,
+        },
       });
       expect(tabsSendMessage).toHaveBeenCalledWith(42, {
         type: 'CAPTION_WINDOW',
         payload: { pairs: [] },
       });
+    });
+  });
+
+  it('opens Chrome Side Panel and fully switches the webpage overlay to native mode', async () => {
+    await startSession();
+    tabsSendMessage.mockClear();
+    vi.mocked(chrome.tabs.get).mockClear();
+    const layout = {
+      floatingRect: {
+        heightRatio: 0.25,
+        widthRatio: 0.6,
+        xRatio: 0.2,
+        yRatio: 0.6,
+      },
+      mode: 'floating' as const,
+      version: 1 as const,
+    };
+
+    const response = await dispatchFrom(
+      { target: 'background', type: 'OPEN_SIDE_PANEL', payload: { layout } },
+      {
+        frameId: 0,
+        id: 'test',
+        tab: { id: 42 } as chrome.tabs.Tab,
+      },
+    );
+
+    expect(response).toMatchObject({ ok: true, layout: { mode: 'native' } });
+    expect(sidePanelOpen).toHaveBeenCalledWith({ tabId: 42 });
+    expect(sidePanelOpen.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(chrome.tabs.get).mock.invocationCallOrder[0]!,
+    );
+    expect(tabsSendMessage).toHaveBeenCalledWith(42, {
+      type: 'OVERLAY_LAYOUT',
+      payload: { layout: expect.objectContaining({ mode: 'native' }) },
+    });
+  });
+
+  it('lets only the Side Panel restore the floating caption surface', async () => {
+    await startSession();
+    await dispatchFrom(
+      {
+        target: 'background',
+        type: 'OPEN_SIDE_PANEL',
+        payload: {
+          layout: {
+            floatingRect: {
+              heightRatio: 0.25,
+              widthRatio: 0.6,
+              xRatio: 0.2,
+              yRatio: 0.6,
+            },
+            mode: 'floating',
+            version: 1,
+          },
+        },
+      },
+      { frameId: 0, id: 'test', tab: { id: 42 } as chrome.tabs.Tab },
+    );
+    tabsSendMessage.mockClear();
+
+    const response = await dispatchFrom(
+      {
+        target: 'background',
+        type: 'SET_CAPTION_SURFACE',
+        payload: { mode: 'floating' },
+      },
+      { id: 'test', url: 'chrome-extension://test/sidepanel.html' },
+    );
+
+    expect(response).toMatchObject({ ok: true, layout: { mode: 'floating' } });
+    expect(tabsSendMessage).toHaveBeenCalledWith(42, {
+      type: 'OVERLAY_LAYOUT',
+      payload: { layout: expect.objectContaining({ mode: 'floating' }) },
+    });
+
+    const sendResponse = vi.fn();
+    expect(listener(
+      {
+        target: 'background',
+        type: 'SET_CAPTION_SURFACE',
+        payload: { mode: 'floating' },
+      },
+      { frameId: 0, id: 'test', tab: { id: 42 } as chrome.tabs.Tab },
+      sendResponse,
+    )).toBe(false);
+    expect(sendResponse).not.toHaveBeenCalled();
+  });
+
+  it('shares caption state only with the trusted Side Panel port', async () => {
+    const untrustedPost = vi.fn();
+    onRuntimeConnect({
+      name: 'caption-side-panel',
+      onDisconnect: { addListener: vi.fn() },
+      postMessage: untrustedPost,
+      sender: {
+        frameId: 0,
+        id: 'test',
+        tab: { id: 42 } as chrome.tabs.Tab,
+      },
+    } as unknown as chrome.runtime.Port);
+    await Promise.resolve();
+    expect(untrustedPost).not.toHaveBeenCalled();
+
+    const trustedPost = vi.fn();
+    onRuntimeConnect({
+      name: 'caption-side-panel',
+      onDisconnect: { addListener: vi.fn() },
+      postMessage: trustedPost,
+      sender: { id: 'test', url: 'chrome-extension://test/sidepanel.html' },
+    } as unknown as chrome.runtime.Port);
+
+    await vi.waitFor(() => expect(trustedPost).toHaveBeenCalledWith({
+      type: 'SIDE_PANEL_STATE',
+      payload: { active: false, pairs: [], status: { state: 'idle' } },
+    }));
+  });
+
+  it('starts a fresh session in floating mode while preserving its saved rectangle', async () => {
+    const nativeLayout = {
+      floatingRect: {
+        heightRatio: 0.35,
+        widthRatio: 0.55,
+        xRatio: 0.12,
+        yRatio: 0.42,
+      },
+      mode: 'native',
+      version: 1,
+    };
+    localStorageData.overlayLayoutsByOrigin = {
+      layouts: { 'https://example.com': nativeLayout },
+      order: ['https://example.com'],
+      version: 1,
+    };
+
+    await startSession();
+
+    expect(tabsSendMessage).toHaveBeenCalledWith(42, {
+      type: 'OVERLAY_SHOW',
+      payload: {
+        appearance: expect.any(Object),
+        layout: expect.objectContaining({
+          floatingRect: nativeLayout.floatingRect,
+          mode: 'floating',
+        }),
+      },
     });
   });
 
@@ -428,7 +597,6 @@ describe('background offscreen document lifecycle', () => {
 });
 
 function dispatch(message: ExtensionMessage): Promise<unknown> {
-  const response = Promise.withResolvers<unknown>();
   const sender: chrome.runtime.MessageSender = message.type.startsWith('SESSION_')
     ? {
         id: 'test',
@@ -438,8 +606,15 @@ function dispatch(message: ExtensionMessage): Promise<unknown> {
         id: 'test',
         url: 'chrome-extension://test/offscreen.html',
       };
-  expect(listener(message, sender, response.resolve))
-    .toBe(true);
+  return dispatchFrom(message, sender);
+}
+
+function dispatchFrom(
+  message: ExtensionMessage,
+  sender: chrome.runtime.MessageSender,
+): Promise<unknown> {
+  const response = Promise.withResolvers<unknown>();
+  expect(listener(message, sender, response.resolve)).toBe(true);
   return response.promise;
 }
 

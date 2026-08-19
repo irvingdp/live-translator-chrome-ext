@@ -9,9 +9,6 @@ import {
 
 const settings: SessionSettings = {
   backgroundOpacity: 78,
-  bottomOffset: 8,
-  captionRows: 2,
-  captionWidth: 80,
   deepgramApiKey: 'deepgram-key',
   deeplApiKey: 'deepl-key:fx',
   geminiApiKey: 'gemini-key',
@@ -31,6 +28,7 @@ function createHarness() {
     ensureContentScript: vi.fn().mockResolvedValue(undefined),
     ensureOffscreen: vi.fn().mockResolvedValue(undefined),
     getStreamId: vi.fn().mockResolvedValue('stream-id'),
+    getOverlayLayout: vi.fn().mockResolvedValue(undefined),
     sendToOffscreen: vi.fn().mockResolvedValue(undefined),
     sendToTab: vi.fn().mockResolvedValue(undefined),
     translate: vi.fn().mockResolvedValue('翻譯'),
@@ -126,9 +124,8 @@ describe('CaptureSessionController', () => {
       payload: {
         appearance: expect.objectContaining({
           backgroundOpacity: settings.backgroundOpacity,
-          captionWidth: settings.captionWidth,
-          maxVisibleRows: 0,
         }),
+        layout: undefined,
       },
     });
     expect(controller.status()).toEqual({ state: 'running', tabId: 42 });
@@ -354,7 +351,7 @@ describe('CaptureSessionController', () => {
     ]);
   });
 
-  it('applies a new row count to the live window', async () => {
+  it('keeps a fixed history while visible rows are owned by the overlay height', async () => {
     const harness = createHarness();
     const sessionId = await startSession(harness, { maxLineWidth: 20 });
 
@@ -364,10 +361,9 @@ describe('CaptureSessionController', () => {
       segmentId: 'segment-1',
       text: 'One two three. Four five six. Seven eight nine.',
     });
-    expect(windowsSentTo(harness).at(-1)!.payload.pairs).toHaveLength(2);
+    expect(windowsSentTo(harness).at(-1)!.payload.pairs.length).toBeGreaterThan(1);
 
     harness.controller.applyLayout({
-      captionRows: 1,
       maxLineWidth: 20,
       minLineWidth: 0,
     });
@@ -378,16 +374,14 @@ describe('CaptureSessionController', () => {
       text: 'Ten eleven twelve.',
     });
 
-    expect(windowsSentTo(harness).at(-1)!.payload.pairs).toHaveLength(1);
+    expect(windowsSentTo(harness).at(-1)!.payload.pairs.length).toBeGreaterThan(1);
   });
 
   it('never re-cuts a row the viewer already read when the width narrows', async () => {
     const harness = createHarness();
     // A window wide enough to hold every row: the rolling window would
     // otherwise drop the duplicated rows before they could be observed.
-    const rows = 20;
     const sessionId = await startSession(harness, {
-      captionRows: rows,
       maxLineWidth: 90,
       minLineWidth: 0,
     });
@@ -406,7 +400,6 @@ describe('CaptureSessionController', () => {
       });
     }
     harness.controller.applyLayout({
-      captionRows: rows,
       maxLineWidth: 20,
       minLineWidth: 0,
     });
@@ -440,7 +433,6 @@ describe('CaptureSessionController', () => {
     const harness = createHarness();
     const sessionId = await startSession(harness, { maxLineWidth: 140 });
     harness.controller.applyLayout({
-      captionRows: 2,
       maxLineWidth: 20,
       minLineWidth: 0,
     });
@@ -453,7 +445,7 @@ describe('CaptureSessionController', () => {
     });
 
     const pairs = windowsSentTo(harness).at(-1)!.payload.pairs;
-    expect(pairs).toHaveLength(2);
+    expect(pairs.length).toBeGreaterThan(1);
     for (const pair of pairs) expect(pair.original.length).toBeLessThanOrEqual(20);
   });
 
@@ -594,7 +586,6 @@ describe('CaptureSessionController', () => {
     it('applies a sentence batch in one render and never resurrects an old row', async () => {
       const harness = createHarness();
       const sessionId = await startSession(harness, {
-        captionRows: 1,
         transcriber: 'gemini',
       });
 
@@ -604,18 +595,17 @@ describe('CaptureSessionController', () => {
       ]);
 
       expect(windowsSentTo(harness)).toHaveLength(1);
-      expect(windowsSentTo(harness)[0]!.payload.pairs).toEqual([
-        { id: 'turn-0#1', original: 'Two.', translation: '二。' },
-      ]);
+      expect(windowsSentTo(harness)[0]!.payload.pairs).toHaveLength(2);
 
       vi.mocked(harness.dependencies.sendToTab).mockClear();
       await harness.controller.acceptCaptionPairs(sessionId, [
         { id: 'turn-0#0', translation: '遲到的一。' },
       ]);
 
-      expect(windowsSentTo(harness)[0]!.payload.pairs).toEqual([
-        { id: 'turn-0#1', original: 'Two.', translation: '二。' },
-      ]);
+      expect(windowsSentTo(harness)[0]!.payload.pairs[0]).toMatchObject({
+        id: 'turn-0#0',
+        translation: '遲到的一。',
+      });
     });
 
     it('forwards a live maximum-width change to the active Gemini session', async () => {
@@ -624,7 +614,6 @@ describe('CaptureSessionController', () => {
       vi.mocked(harness.dependencies.sendToOffscreen).mockClear();
 
       harness.controller.applyLayout({
-        captionRows: 2,
         maxLineWidth: 60,
         minLineWidth: 40,
       });
@@ -639,7 +628,6 @@ describe('CaptureSessionController', () => {
     it('grows a row in place and rolls the window on at the next turn', async () => {
       const harness = createHarness();
       const sessionId = await startSession(harness, {
-        captionRows: 1,
         transcriber: 'gemini',
       });
 
@@ -663,6 +651,7 @@ describe('CaptureSessionController', () => {
         { id: 'turn-0#0', original: 'Hello there', translation: '你好' },
       ]);
       expect(windows.at(-1)?.payload.pairs).toEqual([
+        { id: 'turn-0#0', original: 'Hello there', translation: '你好' },
         { id: 'turn-1#0', original: 'Goodbye', translation: '再見' },
       ]);
     });
@@ -779,9 +768,8 @@ describe('CaptureSessionController', () => {
       payload: {
         appearance: expect.objectContaining({
           backgroundOpacity: settings.backgroundOpacity,
-          captionWidth: settings.captionWidth,
-          maxVisibleRows: 0,
         }),
+        layout: undefined,
       },
     });
   });
