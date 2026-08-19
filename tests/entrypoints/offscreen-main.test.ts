@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AudioPipeline, CaptureSession } from '../../src/audio/offscreen-capture-controller';
+import type {
+  AudioPipeline,
+  CaptureEvent,
+  CaptureSession,
+} from '../../src/audio/offscreen-capture-controller';
 import type { ExtensionMessage } from '../../src/core/messages';
 
 const audio = vi.hoisted(() => ({
@@ -34,6 +38,7 @@ let pipeline: AudioPipeline;
 let runtimeSendMessage: ReturnType<typeof vi.fn>;
 let transcriptionSession: CaptureSession;
 let emitUnexpectedDisconnect: () => void;
+let emitCaptureEvent: (event: CaptureEvent) => void;
 
 beforeEach(async () => {
   vi.useFakeTimers();
@@ -47,6 +52,7 @@ beforeEach(async () => {
     sampleRate: 16_000,
   };
   emitUnexpectedDisconnect = () => undefined;
+  emitCaptureEvent = () => undefined;
   transcriptionSession = {
     audioChunkMs: 40,
     close: vi.fn(),
@@ -55,8 +61,12 @@ beforeEach(async () => {
       emitUnexpectedDisconnect = registered;
       return vi.fn();
     }),
-    onEvent: vi.fn(() => vi.fn()),
+    onEvent: vi.fn((registered) => {
+      emitCaptureEvent = registered;
+      return vi.fn();
+    }),
     sendAudio: vi.fn().mockReturnValue(true),
+    updateMaxLineWidth: vi.fn(),
   };
   audio.createPipeline.mockResolvedValue(pipeline);
   audio.createSession.mockReturnValue(transcriptionSession);
@@ -157,6 +167,47 @@ describe('offscreen runtime listener', () => {
       });
     });
     expect(pipeline.close).not.toHaveBeenCalled();
+  });
+
+  it('updates sentence width on the active capture session', async () => {
+    await startCapture('session-1');
+
+    const update = dispatch({
+      target: 'offscreen',
+      type: 'CAPTURE_CONFIG_UPDATE',
+      payload: { maxLineWidth: 60, sessionId: 'session-1' },
+    });
+
+    await vi.waitFor(() => {
+      expect(update.sendResponse).toHaveBeenCalledWith({ ok: true });
+    });
+    expect(transcriptionSession.updateMaxLineWidth).toHaveBeenCalledWith(60);
+  });
+
+  it('forwards a Gemini sentence batch in one runtime message', async () => {
+    await startCapture('session-1');
+    runtimeSendMessage.mockClear();
+
+    emitCaptureEvent({
+      kind: 'pairs',
+      updates: [
+        { id: 'turn-0#0', original: 'One.' },
+        { id: 'turn-0#1', original: 'Two.' },
+      ],
+    });
+
+    expect(runtimeSendMessage).toHaveBeenCalledOnce();
+    expect(runtimeSendMessage).toHaveBeenCalledWith({
+      target: 'background',
+      type: 'CAPTION_PAIR_UPDATES',
+      payload: {
+        sessionId: 'session-1',
+        updates: [
+          { id: 'turn-0#0', original: 'One.' },
+          { id: 'turn-0#1', original: 'Two.' },
+        ],
+      },
+    });
   });
 
   it('rejects stale translation after session replacement and stops only the current session', async () => {

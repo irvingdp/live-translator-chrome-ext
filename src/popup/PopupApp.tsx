@@ -311,37 +311,35 @@ export function PopupApp({ api }: { api: PopupApi }) {
           value={settings.captionWidth}
           onChange={(value) => update('captionWidth', value)}
         />
-        {/* Gemini decides its own line boundaries — one utterance is one row —
-            so the chunker widths have nothing to act on in that mode. */}
+        <RangeField
+          id="max-line-width"
+          label={t('maxLineWidthLabel')}
+          max={SETTING_RANGES.maxLineWidth.max}
+          min={SETTING_RANGES.maxLineWidth.min}
+          step={5}
+          unit={t('unitColumns')}
+          value={settings.maxLineWidth}
+          onChange={(value) => update('maxLineWidth', value)}
+        />
+        {/* Gemini preserves one complete sentence per row, so merging short
+            sentences to meet a minimum width would defeat that mode. */}
         {!isGemini && (
-          <>
-            <RangeField
-              id="max-line-width"
-              label={t('maxLineWidthLabel')}
-              max={SETTING_RANGES.maxLineWidth.max}
-              min={SETTING_RANGES.maxLineWidth.min}
-              step={5}
-              unit={t('unitColumns')}
-              value={settings.maxLineWidth}
-              onChange={(value) => update('maxLineWidth', value)}
-            />
-            <RangeField
-              id="min-line-width"
-              label={t('minLineWidthLabel')}
-              // A minimum above the maximum is clamped away on save, so
-              // offering the full range lets the handle be dragged somewhere
-              // it only springs back from.
-              max={Math.min(
-                SETTING_RANGES.minLineWidth.max,
-                settings.maxLineWidth,
-              )}
-              min={SETTING_RANGES.minLineWidth.min}
-              step={5}
-              unit={t('unitColumns')}
-              value={settings.minLineWidth}
-              onChange={(value) => update('minLineWidth', value)}
-            />
-          </>
+          <RangeField
+            id="min-line-width"
+            label={t('minLineWidthLabel')}
+            // A minimum above the maximum is clamped away on save, so
+            // offering the full range lets the handle be dragged somewhere
+            // it only springs back from.
+            max={Math.min(
+              SETTING_RANGES.minLineWidth.max,
+              settings.maxLineWidth,
+            )}
+            min={SETTING_RANGES.minLineWidth.min}
+            step={5}
+            unit={t('unitColumns')}
+            value={settings.minLineWidth}
+            onChange={(value) => update('minLineWidth', value)}
+          />
         )}
         <RangeField
           id="background-opacity"

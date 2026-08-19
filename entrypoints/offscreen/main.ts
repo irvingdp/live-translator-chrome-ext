@@ -28,11 +28,11 @@ const controller = new OffscreenCaptureController({
   },
   emitEvent: (sessionId, event) => {
     void chrome.runtime.sendMessage<ExtensionMessage>(
-      event.kind === 'pair'
+      event.kind === 'pairs'
         ? {
             target: 'background',
-            type: 'CAPTION_PAIR_EVENT',
-            payload: { event: event.event, sessionId },
+            type: 'CAPTION_PAIR_UPDATES',
+            payload: { sessionId, updates: event.updates },
           }
         : {
             target: 'background',
@@ -119,6 +119,12 @@ chrome.runtime.onMessage.addListener(
           return { ok: true } as const;
         case 'CAPTURE_STOP':
           await teardownSession(message.payload.sessionId);
+          return { ok: true } as const;
+        case 'CAPTURE_CONFIG_UPDATE':
+          controller.updateMaxLineWidth(
+            message.payload.sessionId,
+            message.payload.maxLineWidth,
+          );
           return { ok: true } as const;
         case 'TRANSLATE_REQUEST':
           return translationController.translate(

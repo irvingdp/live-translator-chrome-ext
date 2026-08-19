@@ -299,6 +299,35 @@ describe('background offscreen document lifecycle', () => {
     }).not.toThrow();
   });
 
+  it('routes one Gemini sentence batch to one caption-window render', async () => {
+    await startSession();
+    tabsSendMessage.mockClear();
+
+    const response = await dispatch({
+      target: 'background',
+      type: 'CAPTION_PAIR_UPDATES',
+      payload: {
+        sessionId: activeSessionId(),
+        updates: [
+          { id: 'turn-0#0', original: 'One.', translation: '一。' },
+          { id: 'turn-0#1', original: 'Two.', translation: '二。' },
+        ],
+      },
+    });
+
+    expect(response).toEqual({ ok: true });
+    expect(tabsSendMessage).toHaveBeenCalledOnce();
+    expect(tabsSendMessage).toHaveBeenCalledWith(42, {
+      type: 'CAPTION_WINDOW',
+      payload: {
+        pairs: [
+          { id: 'turn-0#0', original: 'One.', translation: '一。' },
+          { id: 'turn-0#1', original: 'Two.', translation: '二。' },
+        ],
+      },
+    });
+  });
+
   it('sends only projected appearance data after a live settings change', async () => {
     await startSession();
     tabsSendMessage.mockClear();

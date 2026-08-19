@@ -566,6 +566,7 @@ describe('CaptureSessionController', () => {
         type: 'CAPTURE_START',
         payload: {
           apiKey: 'gemini-key',
+          maxLineWidth: 90,
           provider: 'gemini',
           sessionId: expect.any(String),
           streamId: 'stream-id',
@@ -578,16 +579,61 @@ describe('CaptureSessionController', () => {
       const harness = createHarness();
       const sessionId = await startSession(harness, { transcriber: 'gemini' });
 
-      await harness.controller.acceptCaptionPair(sessionId, {
+      await harness.controller.acceptCaptionPairs(sessionId, [{
+        id: 'turn-0#0',
         original: 'Hello there',
         translation: '你好',
-        turnId: 'turn-0',
-      });
+      }]);
 
       expect(windowsSentTo(harness).at(-1)?.payload.pairs).toEqual([
-        { id: 'turn-0', original: 'Hello there', translation: '你好' },
+        { id: 'turn-0#0', original: 'Hello there', translation: '你好' },
       ]);
       expect(harness.dependencies.translate).not.toHaveBeenCalled();
+    });
+
+    it('applies a sentence batch in one render and never resurrects an old row', async () => {
+      const harness = createHarness();
+      const sessionId = await startSession(harness, {
+        captionRows: 1,
+        transcriber: 'gemini',
+      });
+
+      await harness.controller.acceptCaptionPairs(sessionId, [
+        { id: 'turn-0#0', original: 'One.', translation: '一。' },
+        { id: 'turn-0#1', original: 'Two.', translation: '二。' },
+      ]);
+
+      expect(windowsSentTo(harness)).toHaveLength(1);
+      expect(windowsSentTo(harness)[0]!.payload.pairs).toEqual([
+        { id: 'turn-0#1', original: 'Two.', translation: '二。' },
+      ]);
+
+      vi.mocked(harness.dependencies.sendToTab).mockClear();
+      await harness.controller.acceptCaptionPairs(sessionId, [
+        { id: 'turn-0#0', translation: '遲到的一。' },
+      ]);
+
+      expect(windowsSentTo(harness)[0]!.payload.pairs).toEqual([
+        { id: 'turn-0#1', original: 'Two.', translation: '二。' },
+      ]);
+    });
+
+    it('forwards a live maximum-width change to the active Gemini session', async () => {
+      const harness = createHarness();
+      await startSession(harness, { transcriber: 'gemini' });
+      vi.mocked(harness.dependencies.sendToOffscreen).mockClear();
+
+      harness.controller.applyLayout({
+        captionRows: 2,
+        maxLineWidth: 60,
+        minLineWidth: 40,
+      });
+
+      expect(harness.dependencies.sendToOffscreen).toHaveBeenCalledWith({
+        target: 'offscreen',
+        type: 'CAPTURE_CONFIG_UPDATE',
+        payload: { maxLineWidth: 60, sessionId: expect.any(String) },
+      });
     });
 
     it('grows a row in place and rolls the window on at the next turn', async () => {
@@ -597,28 +643,27 @@ describe('CaptureSessionController', () => {
         transcriber: 'gemini',
       });
 
-      await harness.controller.acceptCaptionPair(sessionId, {
+      await harness.controller.acceptCaptionPairs(sessionId, [{
+        id: 'turn-0#0',
         original: 'Hello',
-        translation: '',
-        turnId: 'turn-0',
-      });
-      await harness.controller.acceptCaptionPair(sessionId, {
+      }]);
+      await harness.controller.acceptCaptionPairs(sessionId, [{
+        id: 'turn-0#0',
         original: 'Hello there',
         translation: '你好',
-        turnId: 'turn-0',
-      });
-      await harness.controller.acceptCaptionPair(sessionId, {
+      }]);
+      await harness.controller.acceptCaptionPairs(sessionId, [{
+        id: 'turn-1#0',
         original: 'Goodbye',
         translation: '再見',
-        turnId: 'turn-1',
-      });
+      }]);
 
       const windows = windowsSentTo(harness);
       expect(windows[1]?.payload.pairs).toEqual([
-        { id: 'turn-0', original: 'Hello there', translation: '你好' },
+        { id: 'turn-0#0', original: 'Hello there', translation: '你好' },
       ]);
       expect(windows.at(-1)?.payload.pairs).toEqual([
-        { id: 'turn-1', original: 'Goodbye', translation: '再見' },
+        { id: 'turn-1#0', original: 'Goodbye', translation: '再見' },
       ]);
     });
 
@@ -628,11 +673,11 @@ describe('CaptureSessionController', () => {
       await harness.controller.stop();
       vi.mocked(harness.dependencies.sendToTab).mockClear();
 
-      await harness.controller.acceptCaptionPair(sessionId, {
+      await harness.controller.acceptCaptionPairs(sessionId, [{
+        id: 'turn-0#0',
         original: 'Hello',
         translation: '你好',
-        turnId: 'turn-0',
-      });
+      }]);
 
       expect(windowsSentTo(harness)).toHaveLength(0);
     });

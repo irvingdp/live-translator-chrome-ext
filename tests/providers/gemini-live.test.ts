@@ -165,25 +165,69 @@ describe('GeminiCaptionAccumulator', () => {
     const accumulator = new GeminiCaptionAccumulator();
 
     accumulator.ingest({ original: 'Hello', turnComplete: false });
-    const pair = accumulator.ingest({
+    const updates = accumulator.ingest({
       original: 'Hello there',
       turnComplete: false,
     });
 
-    expect(pair).toEqual({
-      original: 'Hello there',
-      translation: '',
-      turnId: 'turn-0',
-    });
+    expect(updates).toEqual([
+      { id: 'turn-0#0', original: 'Hello there' },
+    ]);
   });
 
   it('accumulates a turn sent as separate fragments', () => {
     const accumulator = new GeminiCaptionAccumulator();
 
     accumulator.ingest({ original: 'Hello', turnComplete: false });
-    const pair = accumulator.ingest({ original: ' there', turnComplete: false });
+    const updates = accumulator.ingest({
+      original: ' there',
+      turnComplete: false,
+    });
 
-    expect(pair?.original).toBe('Hello there');
+    expect(updates).toEqual([
+      { id: 'turn-0#0', original: 'Hello there' },
+    ]);
+  });
+
+  it('keeps the last sentence editable until the following sentence arrives', () => {
+    const accumulator = new GeminiCaptionAccumulator();
+
+    expect(
+      accumulator.ingest({ original: 'Hello.', turnComplete: false }),
+    ).toEqual([{ id: 'turn-0#0', original: 'Hello.' }]);
+
+    expect(
+      accumulator.ingest({ original: 'Hello. Next', turnComplete: false }),
+    ).toEqual([
+      { id: 'turn-0#0', original: 'Hello.' },
+      { id: 'turn-0#1', original: 'Next' },
+    ]);
+  });
+
+  it('treats punctuation removal as a cumulative revision, not a fragment', () => {
+    const accumulator = new GeminiCaptionAccumulator();
+
+    accumulator.ingest({ original: 'Hello.', turnComplete: false });
+
+    expect(
+      accumulator.ingest({ original: 'Hello', turnComplete: false }),
+    ).toEqual([{ id: 'turn-0#0', original: 'Hello' }]);
+  });
+
+  it('splits CJK punctuation and long unpunctuated text into readable rows', () => {
+    const accumulator = new GeminiCaptionAccumulator(10);
+
+    expect(
+      accumulator.ingest({
+        original: '第一句。第二句。abcdefghijk',
+        turnComplete: false,
+      }),
+    ).toEqual([
+      { id: 'turn-0#0', original: '第一句。' },
+      { id: 'turn-0#1', original: '第二句。' },
+      { id: 'turn-0#2', original: 'abcdefghij' },
+      { id: 'turn-0#3', original: 'k' },
+    ]);
   });
 
   it('keeps a late translation on the row it belongs to', () => {
@@ -193,13 +237,40 @@ describe('GeminiCaptionAccumulator', () => {
     accumulator.ingest({ turnComplete: true });
     // The translation of the finished turn is still arriving; it must not open
     // a new row, or the row the viewer is reading never gets its translation.
-    const late = accumulator.ingest({ translation: '你好', turnComplete: false });
-
-    expect(late).toEqual({
-      original: 'Hello',
+    const late = accumulator.ingest({
       translation: '你好',
-      turnId: 'turn-0',
+      turnComplete: false,
     });
+
+    expect(late).toEqual([{ id: 'turn-0#0', translation: '你好' }]);
+  });
+
+  it('caches target-first text until its source row exists', () => {
+    const accumulator = new GeminiCaptionAccumulator();
+
+    expect(
+      accumulator.ingest({ translation: '你好', turnComplete: false }),
+    ).toEqual([]);
+    expect(
+      accumulator.ingest({ original: 'Hello', turnComplete: false }),
+    ).toEqual([
+      { id: 'turn-0#0', original: 'Hello', translation: '你好' },
+    ]);
+  });
+
+  it('pairs by sentence order and merges excess target sentences into the tail', () => {
+    const accumulator = new GeminiCaptionAccumulator();
+
+    accumulator.ingest({ original: 'One. Two.', turnComplete: true });
+    const translated = accumulator.ingest({
+      translation: '一。二。三。',
+      turnComplete: false,
+    });
+
+    expect(translated).toEqual([
+      { id: 'turn-0#0', translation: '一。' },
+      { id: 'turn-0#1', translation: '二。三。' },
+    ]);
   });
 
   it('opens a new row once the next utterance starts', () => {
@@ -208,10 +279,9 @@ describe('GeminiCaptionAccumulator', () => {
     accumulator.ingest({ original: 'Hello', translation: '你好', turnComplete: true });
     const next = accumulator.ingest({ original: 'Goodbye', turnComplete: false });
 
-    expect(next).toEqual({
+    expect(next.at(-1)).toEqual({
+      id: 'turn-1#0',
       original: 'Goodbye',
-      translation: '',
-      turnId: 'turn-1',
     });
   });
 
@@ -222,75 +292,67 @@ describe('GeminiCaptionAccumulator', () => {
     accumulator.closeTurn();
     const resumed = accumulator.ingest({ original: 'Goodbye', turnComplete: false });
 
-    expect(resumed).toEqual({
-      original: 'Goodbye',
-      translation: '',
-      turnId: 'turn-1',
-    });
+    expect(resumed).toEqual([
+      { id: 'turn-1#0', original: 'Goodbye' },
+    ]);
   });
 
-  // A turn stays open for as long as the speaker keeps talking, and the whole
-  // row is re-sent to the tab on every update, so an uncapped turn becomes an
-  // ever-larger message several times a second.
   describe('retention', () => {
-    const long = (length: number, filler = 'a') => filler.repeat(length);
+    it('keeps cumulative and fragment updates aligned after frozen text is dropped', () => {
+      const cumulative = new GeminiCaptionAccumulator(10);
+      const fragments = new GeminiCaptionAccumulator(10);
 
-    it('keeps only the tail of a turn that never ends', () => {
-      const accumulator = new GeminiCaptionAccumulator();
+      cumulative.ingest({ original: 'abcdefghijklmno', turnComplete: false });
+      fragments.ingest({ original: 'abcdefghijklmno', turnComplete: false });
 
-      const pair = accumulator.ingest({
-        original: `${long(3_000)}TAIL`,
-        turnComplete: false,
-      });
-
-      expect(pair?.original).toHaveLength(2_000);
-      expect(pair?.original.endsWith('TAIL')).toBe(true);
-    });
-
-    it('keeps accumulating cumulative sends after the front is dropped', () => {
-      const accumulator = new GeminiCaptionAccumulator();
-      const first = long(2_500);
-
-      accumulator.ingest({ original: first, turnComplete: false });
-      const pair = accumulator.ingest({
-        original: `${first} and then some`,
-        turnComplete: false,
-      });
-
-      // Resent-in-full must still be recognised as the same text, not appended
-      // to what was kept.
-      expect(pair?.original).toHaveLength(2_000);
-      expect(pair?.original.endsWith(' and then some')).toBe(true);
-    });
-
-    it('keeps accumulating incremental sends after the front is dropped', () => {
-      const accumulator = new GeminiCaptionAccumulator();
-
-      accumulator.ingest({ original: long(2_500), turnComplete: false });
-      const pair = accumulator.ingest({ original: ' more', turnComplete: false });
-
-      expect(pair?.original).toHaveLength(2_000);
-      expect(pair?.original.endsWith('a more')).toBe(true);
+      expect(
+        cumulative.ingest({
+          original: 'abcdefghijklmnopqrst',
+          turnComplete: false,
+        }),
+      ).toEqual([{ id: 'turn-0#1', original: 'klmnopqrst' }]);
+      expect(
+        fragments.ingest({ original: 'pqrst', turnComplete: false }),
+      ).toEqual([{ id: 'turn-0#1', original: 'klmnopqrst' }]);
     });
 
     it('restarts the offset with the next turn', () => {
-      const accumulator = new GeminiCaptionAccumulator();
+      const accumulator = new GeminiCaptionAccumulator(10);
 
-      accumulator.ingest({ original: long(2_500), turnComplete: true });
-      const pair = accumulator.ingest({ original: 'Fresh', turnComplete: false });
-
-      expect(pair).toEqual({
+      accumulator.ingest({
+        original: 'abcdefghijklmnopqrst',
+        turnComplete: true,
+      });
+      const updates = accumulator.ingest({
         original: 'Fresh',
-        translation: '',
-        turnId: 'turn-1',
+        turnComplete: false,
+      });
+
+      expect(updates.at(-1)).toEqual({
+        id: 'turn-1#0',
+        original: 'Fresh',
       });
     });
+  });
+
+  it('applies a live width change only to the still-open tail', () => {
+    const accumulator = new GeminiCaptionAccumulator(10);
+
+    accumulator.ingest({ original: 'abcdefgh', turnComplete: false });
+    accumulator.setMaxLineWidth(5);
+
+    expect(
+      accumulator.ingest({ original: 'abcdefghij', turnComplete: false }),
+    ).toEqual([
+      { id: 'turn-0#0', original: 'abcde' },
+      { id: 'turn-0#1', original: 'fghij' },
+    ]);
   });
 
   it('emits nothing for a turn boundary that carries no text', () => {
     const accumulator = new GeminiCaptionAccumulator();
 
-    expect(accumulator.ingest({ turnComplete: true })).toBeUndefined();
-    expect(accumulator.ingest({ original: '', turnComplete: false })).toBeUndefined();
+    expect(accumulator.ingest({ turnComplete: true })).toEqual([]);
+    expect(accumulator.ingest({ original: '', turnComplete: false })).toEqual([]);
   });
 });

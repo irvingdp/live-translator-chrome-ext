@@ -34,6 +34,7 @@ function createHarness(audioChunkMs = 40) {
       return vi.fn();
     }),
     sendAudio: vi.fn().mockReturnValue(true),
+    updateMaxLineWidth: vi.fn(),
   };
   const createPipeline = vi.fn(async (_streamId, listener) => {
     samplesListener = listener;
@@ -124,6 +125,7 @@ describe('OffscreenCaptureController', () => {
     const harness = createHarness(100);
     await harness.controller.start({
       apiKey: 'gemini-key',
+      maxLineWidth: 90,
       provider: 'gemini',
       sessionId: 'session-1',
       streamId: 'tab-stream',
@@ -141,6 +143,7 @@ describe('OffscreenCaptureController', () => {
     const harness = createHarness();
     await harness.controller.start({
       apiKey: 'gemini-key',
+      maxLineWidth: 90,
       provider: 'gemini',
       sessionId: 'session-1',
       streamId: 'tab-stream',
@@ -155,6 +158,24 @@ describe('OffscreenCaptureController', () => {
         'gemini_quota_exceeded',
       );
     });
+  });
+
+  it('updates the active Gemini sentence width only for its session', async () => {
+    const harness = createHarness(100);
+    await harness.controller.start({
+      apiKey: 'gemini-key',
+      maxLineWidth: 90,
+      provider: 'gemini',
+      sessionId: 'session-1',
+      streamId: 'tab-stream',
+      targetLanguage: 'zh-Hant',
+    });
+
+    harness.controller.updateMaxLineWidth('stale-session', 60);
+    harness.controller.updateMaxLineWidth('session-1', 60);
+
+    expect(harness.session.updateMaxLineWidth).toHaveBeenCalledOnce();
+    expect(harness.session.updateMaxLineWidth).toHaveBeenCalledWith(60);
   });
 
   it('closes every owned resource when capture stops', async () => {

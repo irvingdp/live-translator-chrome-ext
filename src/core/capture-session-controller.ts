@@ -1,5 +1,5 @@
 import type {
-  CaptionPairEvent,
+  CaptionPairUpdate,
   CaptureStartRequest,
 } from '../audio/offscreen-capture-controller';
 import type { TranslationRequest } from '../providers/deepl';
@@ -164,6 +164,16 @@ export class CaptureSessionController {
     if (!this.settings) return;
     this.settings = { ...this.settings, ...layout };
     this.captionWindow.setCapacity(layout.captionRows);
+    if (this.activeSessionId && this.settings.transcriber === 'gemini') {
+      void this.dependencies.sendToOffscreen({
+        target: 'offscreen',
+        type: 'CAPTURE_CONFIG_UPDATE',
+        payload: {
+          maxLineWidth: layout.maxLineWidth,
+          sessionId: this.activeSessionId,
+        },
+      }).catch(() => undefined);
+    }
     if (this.currentStatus.state === 'running') {
       void this.dependencies.sendToTab(this.currentStatus.tabId, {
         type: 'OVERLAY_APPEARANCE',
@@ -211,6 +221,7 @@ export class CaptureSessionController {
         settings.transcriber === 'gemini'
           ? {
               apiKey: settings.geminiApiKey,
+              maxLineWidth: this.settings?.maxLineWidth ?? settings.maxLineWidth,
               provider: 'gemini',
               sessionId,
               streamId,
@@ -312,9 +323,9 @@ export class CaptureSessionController {
   // The provider already did the transcribing and the translating, so the row
   // goes straight into the window: no stabilizer, no chunker, no translation
   // round trip. Everything downstream of the window is shared with Deepgram.
-  async acceptCaptionPair(
+  async acceptCaptionPairs(
     sessionId: string,
-    event: CaptionPairEvent,
+    updates: CaptionPairUpdate[],
   ): Promise<void> {
     if (
       sessionId !== this.activeSessionId ||
@@ -323,8 +334,20 @@ export class CaptureSessionController {
     ) {
       return;
     }
-    this.captionWindow.upsertOriginal(event.turnId, event.original);
-    this.captionWindow.upsertTranslation(event.turnId, event.translation);
+    if (updates.length === 0) return;
+    // Originals establish row identity. Applying every original first also
+    // makes a target-first provider frame safe without allowing a translation
+    // by itself to resurrect a row that already rolled out of the window.
+    for (const update of updates) {
+      if (update.original !== undefined) {
+        this.captionWindow.upsertOriginal(update.id, update.original);
+      }
+    }
+    for (const update of updates) {
+      if (update.translation !== undefined) {
+        this.captionWindow.upsertTranslation(update.id, update.translation);
+      }
+    }
     await this.sendWindow(this.currentStatus.tabId);
   }
 

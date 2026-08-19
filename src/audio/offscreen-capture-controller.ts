@@ -11,17 +11,16 @@ export interface AudioPipeline {
   onEnded?(listener: () => void): () => void;
 }
 
-// A row of caption straight from the provider. Gemini Live Translate returns
-// the source line and its translation together, so nothing downstream has to
-// transcribe, chunk, or translate it.
-export interface CaptionPairEvent {
-  original: string;
-  translation: string;
-  turnId: string;
+// A partial row update straight from the provider. Gemini's source and target
+// streams arrive independently, so either field may fill an existing row.
+export interface CaptionPairUpdate {
+  id: string;
+  original?: string;
+  translation?: string;
 }
 
 export type CaptureEvent =
-  | { event: CaptionPairEvent; kind: 'pair' }
+  | { kind: 'pairs'; updates: CaptionPairUpdate[] }
   | { event: TranscriptEvent; kind: 'transcript' };
 
 export interface CaptureSession {
@@ -31,6 +30,7 @@ export interface CaptureSession {
   onDisconnect(listener: (code?: string) => void): () => void;
   onEvent(listener: (event: CaptureEvent) => void): () => void;
   sendAudio(audio: ArrayBuffer): boolean;
+  updateMaxLineWidth?(maxLineWidth: number): void;
 }
 
 export type CaptureStartRequest = {
@@ -38,7 +38,12 @@ export type CaptureStartRequest = {
   streamId: string;
 } & (
   | { apiKey: string; language: string; provider: 'deepgram' }
-  | { apiKey: string; provider: 'gemini'; targetLanguage: string }
+  | {
+      apiKey: string;
+      maxLineWidth: number;
+      provider: 'gemini';
+      targetLanguage: string;
+    }
 );
 
 export interface OffscreenCaptureDependencies {
@@ -137,6 +142,11 @@ export class OffscreenCaptureController {
     if (capture) await this.release(capture);
   }
 
+  updateMaxLineWidth(sessionId: string, maxLineWidth: number): void {
+    if (!this.active || this.active.sessionId !== sessionId) return;
+    this.active.session.updateMaxLineWidth?.(maxLineWidth);
+  }
+
   private async release(capture: ActiveCapture): Promise<void> {
     const finalChunk = capture.chunker?.flush();
     if (finalChunk) capture.session.sendAudio(finalChunk);
@@ -199,6 +209,7 @@ export function createCaptureSession(
   if (request.provider === 'gemini') {
     return new GeminiLiveSession({
       apiKey: request.apiKey,
+      maxLineWidth: request.maxLineWidth,
       targetLanguage: request.targetLanguage,
     });
   }

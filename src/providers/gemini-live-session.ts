@@ -24,6 +24,7 @@ function log(message: string, detail?: unknown): void {
 
 export interface GeminiLiveSessionConfig {
   apiKey: string;
+  maxLineWidth: number;
   targetLanguage: string;
 }
 
@@ -42,7 +43,7 @@ export class GeminiLiveSession implements CaptureSession {
   private static readonly maxBufferedChunks = 30;
   private static readonly maxReconnectAttempts = 3;
 
-  private readonly accumulator = new GeminiCaptionAccumulator();
+  private readonly accumulator: GeminiCaptionAccumulator;
   private attempt = 0;
   private readonly buffered: ArrayBuffer[] = [];
   private closed = false;
@@ -68,7 +69,9 @@ export class GeminiLiveSession implements CaptureSession {
   constructor(
     private readonly config: GeminiLiveSessionConfig,
     private readonly socketFactory: GeminiSocketFactory = defaultSocketFactory,
-  ) {}
+  ) {
+    this.accumulator = new GeminiCaptionAccumulator(config.maxLineWidth);
+  }
 
   connect(): Promise<void> {
     if (this.socket) throw new Error('Gemini session already connected');
@@ -106,6 +109,10 @@ export class GeminiLiveSession implements CaptureSession {
     }
     this.socket.send(buildGeminiAudioMessage(audio));
     return true;
+  }
+
+  updateMaxLineWidth(maxLineWidth: number): void {
+    this.accumulator.setMaxLineWidth(maxLineWidth);
   }
 
   close(): void {
@@ -195,8 +202,8 @@ export class GeminiLiveSession implements CaptureSession {
             this.sawTranscription = true;
             log('first transcription received');
           }
-          const pair = this.accumulator.ingest(parsed);
-          if (pair) this.emit({ event: pair, kind: 'pair' });
+          const updates = this.accumulator.ingest(parsed);
+          if (updates.length > 0) this.emit({ kind: 'pairs', updates });
           break;
         }
         case 'resumption':
@@ -250,7 +257,8 @@ export class GeminiLiveSession implements CaptureSession {
       return;
     }
     this.attempt += 1;
-    this.accumulator.closeTurn();
+    const updates = this.accumulator.closeTurn();
+    if (updates.length > 0) this.emit({ kind: 'pairs', updates });
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
       if (!this.closed) this.openSocket();

@@ -131,7 +131,7 @@ export default defineBackground(() => {
   void ready.catch(() => undefined);
 
   const offscreenMessageTypes = new Set([
-    'CAPTION_PAIR_EVENT',
+    'CAPTION_PAIR_UPDATES',
     'CAPTURE_DISCONNECTED',
     'CAPTURE_KEEPALIVE',
     'TRANSCRIPT_EVENT',
@@ -179,10 +179,10 @@ export default defineBackground(() => {
               message.payload.event,
             );
             return { ok: true };
-          case 'CAPTION_PAIR_EVENT':
-            await controller.acceptCaptionPair(
+          case 'CAPTION_PAIR_UPDATES':
+            await controller.acceptCaptionPairs(
               message.payload.sessionId,
-              message.payload.event,
+              message.payload.updates,
             );
             return { ok: true };
           case 'CAPTURE_DISCONNECTED':

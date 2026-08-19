@@ -11,7 +11,7 @@ Chrome 116+ 的 Manifest V3 擴充功能：擷取目前分頁的音訊，顯示�
 - YouTube、Netflix、Disney+ 與一般 HTML5 影片的頁內字幕
 - 滾動字幕視窗：每行是一句原文加一句譯文，可選 1／2／3 行；新句到達時最舊的一行往上推出
 - 原文與譯文字級分別調整
-- 字幕寬度、每行長度上下限、背景透明度、垂直位置皆可調，且在字幕進行中即時生效
+- 字幕寬度、每行長度上限、背景透明度、垂直位置皆可調，且在字幕進行中即時生效；每行長度下限僅適用於 Deepgram
 - 字幕框寬度固定，由「字幕寬度」單獨決定，不隨句子長短或字級伸縮
 - API Key 僅存放於 `chrome.storage.local`
 
@@ -25,8 +25,8 @@ Chrome 116+ 的 Manifest V3 擴充功能：擷取目前分頁的音訊，顯示�
 | API Key | 兩把 | 一把 |
 | 語言清單 | 10 種常用語言 | Google 官方 78 種 |
 | 來源語言 | 需自行指定 | 自動偵測（無法指定） |
-| 字幕分行 | 依「每行長度上下限」切行 | 一段話一列，由瀏覽器斷行；原文與譯文各自最多顯示「顯示行數」行，較舊的內容從上方裁掉。兩個長度滑桿不適用並自動隱藏 |
-| 原文推進 | 逐字成長 | 整句一次到位 |
+| 字幕分行 | 依「每行長度上下限」切行 | 依句末標點逐句配對；過長時再依子句、詞界與「每行長度上限」切分。長度下限不適用並自動隱藏 |
+| 原文推進 | 逐字成長 | 未完成句逐字成長，下一句或 `turnComplete` 到達後固定 |
 
 
 ## Gemini Live API 
@@ -68,7 +68,8 @@ model: models/gemini-3.5-live-translate-preview
 
 **下行**：`serverContent.inputTranscription.text` 是原文，
 `serverContent.outputTranscription.text` 是譯文——兩個獨立欄位，不需要解析同一段文字，
-也不需要 prompt。`turnComplete` 代表這一列結束。模型同時會回傳翻譯後的語音
+也不需要 prompt。兩個 transcription stream 各自累積，再依句子順序配成雙語列；
+`turnComplete` 會固定原文尾句，但仍容許晚到的譯文補回同一列。模型同時會回傳翻譯後的語音
 （`modelTurn.parts[].inlineData`），我們直接丟棄：這個模型只支援 `AUDIO` 輸出，
 拿不到純文字，所以那段頻寬是必要成本。
 

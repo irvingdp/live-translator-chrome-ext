@@ -1,4 +1,5 @@
-import type { CaptionPairEvent } from '../audio/offscreen-capture-controller';
+import type { CaptionPairUpdate } from '../audio/offscreen-capture-controller';
+import { isWideCharacter, splitIntoUnits } from '../core/caption-chunker';
 import { t } from '../core/i18n';
 
 export const GEMINI_MODEL = 'models/gemini-3.5-live-translate-preview';
@@ -173,93 +174,300 @@ export function classifyGeminiClose({
   return { delayMs: Math.min(8_000, 500 * 2 ** attempt), retry: true };
 }
 
-// A turn stays open for as long as the speaker keeps talking, so its text is
-// unbounded. Only the tail is ever on screen, but the whole row is re-sent to
-// the tab on every update, so an uncapped turn turns into ever-larger messages
-// several times a second. Far more than three rows of caption could hold, so
-// the discarded end is never visible and needs no word boundary.
-const MAX_RETAINED_CHARACTERS = 2_000;
+interface SentenceUpdate {
+  index: number;
+  isClosed: boolean;
+  text: string;
+}
 
-// One of the two transcription streams of the open turn.
-class TurnStream {
+// One of Gemini's two independent transcription streams. It accepts both the
+// cumulative updates used by Live Translate and fragment updates used by other
+// Live models, then consumes every frozen sentence so a long turn retains only
+// its still-editable tail.
+class SentenceStream {
   private consumed = 0;
+  private mode: 'cumulative' | 'fragment' | 'unknown' = 'unknown';
+  private nextIndex = 0;
+  private openText = '';
   private text = '';
 
-  // Live Translate sends the turn's text cumulatively; other Live models send
-  // fragments to append. Comparing against what is kept, offset by what was
-  // dropped, recognises both without having to keep the dropped prefix — and
-  // picks the right branch on a turn's first fragment, since every string
-  // starts with ''.
-  ingest(next: string): void {
+  ingest(next: string, maxWidth: number): SentenceUpdate[] {
     const tail =
       next.length >= this.consumed ? next.slice(this.consumed) : undefined;
-    if (tail !== undefined && tail.startsWith(this.text)) this.text = tail;
-    else this.text += next;
-    if (this.text.length > MAX_RETAINED_CHARACTERS) {
-      const dropped = this.text.length - MAX_RETAINED_CHARACTERS;
-      this.consumed += dropped;
-      this.text = this.text.slice(dropped);
+    const previous = this.text;
+    if (this.mode === 'cumulative') {
+      // A revision that reaches into an already-frozen prefix cannot safely
+      // rewrite rows the viewer has read. Ignore that frame rather than
+      // appending the provider's full cumulative text as a new fragment.
+      if (tail === undefined) return [];
+      this.text = tail;
+    } else if (this.mode === 'fragment') {
+      this.text += next;
+    } else if (tail !== undefined && this.looksCumulative(previous, tail)) {
+      this.text = tail;
+      if (previous) this.mode = 'cumulative';
+    } else {
+      this.text += next;
+      if (previous) this.mode = 'fragment';
     }
+    return this.segment(maxWidth, false);
   }
 
-  value(): string {
-    return this.text;
+  finalize(maxWidth: number): SentenceUpdate[] {
+    return this.segment(maxWidth, true);
   }
 
-  // The server restarts its cumulative text with each turn, so the offset has
-  // to restart with it.
   reset(): void {
     this.consumed = 0;
+    this.mode = 'unknown';
+    this.nextIndex = 0;
+    this.openText = '';
     this.text = '';
+  }
+
+  private looksCumulative(previous: string, next: string): boolean {
+    if (!previous || next.startsWith(previous) || previous.startsWith(next)) {
+      return true;
+    }
+    let common = 0;
+    const limit = Math.min(previous.length, next.length);
+    while (common < limit && previous[common] === next[common]) common += 1;
+    // Once a few leading characters agree, replacement is much more likely
+    // than a fragment that coincidentally repeats the open sentence's prefix.
+    return common >= 3;
+  }
+
+  private segment(maxWidth: number, isFinal: boolean): SentenceUpdate[] {
+    const spans = splitIntoUnits(this.text, maxWidth);
+    const freezeUntil = isFinal
+      ? spans.length
+      : Math.max(spans.length - 1, 0);
+    const updates: SentenceUpdate[] = [];
+    let droppedEnd = 0;
+
+    for (let index = 0; index < freezeUntil; index += 1) {
+      const span = spans[index]!;
+      updates.push({
+        index: this.nextIndex,
+        isClosed: true,
+        text: span.text,
+      });
+      this.nextIndex += 1;
+      droppedEnd = span.end;
+    }
+
+    if (droppedEnd > 0) {
+      this.consumed += droppedEnd;
+      this.text = this.text.slice(droppedEnd);
+      this.openText = '';
+    }
+
+    if (isFinal) {
+      // Consume trailing whitespace as well, keeping the cumulative provider
+      // offset aligned if it sent a final update ending in spaces.
+      this.consumed += this.text.length;
+      this.text = '';
+      this.openText = '';
+      return updates;
+    }
+
+    const open = spans[freezeUntil]?.text ?? '';
+    if (open && open !== this.openText) {
+      this.openText = open;
+      updates.push({
+        index: this.nextIndex,
+        isClosed: false,
+        text: open,
+      });
+    }
+    return updates;
   }
 }
 
-// Turns the two independent transcription streams into the caption rows the
-// window renders: one model turn is one row, carrying its own original and
-// translation.
+interface TranslationSentence {
+  isClosed: boolean;
+  text: string;
+}
+
+const MAX_RETAINED_TRANSLATION_CHARACTERS = 2_000;
+
+function joinSentenceParts(parts: string[]): string {
+  let result = '';
+  for (const part of parts) {
+    if (!result) {
+      result = part;
+      continue;
+    }
+    const previous = Array.from(result).at(-1)!;
+    const next = Array.from(part)[0]!;
+    result +=
+      isWideCharacter(previous) || isWideCharacter(next) ? part : ` ${part}`;
+  }
+  return result;
+}
+
+// Converts Gemini's independently-timed source and target streams into stable
+// bilingual sentence rows. Source sentences establish rows; target-only
+// updates are cached so a late translation cannot resurrect an evicted row.
 export class GeminiCaptionAccumulator {
-  private readonly original = new TurnStream();
+  private maxLineWidth: number;
+  private readonly original = new SentenceStream();
   private pendingRollover = false;
-  private readonly translation = new TurnStream();
+  private sourceCount = 0;
+  private sourceFinal = false;
+  private readonly translation = new SentenceStream();
+  private readonly translations = new Map<number, TranslationSentence>();
   private turnIndex = 0;
+
+  constructor(maxLineWidth = 90) {
+    this.maxLineWidth = maxLineWidth;
+  }
+
+  setMaxLineWidth(maxLineWidth: number): void {
+    if (Number.isFinite(maxLineWidth) && maxLineWidth > 0) {
+      this.maxLineWidth = maxLineWidth;
+    }
+  }
 
   ingest(event: {
     original?: string;
     translation?: string;
     turnComplete: boolean;
-  }): CaptionPairEvent | undefined {
+  }): CaptionPairUpdate[] {
+    const pending = new Map<string, CaptionPairUpdate>();
     if (event.original !== undefined) {
-      // The row only turns over once the next utterance actually starts, so a
-      // translation still arriving after turnComplete lands on the row it
-      // belongs to instead of opening an empty new one.
       if (this.pendingRollover) {
-        this.pendingRollover = false;
-        this.turnIndex += 1;
-        this.original.reset();
-        this.translation.reset();
+        this.rollover(pending);
       }
-      this.original.ingest(event.original);
+      this.acceptOriginal(
+        this.original.ingest(event.original, this.maxLineWidth),
+        pending,
+      );
     }
     if (event.translation !== undefined) {
-      this.translation.ingest(event.translation);
+      this.acceptTranslation(
+        this.translation.ingest(event.translation, this.maxLineWidth),
+        pending,
+      );
     }
-    if (event.turnComplete) this.pendingRollover = true;
-    if (event.original === undefined && event.translation === undefined) {
-      return undefined;
+    if (event.turnComplete) {
+      this.acceptOriginal(
+        this.original.finalize(this.maxLineWidth),
+        pending,
+      );
+      this.sourceFinal = true;
+      this.pendingRollover = true;
+      this.emitTranslationTail(pending);
     }
-    const original = this.original.value();
-    const translation = this.translation.value();
-    if (!original && !translation) return undefined;
-    return {
-      original,
-      translation,
-      turnId: `turn-${this.turnIndex}`,
-    };
+    return [...pending.values()];
   }
 
-  // A reconnect resumes the session but not the utterance, so whatever comes
-  // back must not be appended to the row that was open when the socket dropped.
-  closeTurn(): void {
+  // A reconnect resumes the session but not its interrupted source utterance.
+  // Translation remains open until the next source arrives so output frames
+  // already in flight can still finish the previous bilingual row.
+  closeTurn(): CaptionPairUpdate[] {
+    const pending = new Map<string, CaptionPairUpdate>();
+    this.acceptOriginal(this.original.finalize(this.maxLineWidth), pending);
+    this.sourceFinal = true;
     this.pendingRollover = true;
+    this.emitTranslationTail(pending);
+    return [...pending.values()];
+  }
+
+  private acceptOriginal(
+    updates: SentenceUpdate[],
+    pending: Map<string, CaptionPairUpdate>,
+  ): void {
+    for (const update of updates) {
+      this.sourceCount = Math.max(this.sourceCount, update.index + 1);
+      this.queue(pending, update.index, { original: update.text });
+      const translated = this.translations.get(update.index);
+      if (translated) {
+        this.queue(pending, update.index, { translation: translated.text });
+      }
+    }
+    this.trimTranslations();
+  }
+
+  private acceptTranslation(
+    updates: SentenceUpdate[],
+    pending: Map<string, CaptionPairUpdate>,
+  ): void {
+    for (const update of updates) {
+      this.translations.set(update.index, {
+        isClosed: update.isClosed,
+        text: update.text,
+      });
+      if (this.sourceFinal) {
+        if (update.index < this.sourceCount - 1) {
+          this.queue(pending, update.index, { translation: update.text });
+        } else {
+          this.emitTranslationTail(pending);
+        }
+      } else if (update.index < this.sourceCount) {
+        this.queue(pending, update.index, { translation: update.text });
+      }
+    }
+    this.trimTranslations();
+  }
+
+  private emitTranslationTail(
+    pending: Map<string, CaptionPairUpdate>,
+  ): void {
+    if (this.sourceCount === 0) return;
+    const lastSourceIndex = this.sourceCount - 1;
+    const tail = [...this.translations.entries()]
+      .filter(([index]) => index >= lastSourceIndex)
+      .sort(([left], [right]) => left - right)
+      .map(([, sentence]) => sentence.text);
+    if (tail.length > 0) {
+      this.queue(pending, lastSourceIndex, {
+        translation: joinSentenceParts(tail),
+      });
+    }
+  }
+
+  private queue(
+    pending: Map<string, CaptionPairUpdate>,
+    index: number,
+    update: Omit<CaptionPairUpdate, 'id'>,
+  ): void {
+    const id = `turn-${this.turnIndex}#${index}`;
+    pending.set(id, { ...pending.get(id), ...update, id });
+  }
+
+  private rollover(pending: Map<string, CaptionPairUpdate>): void {
+    this.acceptTranslation(
+      this.translation.finalize(this.maxLineWidth),
+      pending,
+    );
+    this.emitTranslationTail(pending);
+    this.pendingRollover = false;
+    this.sourceCount = 0;
+    this.sourceFinal = false;
+    this.translations.clear();
+    this.turnIndex += 1;
+    this.original.reset();
+    this.translation.reset();
+  }
+
+  private trimTranslations(): void {
+    // Once the source advances, only its latest sentence can still become the
+    // merged tail. Older closed translations have already reached their rows.
+    for (const [index, sentence] of this.translations) {
+      if (index < this.sourceCount - 1 && sentence.isClosed) {
+        this.translations.delete(index);
+      }
+    }
+    let retained = [...this.translations.values()].reduce(
+      (total, sentence) => total + sentence.text.length,
+      0,
+    );
+    for (const [index, sentence] of this.translations) {
+      if (retained <= MAX_RETAINED_TRANSLATION_CHARACTERS) break;
+      if (index < this.sourceCount) continue;
+      this.translations.delete(index);
+      retained -= sentence.text.length;
+    }
   }
 }

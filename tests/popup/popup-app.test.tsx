@@ -295,8 +295,9 @@ describe('PopupApp', () => {
     expect(
       screen.getByRole('link', { name: /aistudio\.google\.com/ }),
     ).toHaveAttribute('href', 'https://aistudio.google.com/');
-    // Gemini cuts its own lines, so the chunker widths would do nothing.
-    expect(screen.queryByLabelText('每行長度上限')).not.toBeInTheDocument();
+    // Gemini uses the maximum for long-sentence fallback, but never merges two
+    // short complete sentences to satisfy a minimum.
+    expect(screen.getByLabelText('每行長度上限')).toBeInTheDocument();
     expect(screen.queryByLabelText('每行長度下限')).not.toBeInTheDocument();
   });
 

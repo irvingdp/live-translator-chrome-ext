@@ -53,7 +53,7 @@ function createSession() {
   const events: CaptureEvent[] = [];
   const disconnects: Array<string | undefined> = [];
   const session = new GeminiLiveSession(
-    { apiKey: 'gemini-key', targetLanguage: 'zh-Hant' },
+    { apiKey: 'gemini-key', maxLineWidth: 90, targetLanguage: 'zh-Hant' },
     socketFactory,
   );
   session.onEvent((event) => events.push(event));
@@ -106,7 +106,7 @@ describe('GeminiLiveSession', () => {
     ]);
   });
 
-  it('emits the source line and its translation as one caption row', async () => {
+  it('emits source and translation updates for the same sentence row', async () => {
     const { events, session, sockets } = createSession();
     const connecting = session.connect();
     sockets[0]!.open();
@@ -121,8 +121,8 @@ describe('GeminiLiveSession', () => {
     });
 
     expect(events.at(-1)).toEqual({
-      event: { original: 'Hello', translation: '你好', turnId: 'turn-0' },
-      kind: 'pair',
+      kind: 'pairs',
+      updates: [{ id: 'turn-0#0', translation: '你好' }],
     });
   });
 
@@ -145,8 +145,8 @@ describe('GeminiLiveSession', () => {
     // Decoding is async, so out-of-order application would silently truncate
     // the row back to its earlier state.
     expect(events.at(-1)).toEqual({
-      event: { original: 'Hello there', translation: '', turnId: 'turn-0' },
-      kind: 'pair',
+      kind: 'pairs',
+      updates: [{ id: 'turn-0#0', original: 'Hello there' }],
     });
   });
 

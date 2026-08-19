@@ -25,7 +25,7 @@ const ASCII_PERIOD = '.';
 // ordinary text.
 export const PUNCTUATION_TAIL_GRACE = 4;
 
-function isWide(character: string): boolean {
+export function isWideCharacter(character: string): boolean {
   const code = character.codePointAt(0) ?? 0;
   return (
     (code >= 0x1100 && code <= 0x115f) ||
@@ -40,7 +40,7 @@ function isWide(character: string): boolean {
 }
 
 function characterWidth(character: string): number {
-  return isWide(character) ? 2 : 1;
+  return isWideCharacter(character) ? 2 : 1;
 }
 
 export function visualWidth(text: string): number {

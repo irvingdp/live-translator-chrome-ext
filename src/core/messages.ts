@@ -1,5 +1,5 @@
 import type {
-  CaptionPairEvent,
+  CaptionPairUpdate,
   CaptureStartRequest,
 } from '../audio/offscreen-capture-controller';
 import type { TranslationRequest } from '../providers/deepl';
@@ -9,6 +9,11 @@ import type { TranscriptEvent } from './transcript-stabilizer';
 export type ExtensionMessage =
   | { target: 'offscreen'; type: 'CAPTURE_START'; payload: CaptureStartRequest }
   | { target: 'offscreen'; type: 'CAPTURE_STOP'; payload: { sessionId: string } }
+  | {
+      target: 'offscreen';
+      type: 'CAPTURE_CONFIG_UPDATE';
+      payload: { maxLineWidth: number; sessionId: string };
+    }
   | {
       target: 'offscreen';
       type: 'TRANSLATE_REQUEST';
@@ -25,8 +30,8 @@ export type ExtensionMessage =
     }
   | {
       target: 'background';
-      type: 'CAPTION_PAIR_EVENT';
-      payload: { event: CaptionPairEvent; sessionId: string };
+      type: 'CAPTION_PAIR_UPDATES';
+      payload: { sessionId: string; updates: CaptionPairUpdate[] };
     }
   | {
       target: 'background';
