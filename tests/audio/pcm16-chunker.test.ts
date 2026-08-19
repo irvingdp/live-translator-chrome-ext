@@ -7,9 +7,9 @@ function int16Values(buffer: ArrayBuffer): number[] {
 }
 
 describe('Pcm16Chunker', () => {
-  it('resamples 48 kHz audio into 40 ms chunks at 16 kHz', () => {
-    const chunker = new Pcm16Chunker(48_000, 16_000, 40);
-    const source = new Float32Array(3_840).fill(0.5);
+  it('chunks 16 kHz worklet audio without resampling it again', () => {
+    const chunker = new Pcm16Chunker(16_000, 40);
+    const source = new Float32Array(1_280).fill(0.5);
 
     const chunks = chunker.push(source);
 
@@ -20,7 +20,7 @@ describe('Pcm16Chunker', () => {
   });
 
   it('preserves chunk boundaries across separate WebAudio callbacks', () => {
-    const chunker = new Pcm16Chunker(16_000, 16_000, 40);
+    const chunker = new Pcm16Chunker(16_000, 40);
 
     expect(chunker.push(new Float32Array(320).fill(0.25))).toHaveLength(0);
     const chunks = chunker.push(new Float32Array(320).fill(0.25));
@@ -30,7 +30,7 @@ describe('Pcm16Chunker', () => {
   });
 
   it('clamps floating point samples before converting to signed PCM16', () => {
-    const chunker = new Pcm16Chunker(16_000, 16_000, 1);
+    const chunker = new Pcm16Chunker(16_000, 1);
 
     const [chunk] = chunker.push(
       Float32Array.from([
@@ -45,7 +45,7 @@ describe('Pcm16Chunker', () => {
   });
 
   it('flushes a final partial chunk without zero padding', () => {
-    const chunker = new Pcm16Chunker(16_000, 16_000, 40);
+    const chunker = new Pcm16Chunker(16_000, 40);
     chunker.push(new Float32Array(160).fill(0.5));
 
     const chunk = chunker.flush();
@@ -54,13 +54,13 @@ describe('Pcm16Chunker', () => {
     expect(chunker.flush()).toBeUndefined();
   });
 
-  it('produces identical 44.1 kHz output across arbitrary callback splits', () => {
+  it('produces identical PCM across arbitrary callback splits', () => {
     const source = Float32Array.from(
-      { length: 44_100 },
+      { length: 16_000 },
       (_, index) => Math.sin(index / 20),
     );
-    const whole = new Pcm16Chunker(44_100);
-    const split = new Pcm16Chunker(44_100);
+    const whole = new Pcm16Chunker(16_000);
+    const split = new Pcm16Chunker(16_000);
 
     const wholeOutput = whole.push(source);
     const wholeTail = whole.flush();
@@ -77,5 +77,14 @@ describe('Pcm16Chunker', () => {
       buffers.flatMap((buffer) => Array.from(new Int16Array(buffer)));
     expect(flatten(splitOutput)).toEqual(flatten(wholeOutput));
     expect(flatten(splitOutput)).toHaveLength(16_000);
+  });
+
+  it('rejects invalid rates and chunk durations', () => {
+    expect(() => new Pcm16Chunker(0)).toThrow(RangeError);
+    expect(() => new Pcm16Chunker(Number.NaN)).toThrow(RangeError);
+    expect(() => new Pcm16Chunker(16_000, 0)).toThrow(RangeError);
+    expect(() => new Pcm16Chunker(1, 1)).toThrow(
+      'Chunk duration must contain at least one sample',
+    );
   });
 });

@@ -266,6 +266,24 @@ describe('OffscreenCaptureController', () => {
     expect(harness.session.close).toHaveBeenCalledOnce();
   });
 
+  it('rejects a pipeline that does not supply 16 kHz audio', async () => {
+    const harness = createHarness();
+    Object.defineProperty(harness.pipeline, 'sampleRate', { value: 48_000 });
+
+    await expect(
+      harness.controller.start({
+        apiKey: 'deepgram-key',
+        language: 'en-US',
+        provider: 'deepgram',
+        sessionId: 'session-1',
+        streamId: 'tab-stream',
+      }),
+    ).rejects.toThrow('Unexpected audio sample rate: 48000');
+
+    expect(harness.pipeline.close).toHaveBeenCalledOnce();
+    expect(harness.session.close).toHaveBeenCalledOnce();
+  });
+
   it('closes the Deepgram session even when audio cleanup fails', async () => {
     const harness = createHarness();
     vi.mocked(harness.pipeline.close).mockRejectedValue(

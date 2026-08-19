@@ -59,7 +59,8 @@ model: models/gemini-3.5-live-translate-preview
 } } }
 ```
 
-**音訊上行**：分頁音訊經 AudioWorklet 重取樣成 16 kHz 單聲道 PCM16，每 100 ms 一則：
+**音訊上行**：分頁音訊由 Web Audio 原生重取樣成 16 kHz，AudioWorklet
+將所有聲道 downmix 成單聲道，再轉為 PCM16，每 100 ms 一則：
 
 ```json
 {"realtimeInput":{"audio":{"data":"<base64>","mimeType":"audio/pcm;rate=16000"}}}

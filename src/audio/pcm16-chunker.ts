@@ -13,42 +13,27 @@ function toArrayBuffer(samples: number[]): ArrayBuffer {
 
 export class Pcm16Chunker {
   private readonly chunkSamples: number;
-  private readonly resampleStep: number;
-  private nextSourcePosition = 0;
   private readonly pendingPcm: number[] = [];
-  private readonly sourceBuffer: number[] = [];
 
-  constructor(
-    sourceSampleRate: number,
-    targetSampleRate = 16_000,
-    chunkDurationMs = 40,
-  ) {
-    if (sourceSampleRate <= 0 || targetSampleRate <= 0) {
-      throw new RangeError('Sample rates must be positive');
+  constructor(sampleRate: number, chunkDurationMs = 40) {
+    if (
+      !Number.isFinite(sampleRate) ||
+      sampleRate <= 0 ||
+      !Number.isFinite(chunkDurationMs) ||
+      chunkDurationMs <= 0
+    ) {
+      throw new RangeError('Sample rate and chunk duration must be positive');
     }
-    this.resampleStep = sourceSampleRate / targetSampleRate;
     this.chunkSamples = Math.round(
-      targetSampleRate * (chunkDurationMs / 1_000),
+      sampleRate * (chunkDurationMs / 1_000),
     );
+    if (this.chunkSamples < 1) {
+      throw new RangeError('Chunk duration must contain at least one sample');
+    }
   }
 
   push(input: Float32Array): ArrayBuffer[] {
-    this.sourceBuffer.push(...input);
-
-    while (this.canInterpolate(this.nextSourcePosition)) {
-      const leftIndex = Math.floor(this.nextSourcePosition);
-      const fraction = this.nextSourcePosition - leftIndex;
-      const left = this.sourceBuffer[leftIndex] ?? 0;
-      const right = this.sourceBuffer[leftIndex + 1] ?? left;
-      this.pendingPcm.push(toPcm16(left + (right - left) * fraction));
-      this.nextSourcePosition += this.resampleStep;
-    }
-
-    const consumed = Math.floor(this.nextSourcePosition);
-    if (consumed > 0) {
-      this.sourceBuffer.splice(0, consumed);
-      this.nextSourcePosition -= consumed;
-    }
+    for (const sample of input) this.pendingPcm.push(toPcm16(sample));
 
     const chunks: ArrayBuffer[] = [];
     while (this.pendingPcm.length >= this.chunkSamples) {
@@ -60,12 +45,5 @@ export class Pcm16Chunker {
   flush(): ArrayBuffer | undefined {
     if (this.pendingPcm.length === 0) return undefined;
     return toArrayBuffer(this.pendingPcm.splice(0));
-  }
-
-  private canInterpolate(position: number): boolean {
-    if (position >= this.sourceBuffer.length) return false;
-    return (
-      Number.isInteger(position) || position + 1 < this.sourceBuffer.length
-    );
   }
 }

@@ -3,6 +3,8 @@ import { DeepgramSession } from '../providers/deepgram-session';
 import { GeminiLiveSession } from '../providers/gemini-live-session';
 import { Pcm16Chunker } from './pcm16-chunker';
 
+const TRANSCRIPTION_SAMPLE_RATE = 16_000;
+
 export interface AudioPipeline {
   readonly sampleRate: number;
   close(): Promise<void>;
@@ -99,9 +101,13 @@ export class OffscreenCaptureController {
         return;
       }
       capture.pipeline = pipeline;
+      if (pipeline.sampleRate !== TRANSCRIPTION_SAMPLE_RATE) {
+        throw new Error(
+          `Unexpected audio sample rate: ${pipeline.sampleRate}`,
+        );
+      }
       capture.chunker = new Pcm16Chunker(
         pipeline.sampleRate,
-        16_000,
         session.audioChunkMs,
       );
       for (const samples of capture.pendingSamples) {
