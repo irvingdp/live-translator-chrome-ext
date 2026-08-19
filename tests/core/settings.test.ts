@@ -1,10 +1,32 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  captionAppearance,
   DEFAULT_SETTINGS,
   normalizeSettings,
   validateSettingsForStart,
 } from '../../src/core/settings';
+
+describe('captionAppearance', () => {
+  it('projects only visual settings and applies the Gemini row ceiling', () => {
+    const settingsWithSecret = {
+      ...DEFAULT_SETTINGS,
+      geminiApiKey: 'must-not-leak',
+      transcriber: 'gemini',
+    } as const;
+    const appearance = captionAppearance(settingsWithSecret);
+
+    expect(appearance).toEqual({
+      backgroundOpacity: 50,
+      bottomOffset: 1,
+      captionWidth: 70,
+      maxVisibleRows: 2,
+      originalFontSize: 24,
+      translationFontSize: 22,
+    });
+    expect(appearance).not.toHaveProperty('geminiApiKey');
+  });
+});
 
 describe('normalizeSettings', () => {
   it('applies defaults and clamps both caption sizes to 16–48 px', () => {

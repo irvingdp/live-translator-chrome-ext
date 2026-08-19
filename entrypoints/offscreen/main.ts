@@ -4,6 +4,10 @@ import {
   OffscreenCaptureController,
 } from '../../src/audio/offscreen-capture-controller';
 import type { ExtensionMessage } from '../../src/core/messages';
+import {
+  isMessageEnvelope,
+  isTrustedExtensionContext,
+} from '../../src/core/message-security';
 import { DeepLClient } from '../../src/providers/deepl';
 import {
   normalizeTranslationAttemptError,
@@ -93,8 +97,14 @@ async function teardownSession(sessionId: string): Promise<void> {
 }
 
 chrome.runtime.onMessage.addListener(
-  (message: ExtensionMessage, _sender, sendResponse) => {
-    if (message.target !== 'offscreen') return false;
+  (incoming: unknown, sender, sendResponse) => {
+    if (
+      !isMessageEnvelope(incoming, 'offscreen') ||
+      !isTrustedExtensionContext(sender, chrome.runtime.id)
+    ) {
+      return false;
+    }
+    const message = incoming as ExtensionMessage;
     const operation = (async () => {
       switch (message.type) {
         case 'CAPTURE_START':

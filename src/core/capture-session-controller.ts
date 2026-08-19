@@ -6,7 +6,11 @@ import type { TranslationRequest } from '../providers/deepl';
 import { CaptionChunker, type CaptionUnit } from './caption-chunker';
 import { CaptionWindow, type CaptionPair } from './caption-window';
 import type { ExtensionMessage } from './messages';
-import type { TranscriberId } from './settings';
+import {
+  captionAppearance,
+  type CaptionAppearance,
+  type TranscriberId,
+} from './settings';
 import {
   TranscriptStabilizer,
   type TranscriptEvent,
@@ -37,7 +41,8 @@ export interface SessionSettings {
 
 export type TabMessage =
   | { type: 'CONTENT_PING' }
-  | { type: 'OVERLAY_SHOW' }
+  | { type: 'OVERLAY_SHOW'; payload: { appearance: CaptionAppearance } }
+  | { type: 'OVERLAY_APPEARANCE'; payload: { appearance: CaptionAppearance } }
   | { type: 'OVERLAY_HIDE' }
   | { type: 'CAPTION_WINDOW'; payload: { pairs: CaptionPair[] } }
   | {
@@ -150,10 +155,21 @@ export class CaptureSessionController {
     captionRows: number;
     maxLineWidth: number;
     minLineWidth: number;
+    backgroundOpacity?: number;
+    bottomOffset?: number;
+    captionWidth?: number;
+    originalFontSize?: number;
+    translationFontSize?: number;
   }): void {
     if (!this.settings) return;
     this.settings = { ...this.settings, ...layout };
     this.captionWindow.setCapacity(layout.captionRows);
+    if (this.currentStatus.state === 'running') {
+      void this.dependencies.sendToTab(this.currentStatus.tabId, {
+        type: 'OVERLAY_APPEARANCE',
+        payload: { appearance: captionAppearance(this.settings) },
+      }).catch(() => undefined);
+    }
   }
 
   start(tabId: number, settings: SessionSettings): Promise<void> {
@@ -223,7 +239,10 @@ export class CaptureSessionController {
           .catch(() => undefined);
         return;
       }
-      await this.dependencies.sendToTab(tabId, { type: 'OVERLAY_SHOW' });
+      await this.dependencies.sendToTab(tabId, {
+        type: 'OVERLAY_SHOW',
+        payload: { appearance: captionAppearance(settings) },
+      });
       this.currentStatus = { state: 'running', tabId };
     } catch (error) {
       if (captureStarted) {
@@ -458,7 +477,10 @@ export class CaptureSessionController {
       this.currentStatus.tabId !== tabId ||
       !this.settings
     ) return;
-    await this.dependencies.sendToTab(tabId, { type: 'OVERLAY_SHOW' });
+    await this.dependencies.sendToTab(tabId, {
+      type: 'OVERLAY_SHOW',
+      payload: { appearance: captionAppearance(this.settings) },
+    });
     await this.sendWindow(tabId);
     if (
       this.currentStatus.state === 'running' &&

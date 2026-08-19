@@ -1,17 +1,6 @@
 import type { CaptionPair } from '../core/caption-window';
 import { t, type MessageKey } from '../core/i18n';
-
-export interface CaptionAppearance {
-  backgroundOpacity: number;
-  bottomOffset: number;
-  captionWidth: number;
-  // How many rows' worth of height the caption box may occupy, or 0 to let it
-  // grow with its content. Only providers whose rows grow on their own need a
-  // ceiling; see the `.viewport.clamped` rule.
-  maxVisibleRows: number;
-  originalFontSize: number;
-  translationFontSize: number;
-}
+import type { CaptionAppearance } from '../core/settings';
 
 // Codes travel from the background; the wording is looked up here so it lands
 // in the language the page is being read in.

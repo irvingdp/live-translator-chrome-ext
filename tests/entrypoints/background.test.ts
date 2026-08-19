@@ -4,7 +4,7 @@ import type { ExtensionMessage } from '../../src/core/messages';
 import type { AppSettings } from '../../src/core/settings';
 
 type BackgroundListener = (
-  message: ExtensionMessage,
+  message: unknown,
   sender: chrome.runtime.MessageSender,
   sendResponse: (response: unknown) => void,
 ) => boolean | undefined;
@@ -34,12 +34,19 @@ let onSettingsChanged: (
   area: string,
 ) => void;
 let onTabRemoved: (tabId: number) => void;
+let onTabUpdated: (
+  tabId: number,
+  changeInfo: { status?: string },
+) => void;
 let offscreenExists: boolean;
 let closeDocument: ReturnType<typeof vi.fn>;
 let createDocument: ReturnType<typeof vi.fn>;
+let executeScript: ReturnType<typeof vi.fn>;
 let getStreamId: ReturnType<typeof vi.fn>;
 let removeSessionStorage: ReturnType<typeof vi.fn>;
 let runtimeSendMessage: ReturnType<typeof vi.fn>;
+let setLocalAccessLevel: ReturnType<typeof vi.fn>;
+let tabsSendMessage: ReturnType<typeof vi.fn>;
 
 beforeEach(async () => {
   vi.resetModules();
@@ -50,12 +57,18 @@ beforeEach(async () => {
   createDocument = vi.fn(async () => {
     offscreenExists = true;
   });
+  executeScript = vi.fn().mockResolvedValue(undefined);
   getStreamId = vi.fn().mockResolvedValue('stream-id');
   removeSessionStorage = vi.fn().mockResolvedValue(undefined);
+  setLocalAccessLevel = vi.fn().mockResolvedValue(undefined);
   runtimeSendMessage = vi.fn(async (message: ExtensionMessage) => {
     if (message.target === 'offscreen') return { ok: true };
     return undefined;
   });
+  tabsSendMessage = vi.fn(
+    async (_tabId: number, message: { type: string }) =>
+      message.type === 'CONTENT_PING' ? { ok: true } : undefined,
+  );
   vi.stubGlobal('defineBackground', (register: () => void) => register());
   vi.stubGlobal('chrome', {
     offscreen: {
@@ -64,8 +77,9 @@ beforeEach(async () => {
       createDocument,
     },
     runtime: {
+      id: 'test',
       getContexts: vi.fn(async () => offscreenExists ? [{}] : []),
-      getURL: vi.fn(() => 'chrome-extension://test/offscreen.html'),
+      getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
       onMessage: {
         addListener: vi.fn((registered: BackgroundListener) => {
           listener = registered;
@@ -74,10 +88,13 @@ beforeEach(async () => {
       sendMessage: runtimeSendMessage,
     },
     scripting: {
-      executeScript: vi.fn().mockResolvedValue(undefined),
+      executeScript,
     },
     storage: {
-      local: { get: vi.fn().mockResolvedValue({}) },
+      local: {
+        get: vi.fn().mockResolvedValue({}),
+        setAccessLevel: setLocalAccessLevel,
+      },
       onChanged: {
         addListener: vi.fn(
           (
@@ -98,14 +115,24 @@ beforeEach(async () => {
     },
     tabCapture: { getMediaStreamId: getStreamId },
     tabs: {
+      onUpdated: {
+        addListener: vi.fn(
+          (
+            registered: (
+              tabId: number,
+              changeInfo: { status?: string },
+            ) => void,
+          ) => {
+            onTabUpdated = registered;
+          },
+        ),
+      },
       onRemoved: {
         addListener: vi.fn((registered: (tabId: number) => void) => {
           onTabRemoved = registered;
         }),
       },
-      sendMessage: vi.fn(async (_tabId: number, message: { type: string }) =>
-        message.type === 'CONTENT_PING' ? { ok: true } : undefined,
-      ),
+      sendMessage: tabsSendMessage,
     },
   });
 
@@ -115,6 +142,28 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('background offscreen document lifecycle', () => {
+  it('restricts local storage before accepting session control', async () => {
+    await dispatch({ target: 'background', type: 'SESSION_STATUS' });
+
+    expect(setLocalAccessLevel).toHaveBeenCalledWith({
+      accessLevel: 'TRUSTED_CONTEXTS',
+    });
+    expect(setLocalAccessLevel.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(chrome.storage.session.get).mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('injects the unlisted caption bundle only when the active receiver is absent', async () => {
+    tabsSendMessage.mockRejectedValueOnce(new Error('receiver missing'));
+
+    await startSession();
+
+    expect(executeScript).toHaveBeenCalledWith({
+      files: ['captions.js'],
+      target: { tabId: 42 },
+    });
+  });
+
   it('awaits CAPTURE_STOP before closing the document on normal stop', async () => {
     await startSession();
 
@@ -249,11 +298,118 @@ describe('background offscreen document lifecycle', () => {
       onSettingsChanged({ settings: {} }, 'local');
     }).not.toThrow();
   });
+
+  it('sends only projected appearance data after a live settings change', async () => {
+    await startSession();
+    tabsSendMessage.mockClear();
+
+    onSettingsChanged(
+      {
+        settings: {
+          newValue: {
+            ...settings,
+            captionWidth: 88,
+            geminiApiKey: 'must-not-leak',
+          },
+        },
+      },
+      'local',
+    );
+
+    await vi.waitFor(() => {
+      expect(tabsSendMessage).toHaveBeenCalledWith(42, {
+        type: 'OVERLAY_APPEARANCE',
+        payload: {
+          appearance: expect.objectContaining({ captionWidth: 88 }),
+        },
+      });
+    });
+    const appearanceMessage = tabsSendMessage.mock.calls
+      .map(([, message]) => message)
+      .find((message) => message.type === 'OVERLAY_APPEARANCE');
+    expect(appearanceMessage).not.toHaveProperty(
+      'payload.appearance.geminiApiKey',
+    );
+  });
+
+  it('restores the overlay after a same-origin tab reload', async () => {
+    await startSession();
+    tabsSendMessage.mockClear();
+
+    onTabUpdated(42, { status: 'complete' });
+
+    await vi.waitFor(() => {
+      expect(tabsSendMessage).toHaveBeenCalledWith(42, {
+        type: 'OVERLAY_SHOW',
+        payload: { appearance: expect.any(Object) },
+      });
+      expect(tabsSendMessage).toHaveBeenCalledWith(42, {
+        type: 'CAPTION_WINDOW',
+        payload: { pairs: [] },
+      });
+    });
+  });
+
+  it('stops capture when navigation revokes script injection access', async () => {
+    await startSession();
+    tabsSendMessage.mockRejectedValue(new Error('receiver missing'));
+    executeScript.mockRejectedValue(new Error('Cannot access page'));
+
+    onTabUpdated(42, { status: 'complete' });
+
+    await vi.waitFor(() => {
+      expect(closeDocument).toHaveBeenCalledOnce();
+      expect(removeSessionStorage).toHaveBeenCalledWith('activeSession');
+    });
+    expect(runtimeSendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'CAPTURE_STOP' }),
+    );
+  });
+
+  it('rejects privileged messages sent from a content script', () => {
+    const sendResponse = vi.fn();
+
+    const keepOpen = listener(
+      sessionStartMessage(),
+      {
+        frameId: 0,
+        id: 'test',
+        tab: { id: 42 } as chrome.tabs.Tab,
+      },
+      sendResponse,
+    );
+
+    expect(keepOpen).toBe(false);
+    expect(sendResponse).not.toHaveBeenCalled();
+    expect(createDocument).not.toHaveBeenCalled();
+  });
+
+  it('ignores malformed runtime messages without throwing', () => {
+    const sendResponse = vi.fn();
+
+    expect(
+      listener(
+        null,
+        { id: 'test', url: 'chrome-extension://test/popup.html' },
+        sendResponse,
+      ),
+    ).toBe(false);
+    expect(sendResponse).not.toHaveBeenCalled();
+  });
 });
 
 function dispatch(message: ExtensionMessage): Promise<unknown> {
   const response = Promise.withResolvers<unknown>();
-  expect(listener(message, {} as chrome.runtime.MessageSender, response.resolve))
+  const sender: chrome.runtime.MessageSender = message.type.startsWith('SESSION_')
+    ? {
+        id: 'test',
+        url: 'chrome-extension://test/popup.html',
+      }
+    : {
+        id: 'test',
+        url: 'chrome-extension://test/offscreen.html',
+      };
+  expect(listener(message, sender, response.resolve))
     .toBe(true);
   return response.promise;
 }

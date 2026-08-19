@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "wxt",
-    "build": "wxt build",
+    "build": "wxt build && npm run verify:manifest",
     "postinstall": "wxt prepare",
     "compile": "tsc --noEmit",
     "test": "vitest run",
@@ -18,7 +18,8 @@
     "e2e": "playwright test",
     "zip": "wxt zip",
     "screenshots": "node scripts/store-screenshots.mjs",
-    "release": "npm run compile && npm test && npm run zip"
+    "release": "npm run compile && npm test && npm run zip && npm run verify:manifest",
+    "verify:manifest": "node scripts/verify-manifest.mjs output/chrome-mv3/manifest.json"
   },
   "dependencies": {
     "react": "19.2.8",

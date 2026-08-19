@@ -2,10 +2,10 @@
 // so the screenshots can never drift from what actually ships. Run after a
 // build: `npm run build && npm run screenshots`.
 //
-// The captions are driven by sending the same CAPTION_WINDOW message the
-// background would send, rather than by a live provider session: that needs no
-// API key, no network, and no third-party video whose frames we would not be
-// allowed to publish.
+// The captions are driven through the built content bundle's real message
+// listener rather than by a live provider session: that needs no API key, no
+// network, and no third-party video whose frames we would not be allowed to
+// publish.
 import { chromium } from '@playwright/test';
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -167,6 +167,22 @@ try {
   // 1. Captions over a player.
   const stage = await context.newPage();
   await stage.setViewportSize(SHOT);
+  await stage.addInitScript(() => {
+    Object.defineProperty(globalThis, 'chrome', {
+      configurable: true,
+      value: {
+        runtime: {
+          id: 'store-screenshot',
+          onMessage: {
+            addListener(listener) {
+              globalThis.__captionMessageListener = listener;
+            },
+          },
+          sendMessage: async () => undefined,
+        },
+      },
+    });
+  });
   await stage.route('https://captions.example/**', (route) =>
     route.fulfill({ body: STAGE_PAGE, contentType: 'text/html' }),
   );
@@ -178,11 +194,27 @@ try {
     transcriber: 'gemini',
   });
   await stage.goto('https://captions.example/talk');
-  await worker.evaluate(async (pair) => {
-    const tabs = await chrome.tabs.query({});
-    const tab = tabs[tabs.length - 1];
-    await chrome.tabs.sendMessage(tab.id, { type: 'OVERLAY_SHOW' });
-    await chrome.tabs.sendMessage(tab.id, {
+  await stage.addScriptTag({ path: join(extension, 'captions.js') });
+  await stage.evaluate((pair) => {
+    const send = (message) => globalThis.__captionMessageListener(
+      message,
+      { id: 'store-screenshot' },
+      () => undefined,
+    );
+    send({
+      type: 'OVERLAY_SHOW',
+      payload: {
+        appearance: {
+          backgroundOpacity: 50,
+          bottomOffset: 10,
+          captionWidth: 70,
+          maxVisibleRows: 2,
+          originalFontSize: 24,
+          translationFontSize: 22,
+        },
+      },
+    });
+    send({
       type: 'CAPTION_WINDOW',
       payload: { pairs: [{ id: 'turn-0', ...pair }] },
     });

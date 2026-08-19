@@ -123,6 +123,13 @@ describe('CaptureSessionController', () => {
     });
     expect(dependencies.sendToTab).toHaveBeenCalledWith(42, {
       type: 'OVERLAY_SHOW',
+      payload: {
+        appearance: expect.objectContaining({
+          backgroundOpacity: settings.backgroundOpacity,
+          captionWidth: settings.captionWidth,
+          maxVisibleRows: 0,
+        }),
+      },
     });
     expect(controller.status()).toEqual({ state: 'running', tabId: 42 });
   });
@@ -724,6 +731,13 @@ describe('CaptureSessionController', () => {
 
     expect(dependencies.sendToTab).toHaveBeenCalledWith(42, {
       type: 'OVERLAY_SHOW',
+      payload: {
+        appearance: expect.objectContaining({
+          backgroundOpacity: settings.backgroundOpacity,
+          captionWidth: settings.captionWidth,
+          maxVisibleRows: 0,
+        }),
+      },
     });
   });
 

@@ -1,5 +1,10 @@
 import { CaptureSessionController } from '../src/core/capture-session-controller';
 import { ensureContentScript } from '../src/core/content-script-loader';
+import {
+  isExtensionPage,
+  isMessageEnvelope,
+  isTopFrameContentScript,
+} from '../src/core/message-security';
 import type { ExtensionMessage } from '../src/core/messages';
 import { normalizeSettings, type AppSettings } from '../src/core/settings';
 import { redactSessionSnapshot } from '../src/core/session-persistence';
@@ -8,6 +13,8 @@ import { createOffscreenTranslationTransport } from '../src/providers/offscreen-
 export default defineBackground(() => {
   const activeSessionKey = 'activeSession';
   let lifecycleTail: Promise<void> = Promise.resolve();
+  const offscreenUrl = chrome.runtime.getURL('offscreen.html');
+  const popupUrl = chrome.runtime.getURL('popup.html');
   const translateOffscreen = createOffscreenTranslationTransport(
     (message) => chrome.runtime.sendMessage(message),
   );
@@ -19,18 +26,19 @@ export default defineBackground(() => {
     if (!response?.ok) throw new Error(response?.error ?? 'offscreen_error');
     return response;
   };
-  const controller = new CaptureSessionController({
-    ensureContentScript: (tabId) => ensureContentScript({
+  const ensureTabContentScript = (tabId: number) =>
+    ensureContentScript({
       inject: async () => {
         await chrome.scripting.executeScript({
-          files: ['content-scripts/captions.js'],
+          files: ['captions.js'],
           target: { tabId },
         });
       },
       ping: () => chrome.tabs.sendMessage(tabId, { type: 'CONTENT_PING' }),
-    }),
+    });
+  const controller = new CaptureSessionController({
+    ensureContentScript: ensureTabContentScript,
     async ensureOffscreen() {
-      const offscreenUrl = chrome.runtime.getURL('offscreen.html');
       const existing = await chrome.runtime.getContexts({
         contextTypes: ['OFFSCREEN_DOCUMENT'],
         documentUrls: [offscreenUrl],
@@ -63,7 +71,6 @@ export default defineBackground(() => {
   async function closeOffscreenIfUnused(): Promise<void> {
     if (controller.snapshot()) return;
     try {
-      const offscreenUrl = chrome.runtime.getURL('offscreen.html');
       const contexts = await chrome.runtime.getContexts({
         contextTypes: ['OFFSCREEN_DOCUMENT'],
         documentUrls: [offscreenUrl],
@@ -83,7 +90,10 @@ export default defineBackground(() => {
     await closeOffscreenIfUnused();
   }
 
-  const ready = chrome.storage.session.get(activeSessionKey).then(async (stored) => {
+  const ready = chrome.storage.local.setAccessLevel({
+    accessLevel: 'TRUSTED_CONTEXTS',
+  }).then(async () => {
+    const stored = await chrome.storage.session.get(activeSessionKey);
     const snapshot = stored[activeSessionKey] as {
       sessionId?: unknown;
       settings?: unknown;
@@ -97,7 +107,7 @@ export default defineBackground(() => {
     ) {
       const contexts = await chrome.runtime.getContexts({
         contextTypes: ['OFFSCREEN_DOCUMENT'],
-        documentUrls: [chrome.runtime.getURL('offscreen.html')],
+        documentUrls: [offscreenUrl],
       });
       if (contexts.length === 0) {
         await chrome.storage.session.remove(activeSessionKey);
@@ -117,11 +127,48 @@ export default defineBackground(() => {
         tabId: snapshot.tabId,
       });
     }
-  }).catch(() => undefined);
+  });
+  void ready.catch(() => undefined);
+
+  const offscreenMessageTypes = new Set([
+    'CAPTION_PAIR_EVENT',
+    'CAPTURE_DISCONNECTED',
+    'CAPTURE_KEEPALIVE',
+    'TRANSCRIPT_EVENT',
+  ]);
+  const popupMessageTypes = new Set([
+    'SESSION_START',
+    'SESSION_STATUS',
+    'SESSION_STOP',
+  ]);
+
+  function isAuthorizedMessage(
+    message: { type: string },
+    sender: chrome.runtime.MessageSender,
+  ): boolean {
+    if (offscreenMessageTypes.has(message.type)) {
+      return isExtensionPage(
+        sender,
+        chrome.runtime.id,
+        offscreenUrl,
+      );
+    }
+    if (popupMessageTypes.has(message.type)) {
+      return isExtensionPage(sender, chrome.runtime.id, popupUrl);
+    }
+    return message.type === 'CONTENT_READY' &&
+      isTopFrameContentScript(sender, chrome.runtime.id);
+  }
 
   chrome.runtime.onMessage.addListener(
-    (message: ExtensionMessage, sender, sendResponse) => {
-      if (message.target !== 'background') return false;
+    (incoming: unknown, sender, sendResponse) => {
+      if (
+        !isMessageEnvelope(incoming, 'background') ||
+        !isAuthorizedMessage(incoming, sender)
+      ) {
+        return false;
+      }
+      const message = incoming as ExtensionMessage;
 
       const operation = (async () => {
         await ready;
@@ -221,15 +268,41 @@ export default defineBackground(() => {
       .catch(() => undefined);
   });
 
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (changeInfo.status !== 'complete') return;
+    void ready
+      .then(() => enqueueLifecycle(async () => {
+        const status = controller.status();
+        if (status.state !== 'running' || status.tabId !== tabId) return;
+        try {
+          await ensureTabContentScript(tabId);
+          await controller.handleContentReady(tabId);
+        } catch {
+          // activeTab survives same-origin reloads but is revoked by a
+          // cross-origin navigation. Failing closed also covers restricted
+          // pages where Chrome refuses script injection.
+          await controller.stop();
+          await chrome.storage.session.remove(activeSessionKey);
+          await closeOffscreenIfUnused();
+        }
+      }))
+      .catch(() => undefined);
+  });
+
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !changes.settings) return;
     const next = normalizeSettings(
       (changes.settings.newValue as Partial<AppSettings> | undefined) ?? {},
     );
     controller.applyLayout({
+      backgroundOpacity: next.backgroundOpacity,
+      bottomOffset: next.bottomOffset,
       captionRows: next.captionRows,
+      captionWidth: next.captionWidth,
       maxLineWidth: next.maxLineWidth,
       minLineWidth: next.minLineWidth,
+      originalFontSize: next.originalFontSize,
+      translationFontSize: next.translationFontSize,
     });
   });
 });

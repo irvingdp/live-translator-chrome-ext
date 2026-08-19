@@ -65,6 +65,7 @@ beforeEach(async () => {
   vi.stubGlobal('fetch', fetcher);
   vi.stubGlobal('chrome', {
     runtime: {
+      id: 'test',
       onMessage: {
         addListener: vi.fn((registered: OffscreenListener) => {
           listener = registered;
@@ -84,6 +85,24 @@ afterEach(() => {
 });
 
 describe('offscreen runtime listener', () => {
+  it('rejects capture commands sent from a content script', () => {
+    const sendResponse = vi.fn();
+
+    const keepOpen = listener(
+      captureStartMessage('session-1'),
+      {
+        frameId: 0,
+        id: 'test',
+        tab: { id: 42 } as chrome.tabs.Tab,
+      },
+      sendResponse,
+    );
+
+    expect(keepOpen).toBe(false);
+    expect(sendResponse).not.toHaveBeenCalled();
+    expect(audio.createPipeline).not.toHaveBeenCalled();
+  });
+
   it('keeps the response channel open until translation returns its exact result', async () => {
     await startCapture('session-1');
     const response = new Response(JSON.stringify({
@@ -260,7 +279,11 @@ describe('offscreen runtime listener', () => {
 
 function dispatch(message: ExtensionMessage) {
   const sendResponse = vi.fn();
-  const keepOpen = listener(message, {} as chrome.runtime.MessageSender, sendResponse);
+  const keepOpen = listener(
+    message,
+    { id: 'test' } as chrome.runtime.MessageSender,
+    sendResponse,
+  );
   return { keepOpen, sendResponse };
 }
 

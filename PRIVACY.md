@@ -1,6 +1,6 @@
 # Privacy Policy — Bilingual Live Captions
 
-**Last updated: 2026-08-07**
+**Last updated: 2026-08-20**
 
 ## Summary
 
@@ -32,7 +32,8 @@ text is only rendered on screen; it is never written to a file or a log.
 ## Data that stays on your device
 
 - **API keys**: stored in `chrome.storage.local`, on this machine and this Chrome
-  profile only. Chrome Sync is not used. They never leave the device except as
+  profile only. Chrome Sync is not used, and content scripts are explicitly
+  denied access to this storage area. The keys never leave the device except as
   authentication to the one service each key belongs to.
 - **Caption appearance and language settings**: also in `chrome.storage.local`.
 - **Session state**: held in `chrome.storage.session` (cleared when Chrome closes)
@@ -69,9 +70,8 @@ tier:
 | --- | --- |
 | `tabCapture` | Capture the audio of the tab you selected — the only source of caption text |
 | `offscreen` | A Manifest V3 service worker cannot use AudioContext, so audio processing and the provider connection run in an offscreen document |
-| `activeTab`, `scripting` | Inject the caption overlay into the tab where you pressed start |
+| `activeTab`, `scripting` | Inject the caption overlay only into the tab where you pressed start; no script is registered across all websites |
 | `storage` | Save your API keys and caption settings |
-| `https://*/*` content script | Captions must be able to sit on top of any video site. The script only draws captions; it never reads or transmits page content |
 | `host_permissions` | Limited to the four provider API domains used for the connections above |
 
 ## Children

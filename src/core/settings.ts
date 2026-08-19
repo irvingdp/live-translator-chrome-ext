@@ -6,6 +6,38 @@ export interface AppSettings extends SessionSettings {
   translationFontSize: number;
 }
 
+export interface CaptionAppearance {
+  backgroundOpacity: number;
+  bottomOffset: number;
+  captionWidth: number;
+  maxVisibleRows: number;
+  originalFontSize: number;
+  translationFontSize: number;
+}
+
+export function captionAppearance(
+  settings: Pick<
+    SessionSettings,
+    | 'backgroundOpacity'
+    | 'bottomOffset'
+    | 'captionRows'
+    | 'captionWidth'
+    | 'originalFontSize'
+    | 'transcriber'
+    | 'translationFontSize'
+  >,
+): CaptionAppearance {
+  return {
+    backgroundOpacity: settings.backgroundOpacity,
+    bottomOffset: settings.bottomOffset,
+    captionWidth: settings.captionWidth,
+    maxVisibleRows:
+      settings.transcriber === 'gemini' ? settings.captionRows : 0,
+    originalFontSize: settings.originalFontSize,
+    translationFontSize: settings.translationFontSize,
+  };
+}
+
 // maxLineWidth's floor of 40 is load-bearing: measurement showed the
 // chunker's closed-unit boundaries are stable at widths 40-140 but not below
 // ~30, so this range must not widen.
