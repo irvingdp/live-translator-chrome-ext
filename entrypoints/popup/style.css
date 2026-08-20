@@ -43,6 +43,12 @@ select:disabled { cursor: not-allowed; opacity: .65; }
 .range-label { display: flex; justify-content: space-between; }
 .range-label output { color: #99f6e4; font-size: 12px; font-variant-numeric: tabular-nums; }
 input[type="range"] { accent-color: var(--primary); min-height: 28px; padding: 0; }
+.color-field { margin-top: 4px; }
+.color-inputs { display: grid; gap: 8px; grid-template-columns: 48px 1fr; }
+.color-inputs input[type="color"] { cursor: pointer; padding: 4px; }
+.color-inputs input[aria-invalid="true"] { border-color: var(--danger); }
+.color-reset { margin-top: 4px; width: 100%; }
+.color-reset:disabled { cursor: default; opacity: .5; }
 .privacy { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0; }
 .feedback { background: #172033; border-left: 3px solid var(--primary); border-radius: 6px; color: #dbeafe; font-size: 12px; margin: 0; padding: 8px 10px; }
 .primary { background: var(--primary-strong); border: 1px solid #2dd4bf; border-radius: 10px; color: white; font-weight: 750; min-height: 48px; padding: 11px 16px; transition: background 160ms ease-out, opacity 160ms ease-out; width: 100%; }

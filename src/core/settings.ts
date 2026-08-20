@@ -3,13 +3,17 @@ import { t } from './i18n';
 
 export interface AppSettings extends SessionSettings {
   originalFontSize: number;
+  originalTextColor: string;
   translationFontSize: number;
+  translationTextColor: string;
 }
 
 export interface CaptionAppearance {
   backgroundOpacity: number;
   originalFontSize: number;
+  originalTextColor: string;
   translationFontSize: number;
+  translationTextColor: string;
 }
 
 export function captionAppearance(
@@ -17,13 +21,17 @@ export function captionAppearance(
     SessionSettings,
     | 'backgroundOpacity'
     | 'originalFontSize'
+    | 'originalTextColor'
     | 'translationFontSize'
+    | 'translationTextColor'
   >,
 ): CaptionAppearance {
   return {
     backgroundOpacity: settings.backgroundOpacity,
     originalFontSize: settings.originalFontSize,
+    originalTextColor: settings.originalTextColor,
     translationFontSize: settings.translationFontSize,
+    translationTextColor: settings.translationTextColor,
   };
 }
 
@@ -47,11 +55,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxLineWidth: 90,
   minLineWidth: 40,
   originalFontSize: 24,
+  originalTextColor: '#ffffff',
   sourceLanguage: 'EN',
   sourceLocale: 'en-US',
   targetLanguage: 'ZH-HANT',
   transcriber: 'gemini',
   translationFontSize: 22,
+  translationTextColor: '#fde68a',
 };
 
 export const TRANSCRIBER_IDS = ['deepgram', 'gemini'] as const;
@@ -73,6 +83,12 @@ export const LANGUAGE_OPTIONS = [
 
 function stringValue(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
+}
+
+function colorValue(value: unknown, fallback: string): string {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)
+    ? value.toLowerCase()
+    : fallback;
 }
 
 // The only setting whose value changes which provider runs, so an unknown
@@ -132,6 +148,10 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       SETTING_RANGES.originalFontSize,
       DEFAULT_SETTINGS.originalFontSize,
     ),
+    originalTextColor: colorValue(
+      raw.originalTextColor,
+      DEFAULT_SETTINGS.originalTextColor,
+    ),
     sourceLanguage: stringValue(
       raw.sourceLanguage,
       DEFAULT_SETTINGS.sourceLanguage,
@@ -146,6 +166,10 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       raw.translationFontSize,
       SETTING_RANGES.translationFontSize,
       DEFAULT_SETTINGS.translationFontSize,
+    ),
+    translationTextColor: colorValue(
+      raw.translationTextColor,
+      DEFAULT_SETTINGS.translationTextColor,
     ),
   };
 }

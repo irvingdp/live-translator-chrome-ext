@@ -16,20 +16,20 @@
       ],
       "fingerprints": {
         ".superdesign/design-system.md": "1aff7aab708f26b163695d0f744956a724d0c5c3f054fc7816eb9b142691c23e",
-        "src/content/caption-overlay.ts": "d9559b2214dd95b27feeff22158fda343977207c6dece5f0ffab68350ef76eac",
-        "src/popup/PopupApp.tsx": "cd77d106fe2570a4ada7f03a59c3af80018e8c5761d8e4ffb8ea24a2bff46895",
-        "entrypoints/popup/style.css": "fe38390bdcd13c63d59fbf71b41f5f7e35e453fc09c96162f3d93598fa42ad0d",
-        "src/core/settings.ts": "230e2c48cf426c71e975a0b9fef491a910431bda59839b3dcf0e72dfdbbb9d22"
+        "src/content/caption-overlay.ts": "3ec027389740f9260db1ac6c0a91242b212d8c02d8c7cee73897c0092a09f860",
+        "src/popup/PopupApp.tsx": "be9e21de0b53a279907a77f69fff5b111f93e8b8272c47b39e670fe0a74f60c6",
+        "entrypoints/popup/style.css": "58aea094739438a51cd3eb9a033ee509fac89ca6b196ed6c1990af691631b57a",
+        "src/core/settings.ts": "2dc26d232d66cdb7ecec0f55dd7a360290e30ec350a6711f6c6481b880a48b00"
       },
       "components": [],
       "drafts": {
         "859f4bdf-e457-47c6-b343-8ec7958d7aba": {
           "title": "Fix Corner Handle Visibility",
-          "visualDirection": "hover-only unified floating caption toolbar with an 18px interaction buffer, Side Panel action, and four external rounded corner resize brackets; lock control intentionally omitted",
+          "visualDirection": "hover-only floating caption controls plus compact popup caption-style settings with native color swatches, exact Hex inputs, and shared colors across floating and Side Panel surfaces",
           "currentVersion": 16
         }
       },
-      "updatedAt": "2026-08-20T09:45:00Z"
+      "updatedAt": "2026-08-20T10:10:52Z"
     }
   }
 }

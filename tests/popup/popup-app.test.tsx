@@ -145,6 +145,50 @@ describe('PopupApp', () => {
     expect(translation).toHaveValue('22');
   });
 
+  it('saves colors from both the palette and an exact Hex value', async () => {
+    const api = createApi();
+    render(<PopupApp api={api} />);
+
+    fireEvent.change(await screen.findByLabelText('原文顏色'), {
+      target: { value: '#123456' },
+    });
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ originalTextColor: '#123456' }),
+    ));
+
+    const translationCode = screen.getByLabelText('譯文顏色色碼');
+    fireEvent.change(translationCode, { target: { value: '#ABCDEF' } });
+    fireEvent.blur(translationCode);
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ translationTextColor: '#abcdef' }),
+    ));
+  });
+
+  it('rejects incomplete Hex colors and restores both default colors atomically', async () => {
+    const api = createApi({
+      loadSettings: vi.fn().mockResolvedValue({
+        ...DEFAULT_SETTINGS,
+        originalTextColor: '#112233',
+        translationTextColor: '#445566',
+      }),
+    });
+    render(<PopupApp api={api} />);
+    const originalCode = await screen.findByLabelText('原文顏色色碼');
+
+    fireEvent.change(originalCode, { target: { value: '#fff' } });
+    expect(originalCode).toHaveAttribute('aria-invalid', 'true');
+    fireEvent.blur(originalCode);
+    expect(originalCode).toHaveValue('#112233');
+    expect(api.saveSettings).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '恢復預設顏色' }));
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledOnce());
+    expect(api.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+      originalTextColor: '#ffffff',
+      translationTextColor: '#fde68a',
+    }));
+  });
+
   it('shows a translation warning while capture remains active', async () => {
     render(<PopupApp api={createApi({
       status: vi.fn().mockResolvedValue({

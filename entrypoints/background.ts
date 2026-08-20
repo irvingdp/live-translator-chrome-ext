@@ -474,7 +474,10 @@ export default defineBackground(() => {
       maxLineWidth: next.maxLineWidth,
       minLineWidth: next.minLineWidth,
       originalFontSize: next.originalFontSize,
+      originalTextColor: next.originalTextColor,
       translationFontSize: next.translationFontSize,
+      translationTextColor: next.translationTextColor,
     });
+    void broadcastSidePanel().catch(() => undefined);
   });
 });

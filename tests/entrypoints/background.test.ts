@@ -18,11 +18,13 @@ const settings: AppSettings = {
   maxLineWidth: 90,
   minLineWidth: 40,
   originalFontSize: 24,
+  originalTextColor: '#ffffff',
   sourceLanguage: 'EN',
   sourceLocale: 'en-US',
   targetLanguage: 'ZH-HANT',
   transcriber: 'deepgram',
   translationFontSize: 22,
+  translationTextColor: '#fde68a',
 };
 
 let listener: BackgroundListener;
@@ -350,6 +352,15 @@ describe('background offscreen document lifecycle', () => {
 
   it('sends only projected appearance data after a live settings change', async () => {
     await startSession();
+    const sidePanelPost = vi.fn();
+    onRuntimeConnect({
+      name: 'caption-side-panel',
+      onDisconnect: { addListener: vi.fn() },
+      postMessage: sidePanelPost,
+      sender: { id: 'test', url: 'chrome-extension://test/sidepanel.html' },
+    } as unknown as chrome.runtime.Port);
+    await vi.waitFor(() => expect(sidePanelPost).toHaveBeenCalled());
+    sidePanelPost.mockClear();
     tabsSendMessage.mockClear();
 
     onSettingsChanged(
@@ -359,6 +370,8 @@ describe('background offscreen document lifecycle', () => {
             ...settings,
             backgroundOpacity: 88,
             geminiApiKey: 'must-not-leak',
+            originalTextColor: '#a1b2c3',
+            translationTextColor: '#123abc',
           },
         },
       },
@@ -369,7 +382,11 @@ describe('background offscreen document lifecycle', () => {
       expect(tabsSendMessage).toHaveBeenCalledWith(42, {
         type: 'OVERLAY_APPEARANCE',
         payload: {
-          appearance: expect.objectContaining({ backgroundOpacity: 88 }),
+          appearance: expect.objectContaining({
+            backgroundOpacity: 88,
+            originalTextColor: '#a1b2c3',
+            translationTextColor: '#123abc',
+          }),
         },
       });
     });
@@ -379,6 +396,15 @@ describe('background offscreen document lifecycle', () => {
     expect(appearanceMessage).not.toHaveProperty(
       'payload.appearance.geminiApiKey',
     );
+    await vi.waitFor(() => expect(sidePanelPost).toHaveBeenCalledWith({
+      type: 'SIDE_PANEL_STATE',
+      payload: expect.objectContaining({
+        appearance: expect.objectContaining({
+          originalTextColor: '#a1b2c3',
+          translationTextColor: '#123abc',
+        }),
+      }),
+    }));
   });
 
   it('restores the overlay after a same-origin tab reload', async () => {

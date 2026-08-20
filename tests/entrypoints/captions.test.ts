@@ -30,7 +30,9 @@ vi.mock('../../src/content/caption-overlay', () => ({
 const appearance: CaptionAppearance = {
   backgroundOpacity: 50,
   originalFontSize: 24,
+  originalTextColor: '#ffffff',
   translationFontSize: 22,
+  translationTextColor: '#fde68a',
 };
 
 type ContentListener = (

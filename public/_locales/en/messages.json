@@ -110,8 +110,8 @@
   },
 
   "sizeHeading": {
-    "message": "Caption size",
-    "description": "Heading of the font-size section in the popup."
+    "message": "Caption style",
+    "description": "Heading of the font-size and text-color section in the popup."
   },
   "originalFontSizeLabel": {
     "message": "Original text size",
@@ -120,6 +120,22 @@
   "translationFontSizeLabel": {
     "message": "Translation text size",
     "description": "Slider label for the translated-language font size."
+  },
+  "originalTextColorLabel": {
+    "message": "Original text color",
+    "description": "Color picker label for the source-language caption text."
+  },
+  "translationTextColorLabel": {
+    "message": "Translation text color",
+    "description": "Color picker label for the translated-language caption text."
+  },
+  "colorCodeLabel": {
+    "message": "$1 color code",
+    "description": "Accessible label for a caption color's hexadecimal text input. $1 is the color field label."
+  },
+  "resetTextColors": {
+    "message": "Restore default colors",
+    "description": "Button that restores both caption text colors."
   },
 
   "layoutHeading": {

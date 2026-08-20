@@ -17,11 +17,13 @@ describe('session persistence', () => {
         maxLineWidth: 90,
         minLineWidth: 40,
         originalFontSize: 24,
+        originalTextColor: '#ffffff',
         sourceLanguage: 'EN',
         sourceLocale: 'en-US',
         targetLanguage: 'ZH-HANT',
         transcriber: 'deepgram',
         translationFontSize: 22,
+        translationTextColor: '#fde68a',
       },
     };
 
@@ -37,11 +39,13 @@ describe('session persistence', () => {
         maxLineWidth: 90,
         minLineWidth: 40,
         originalFontSize: 24,
+        originalTextColor: '#ffffff',
         sourceLanguage: 'EN',
         sourceLocale: 'en-US',
         targetLanguage: 'ZH-HANT',
         transcriber: 'deepgram',
         translationFontSize: 22,
+        translationTextColor: '#fde68a',
       },
     });
   });

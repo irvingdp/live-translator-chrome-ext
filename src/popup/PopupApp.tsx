@@ -47,13 +47,10 @@ export function PopupApp({ api }: { api: PopupApi }) {
     );
   }, [api]);
 
-  const update = <Key extends keyof AppSettings>(
-    key: Key,
-    value: AppSettings[Key],
-  ) => {
+  const updateSettings = (patch: Partial<AppSettings>) => {
     setSettings((current) => {
       if (!current) return current;
-      const next = normalizeSettings({ ...current, [key]: value });
+      const next = normalizeSettings({ ...current, ...patch });
       saveTail.current = saveTail.current
         .then(() => api.saveSettings(next))
         .catch(() => {
@@ -62,6 +59,10 @@ export function PopupApp({ api }: { api: PopupApi }) {
       return next;
     });
   };
+  const update = <Key extends keyof AppSettings>(
+    key: Key,
+    value: AppSettings[Key],
+  ) => updateSettings({ [key]: value });
 
   const openOptions = async () => {
     try {
@@ -283,6 +284,32 @@ export function PopupApp({ api }: { api: PopupApi }) {
           value={settings.translationFontSize}
           onChange={(value) => update('translationFontSize', value)}
         />
+        <ColorField
+          id="original-color"
+          label={t('originalTextColorLabel')}
+          value={settings.originalTextColor}
+          onChange={(value) => update('originalTextColor', value)}
+        />
+        <ColorField
+          id="translation-color"
+          label={t('translationTextColorLabel')}
+          value={settings.translationTextColor}
+          onChange={(value) => update('translationTextColor', value)}
+        />
+        <button
+          className="secondary color-reset"
+          disabled={
+            settings.originalTextColor === DEFAULT_SETTINGS.originalTextColor &&
+            settings.translationTextColor === DEFAULT_SETTINGS.translationTextColor
+          }
+          type="button"
+          onClick={() => updateSettings({
+            originalTextColor: DEFAULT_SETTINGS.originalTextColor,
+            translationTextColor: DEFAULT_SETTINGS.translationTextColor,
+          })}
+        >
+          {t('resetTextColors')}
+        </button>
       </section>
 
       <section className="card" aria-labelledby="layout-heading">
@@ -406,6 +433,64 @@ function RangeField({
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
       />
+    </div>
+  );
+}
+
+function ColorField({
+  id,
+  label,
+  onChange,
+  value,
+}: {
+  id: string;
+  label: string;
+  onChange(value: string): void;
+  value: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const valid = /^#[0-9a-f]{6}$/i.test(draft);
+  const commit = () => {
+    if (!valid) {
+      setDraft(value);
+      return;
+    }
+    const normalized = draft.toLowerCase();
+    setDraft(normalized);
+    if (normalized !== value) onChange(normalized);
+  };
+  return (
+    <div className="color-field">
+      <label htmlFor={`${id}-picker`}>{label}</label>
+      <div className="color-inputs">
+        <input
+          aria-label={label}
+          id={`${id}-picker`}
+          type="color"
+          value={value}
+          onChange={(event) => onChange(event.target.value.toLowerCase())}
+        />
+        <input
+          aria-invalid={!valid}
+          aria-label={t('colorCodeLabel', label)}
+          inputMode="text"
+          maxLength={7}
+          pattern="#[0-9A-Fa-f]{6}"
+          spellCheck={false}
+          type="text"
+          value={draft}
+          onBlur={commit}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+            if (event.key === 'Escape') {
+              setDraft(value);
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      </div>
     </div>
   );
 }

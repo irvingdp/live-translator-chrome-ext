@@ -28,7 +28,9 @@ function rect(
 const appearance = {
   backgroundOpacity: 50,
   originalFontSize: 30,
+  originalTextColor: '#e2e8f0',
   translationFontSize: 20,
+  translationTextColor: '#facc15',
 };
 
 const layout: OverlayLayout = {
@@ -106,7 +108,9 @@ describe('CaptionOverlay', () => {
       { hidden: 'false', id: 'b', original: 'And now.', translation: '接下來。' },
     ]);
     expect(host?.style.getPropertyValue('--caption-original-size')).toBe('30px');
+    expect(host?.style.getPropertyValue('--caption-original-color')).toBe('#e2e8f0');
     expect(host?.style.getPropertyValue('--caption-translation-size')).toBe('20px');
+    expect(host?.style.getPropertyValue('--caption-translation-color')).toBe('#facc15');
     expect(host?.style.getPropertyValue('--caption-bg-opacity')).toBe('0.5');
     expect(host?.style.getPropertyValue('--caption-width')).toBe('');
   });

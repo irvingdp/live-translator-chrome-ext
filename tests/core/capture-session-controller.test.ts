@@ -20,7 +20,9 @@ const settings: SessionSettings = {
   targetLanguage: 'ZH-HANT',
   transcriber: 'deepgram',
   originalFontSize: 24,
+  originalTextColor: '#ffffff',
   translationFontSize: 22,
+  translationTextColor: '#fde68a',
 };
 
 function createHarness() {

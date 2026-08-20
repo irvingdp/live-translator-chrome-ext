@@ -110,8 +110,8 @@
   },
 
   "sizeHeading": {
-    "message": "字幕大小",
-    "description": "Heading of the font-size section in the popup."
+    "message": "字幕樣式",
+    "description": "Heading of the font-size and text-color section in the popup."
   },
   "originalFontSizeLabel": {
     "message": "原文字級",
@@ -120,6 +120,22 @@
   "translationFontSizeLabel": {
     "message": "譯文字級",
     "description": "Slider label for the translated-language font size."
+  },
+  "originalTextColorLabel": {
+    "message": "原文顏色",
+    "description": "Color picker label for the source-language caption text."
+  },
+  "translationTextColorLabel": {
+    "message": "譯文顏色",
+    "description": "Color picker label for the translated-language caption text."
+  },
+  "colorCodeLabel": {
+    "message": "$1色碼",
+    "description": "Accessible label for a caption color's hexadecimal text input. $1 is the color field label."
+  },
+  "resetTextColors": {
+    "message": "恢復預設顏色",
+    "description": "Button that restores both caption text colors."
   },
 
   "layoutHeading": {

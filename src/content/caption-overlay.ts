@@ -96,8 +96,8 @@ const OVERLAY_CSS = `
   .track { display: flex; flex-direction: column; justify-content: flex-end; }
   .pair { padding: 2px 0; }
   .pair[data-hidden="true"] { display: none; }
-  .original { font-size: var(--caption-original-size, 24px); font-weight: 650; overflow-wrap: break-word; text-shadow: 0 1px 2px #000; }
-  .translation { color: #fde68a; font-size: var(--caption-translation-size, 22px); font-weight: 550; margin-top: 3px; overflow-wrap: break-word; text-shadow: 0 1px 2px #000; }
+  .original { color: var(--caption-original-color, #fff); font-size: var(--caption-original-size, 24px); font-weight: 650; overflow-wrap: break-word; text-shadow: 0 1px 2px #000; }
+  .translation { color: var(--caption-translation-color, #fde68a); font-size: var(--caption-translation-size, 22px); font-weight: 550; margin-top: 3px; overflow-wrap: break-word; text-shadow: 0 1px 2px #000; }
   .status-message { color: #fca5a5; flex: 0 0 auto; font-size: 16px; font-weight: 600; margin-top: 5px; overflow-wrap: anywhere; pointer-events: none; text-shadow: 0 1px 2px #000; }
   .original:empty, .translation:empty, .status-message:empty { display: none; }
   .caption-toolbar {
@@ -266,7 +266,9 @@ export class CaptionOverlay {
     const style = this.host?.style;
     if (!style) return;
     style.setProperty('--caption-original-size', `${appearance.originalFontSize}px`);
+    style.setProperty('--caption-original-color', appearance.originalTextColor);
     style.setProperty('--caption-translation-size', `${appearance.translationFontSize}px`);
+    style.setProperty('--caption-translation-color', appearance.translationTextColor);
     style.setProperty('--caption-bg-opacity', `${appearance.backgroundOpacity / 100}`);
     this.updateVisiblePairs();
   }

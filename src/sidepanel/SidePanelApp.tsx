@@ -177,14 +177,20 @@ export function SidePanelApp({ api }: { api: SidePanelApi }) {
                 <article className="caption-pair" key={pair.id}>
                   <p
                     className="caption-original"
-                    style={{ fontSize: appearance?.originalFontSize }}
+                    style={{
+                      color: appearance?.originalTextColor,
+                      fontSize: appearance?.originalFontSize,
+                    }}
                   >
                     {pair.original}
                   </p>
                   {pair.translation && (
                     <p
                       className="caption-translation"
-                      style={{ fontSize: appearance?.translationFontSize }}
+                      style={{
+                        color: appearance?.translationTextColor,
+                        fontSize: appearance?.translationFontSize,
+                      }}
                     >
                       {pair.translation}
                     </p>

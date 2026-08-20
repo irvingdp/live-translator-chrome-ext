@@ -19,7 +19,9 @@ describe('captionAppearance', () => {
     expect(appearance).toEqual({
       backgroundOpacity: 50,
       originalFontSize: 24,
+      originalTextColor: '#ffffff',
       translationFontSize: 22,
+      translationTextColor: '#fde68a',
     });
     expect(appearance).not.toHaveProperty('geminiApiKey');
   });
@@ -55,6 +57,23 @@ describe('normalizeSettings', () => {
       sourceLocale: 'ja',
       targetLanguage: 'EN-US',
       translationFontSize: 26,
+    });
+  });
+
+  it('normalizes valid text colors and defaults missing or invalid colors', () => {
+    expect(normalizeSettings({
+      originalTextColor: '#A1B2C3',
+      translationTextColor: '#123abc',
+    })).toMatchObject({
+      originalTextColor: '#a1b2c3',
+      translationTextColor: '#123abc',
+    });
+    expect(normalizeSettings({
+      originalTextColor: '#fff',
+      translationTextColor: 'yellow',
+    })).toMatchObject({
+      originalTextColor: DEFAULT_SETTINGS.originalTextColor,
+      translationTextColor: DEFAULT_SETTINGS.translationTextColor,
     });
   });
 

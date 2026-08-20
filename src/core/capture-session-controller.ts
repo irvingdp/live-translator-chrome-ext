@@ -34,7 +34,9 @@ export interface SessionSettings {
   targetLanguage: string;
   transcriber: TranscriberId;
   originalFontSize: number;
+  originalTextColor: string;
   translationFontSize: number;
+  translationTextColor: string;
 }
 
 export type TabMessage =
@@ -158,7 +160,9 @@ export class CaptureSessionController {
     minLineWidth: number;
     backgroundOpacity?: number;
     originalFontSize?: number;
+    originalTextColor?: string;
     translationFontSize?: number;
+    translationTextColor?: string;
   }): void {
     if (!this.settings) return;
     this.settings = { ...this.settings, ...layout };

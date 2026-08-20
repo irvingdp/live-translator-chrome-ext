@@ -34,7 +34,9 @@ describe('SidePanelApp', () => {
       appearance: {
         backgroundOpacity: 50,
         originalFontSize: 30,
+        originalTextColor: '#e2e8f0',
         translationFontSize: 24,
+        translationTextColor: '#facc15',
       },
       pairs: [
         { id: 'one', original: 'First sentence.', translation: '第一句。' },
@@ -43,8 +45,14 @@ describe('SidePanelApp', () => {
       status: { state: 'running', tabId: 42 },
     });
 
-    expect(await screen.findByText('First sentence.')).toHaveStyle({ fontSize: '30px' });
-    expect(screen.getByText('第一句。')).toHaveStyle({ fontSize: '24px' });
+    expect(await screen.findByText('First sentence.')).toHaveStyle({
+      color: '#e2e8f0',
+      fontSize: '30px',
+    });
+    expect(screen.getByText('第一句。')).toHaveStyle({
+      color: '#facc15',
+      fontSize: '24px',
+    });
     expect(screen.getByText('Second sentence.')).toBeVisible();
   });
 
