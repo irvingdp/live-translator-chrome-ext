@@ -10,7 +10,7 @@ Chrome 116+ 的 Manifest V3 擴充功能：擷取目前分頁的音訊，顯示�
   - **Deepgram Nova-3 + DeepL**：逐字推進的原文，逐行送出的譯文
 - YouTube、Netflix、Disney+ 與一般 HTML5 影片的頁內字幕
 - 可自由拖曳、調整寬高的浮動字幕；拉高後會自動顯示更多完整的雙語句子
-- 可將字幕切換至 Chrome 原生 Side Panel 查看較長的字幕紀錄，並隨時切回浮動字幕
+- 可將字幕切換至 Chrome 原生 Side Panel 查看較長的字幕紀錄，關閉 Side Panel 後會自動切回浮動字幕
 - 每個 HTTPS 網站會分別記住浮動字幕的位置與尺寸
 - 原文與譯文字級分別調整
 - Deepgram 的每行長度上下限與所有模式的背景透明度皆可調，且在字幕進行中即時生效
@@ -88,7 +88,9 @@ npm run compile
 npm run build
 ```
 
-接著至 `chrome://extensions` 開啟「開發人員模式」，選擇「載入未封裝項目」，載入 `output/chrome-mv3`。
+接著至 `chrome://extensions` 開啟「開發人員模式」，選擇「載入未封裝項目」，載入
+`output/chrome-mv3`。macOS 與 Windows 的正式版 Chrome 不允許直接安裝本機自行簽署的
+CRX；需要可點擊安裝的封裝版本時，必須發布到 Chrome Web Store，或由組織透過企業政策部署。
 
 在 Chrome 的擴充功能選單中右鍵點擊本擴充功能，選擇「選項」，輸入並儲存所選服務的 API Key：Deepgram + DeepL 兩把要一起填，Gemini 則只需要一把（<https://aistudio.google.com/>）。接著開啟 HTTPS 影片分頁，從 Popup 選擇服務與語言並按「開始即時字幕」。
 
