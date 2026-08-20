@@ -155,6 +155,14 @@
     "message": "回到浮動字幕",
     "description": "Button that moves captions from Side Panel back to the webpage overlay."
   },
+  "enableAutoScroll": {
+    "message": "開啟自動捲動",
+    "description": "Button that resumes following the latest Side Panel caption."
+  },
+  "disableAutoScroll": {
+    "message": "暫停自動捲動",
+    "description": "Button that pauses following the latest Side Panel caption."
+  },
   "sidePanelWaiting": {
     "message": "請先從擴充功能彈出視窗啟動字幕。",
     "description": "Side Panel empty state when there is no live session."
@@ -167,11 +175,6 @@
     "message": "正在等待第一句字幕…",
     "description": "Side Panel empty state while a session is active."
   },
-  "newCaptions": {
-    "message": "有新字幕",
-    "description": "Button that jumps a scrolled caption history to the newest caption."
-  },
-
   "privacyGemini": {
     "message": "啟動後，分頁音訊會傳送至 Google Gemini，由 Gemini 同時產生原文與譯文。",
     "description": "Popup footer explaining where audio goes in Gemini mode."

@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 
 import type { CaptionPair } from '../core/caption-window';
 import type { SessionStatus } from '../core/capture-session-controller';
@@ -25,11 +31,36 @@ export interface SidePanelApi {
 
 export function SidePanelApp({ api }: { api: SidePanelApi }) {
   const [snapshot, setSnapshot] = useState<SidePanelSnapshot>();
-  const [unseen, setUnseen] = useState(false);
+  const [autoFollow, setAutoFollow] = useState(true);
   const [error, setError] = useState('');
+  const forceFrameRef = useRef<number | undefined>(undefined);
+  const forcingScrollRef = useRef(false);
+  const historyContentRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
-  const pinnedRef = useRef(true);
-  const lastPairId = snapshot?.pairs.at(-1)?.id;
+  const wasAtBottomRef = useRef(true);
+  const contentKey = snapshot?.pairs
+    .map(
+      (pair) =>
+        `${pair.id}\u0000${pair.original}\u0000${pair.translation}`,
+    )
+    .join('\u0001');
+
+  const scrollToLatest = useCallback(() => {
+    const history = historyRef.current;
+    if (!history) return;
+    forcingScrollRef.current = true;
+    history.scrollTop = history.scrollHeight;
+    wasAtBottomRef.current = true;
+    if (forceFrameRef.current !== undefined) {
+      window.cancelAnimationFrame(forceFrameRef.current);
+    }
+    forceFrameRef.current = window.requestAnimationFrame(() => {
+      history.scrollTop = history.scrollHeight;
+      wasAtBottomRef.current = true;
+      forcingScrollRef.current = false;
+      forceFrameRef.current = undefined;
+    });
+  }, []);
 
   useEffect(() => {
     let connection: SidePanelConnection | undefined;
@@ -51,33 +82,52 @@ export function SidePanelApp({ api }: { api: SidePanelApi }) {
     };
   }, [api]);
 
+  useLayoutEffect(() => {
+    if (autoFollow) scrollToLatest();
+  }, [autoFollow, contentKey, scrollToLatest]);
+
   useEffect(() => {
     const history = historyRef.current;
-    if (!history || !lastPairId) return;
-    if (!pinnedRef.current) {
-      setUnseen(true);
-      return;
-    }
-    const frame = window.requestAnimationFrame(() => {
-      history.scrollTop = history.scrollHeight;
+    const content = historyContentRef.current;
+    const ResizeObserverConstructor = window.ResizeObserver;
+    if (!history || !content || !ResizeObserverConstructor) return;
+    const observer = new ResizeObserverConstructor(() => {
+      if (autoFollow) scrollToLatest();
     });
-    return () => window.cancelAnimationFrame(frame);
-  }, [lastPairId]);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [autoFollow, scrollToLatest, snapshot?.active, snapshot?.status.state]);
 
-  const updatePinned = () => {
+  useEffect(() => () => {
+    if (forceFrameRef.current !== undefined) {
+      window.cancelAnimationFrame(forceFrameRef.current);
+    }
+  }, []);
+
+  const updateAutoFollowFromScroll = () => {
     const history = historyRef.current;
-    if (!history) return;
-    pinnedRef.current =
+    if (!history || forcingScrollRef.current) return;
+    const atBottom =
       history.scrollHeight - history.scrollTop - history.clientHeight <= 24;
-    if (pinnedRef.current) setUnseen(false);
+    if (atBottom && !wasAtBottomRef.current) setAutoFollow(true);
+    if (!atBottom) setAutoFollow(false);
+    wasAtBottomRef.current = atBottom;
   };
 
-  const jumpToLatest = () => {
-    const history = historyRef.current;
-    if (!history) return;
-    history.scrollTop = history.scrollHeight;
-    pinnedRef.current = true;
-    setUnseen(false);
+  const toggleAutoFollow = () => {
+    setAutoFollow((current) => {
+      const next = !current;
+      if (next) {
+        scrollToLatest();
+      } else {
+        if (forceFrameRef.current !== undefined) {
+          window.cancelAnimationFrame(forceFrameRef.current);
+          forceFrameRef.current = undefined;
+        }
+        forcingScrollRef.current = false;
+      }
+      return next;
+    });
   };
 
   const returnToFloating = async () => {
@@ -99,15 +149,33 @@ export function SidePanelApp({ api }: { api: SidePanelApi }) {
           <h1>{t('sidePanelTitle')}</h1>
         </div>
         {running && snapshot.active && (
-          <button
-            aria-label={t('returnToFloating')}
-            className="surface-button"
-            title={t('returnToFloating')}
-            type="button"
-            onClick={() => void returnToFloating()}
-          >
-            ↗
-          </button>
+          <div className="header-actions">
+            <button
+              aria-label={t(
+                autoFollow ? 'disableAutoScroll' : 'enableAutoScroll',
+              )}
+              aria-pressed={autoFollow}
+              className={`surface-button auto-scroll-button${
+                autoFollow ? ' active' : ''
+              }`}
+              title={t(
+                autoFollow ? 'disableAutoScroll' : 'enableAutoScroll',
+              )}
+              type="button"
+              onClick={toggleAutoFollow}
+            >
+              ↓
+            </button>
+            <button
+              aria-label={t('returnToFloating')}
+              className="surface-button"
+              title={t('returnToFloating')}
+              type="button"
+              onClick={() => void returnToFloating()}
+            >
+              ↗
+            </button>
+          </div>
         )}
       </header>
 
@@ -120,34 +188,31 @@ export function SidePanelApp({ api }: { api: SidePanelApi }) {
           <div
             className="caption-history"
             ref={historyRef}
-            onScroll={updatePinned}
+            onScroll={updateAutoFollowFromScroll}
           >
-            {snapshot.pairs.length === 0 ? (
-              <p className="empty-state">{t('sidePanelEmpty')}</p>
-            ) : snapshot.pairs.map((pair) => (
-              <article className="caption-pair" key={pair.id}>
-                <p
-                  className="caption-original"
-                  style={{ fontSize: appearance?.originalFontSize }}
-                >
-                  {pair.original}
-                </p>
-                {pair.translation && (
+            <div className="caption-history-content" ref={historyContentRef}>
+              {snapshot.pairs.length === 0 ? (
+                <p className="empty-state">{t('sidePanelEmpty')}</p>
+              ) : snapshot.pairs.map((pair) => (
+                <article className="caption-pair" key={pair.id}>
                   <p
-                    className="caption-translation"
-                    style={{ fontSize: appearance?.translationFontSize }}
+                    className="caption-original"
+                    style={{ fontSize: appearance?.originalFontSize }}
                   >
-                    {pair.translation}
+                    {pair.original}
                   </p>
-                )}
-              </article>
-            ))}
+                  {pair.translation && (
+                    <p
+                      className="caption-translation"
+                      style={{ fontSize: appearance?.translationFontSize }}
+                    >
+                      {pair.translation}
+                    </p>
+                  )}
+                </article>
+              ))}
+            </div>
           </div>
-          {unseen && (
-            <button className="new-captions" type="button" onClick={jumpToLatest}>
-              ↓ {t('newCaptions')}
-            </button>
-          )}
         </>
       )}
       {error && <p className="panel-error" role="status">{error}</p>}

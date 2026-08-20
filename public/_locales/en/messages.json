@@ -155,6 +155,14 @@
     "message": "Return to floating captions",
     "description": "Button that moves captions from Side Panel back to the webpage overlay."
   },
+  "enableAutoScroll": {
+    "message": "Enable automatic scrolling",
+    "description": "Button that resumes following the latest Side Panel caption."
+  },
+  "disableAutoScroll": {
+    "message": "Pause automatic scrolling",
+    "description": "Button that pauses following the latest Side Panel caption."
+  },
   "sidePanelWaiting": {
     "message": "Start captions from the extension popup to see them here.",
     "description": "Side Panel empty state when there is no live session."
@@ -167,11 +175,6 @@
     "message": "Listening for the first caption…",
     "description": "Side Panel empty state while a session is active."
   },
-  "newCaptions": {
-    "message": "New captions",
-    "description": "Button that jumps a scrolled caption history to the newest caption."
-  },
-
   "privacyGemini": {
     "message": "Once started, the tab's audio is sent to Google Gemini, which returns both the original text and the translation.",
     "description": "Popup footer explaining where audio goes in Gemini mode."

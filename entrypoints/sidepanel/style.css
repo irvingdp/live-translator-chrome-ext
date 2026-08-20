@@ -15,21 +15,20 @@ body { background: #0b1120; color: var(--text); margin: 0; }
 button { font: inherit; }
 .side-panel { display: flex; flex-direction: column; height: 100%; min-width: 260px; overflow: hidden; position: relative; }
 .side-panel-header { align-items: flex-start; border-bottom: 1px solid var(--border); display: flex; flex: 0 0 auto; gap: 12px; justify-content: space-between; padding: 16px; }
+.header-actions { display: flex; gap: 8px; }
 .eyebrow { color: var(--focus); font-size: 10px; font-weight: 750; letter-spacing: .14em; margin: 0 0 4px; }
 h1 { font-size: 16px; line-height: 1.3; margin: 0; }
 .surface-button { align-items: center; background: rgba(20,184,166,.14); border: 1px solid #0f766e; border-radius: 8px; color: #99f6e4; cursor: pointer; display: flex; height: 40px; justify-content: center; width: 40px; }
 .surface-button:hover { background: rgba(20,184,166,.24); }
+.auto-scroll-button { background: transparent; border-color: var(--border); color: var(--muted); }
+.auto-scroll-button.active { background: rgba(20,184,166,.18); border-color: #0f766e; color: #99f6e4; }
 button:focus-visible { box-shadow: 0 0 0 3px rgba(94,234,212,.28); outline: 1px solid var(--focus); }
-.caption-history { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px 28px; scroll-behavior: smooth; }
+.caption-history { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px 28px; scroll-behavior: auto; }
+.caption-history-content { min-height: 100%; }
 .caption-pair { border-bottom: 1px solid rgba(51,65,85,.58); padding: 12px 0; }
 .caption-pair:last-child { border-bottom: 0; }
 .caption-original { color: #fff; font-size: 24px; font-weight: 650; line-height: 1.35; margin: 0; overflow-wrap: anywhere; }
 .caption-translation { color: #fde68a; font-size: 22px; font-weight: 550; line-height: 1.35; margin: 4px 0 0; overflow-wrap: anywhere; }
 .empty-state, .inactive-state { color: var(--muted); font-size: 13px; line-height: 1.6; margin: auto; max-width: 30ch; padding: 24px; text-align: center; }
 .inactive-state { background: #111827; border: 1px solid var(--border); border-radius: 10px; }
-.new-captions { background: #0d9488; border: 1px solid #2dd4bf; border-radius: 999px; bottom: 14px; color: white; cursor: pointer; font-size: 12px; font-weight: 750; left: 50%; min-height: 38px; padding: 8px 14px; position: absolute; transform: translateX(-50%); }
 .panel-error { background: #450a0a; border-top: 1px solid #991b1b; color: #fecaca; font-size: 12px; margin: 0; padding: 10px 14px; }
-
-@media (prefers-reduced-motion: reduce) {
-  .caption-history { scroll-behavior: auto; }
-}

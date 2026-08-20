@@ -49,6 +49,79 @@ describe('SidePanelApp', () => {
     expect(screen.getByText('Second sentence.')).toBeVisible();
   });
 
+  it('forces the history to the bottom after every caption revision', async () => {
+    const harness = createHarness();
+    const { container } = render(<SidePanelApp api={harness.api} />);
+    harness.publish({
+      active: true,
+      pairs: [{ id: 'one', original: 'Growing sentence', translation: '' }],
+      status: { state: 'running', tabId: 42 },
+    });
+    await screen.findByText('Growing sentence');
+    const history = container.querySelector<HTMLElement>('.caption-history')!;
+    Object.defineProperty(history, 'scrollHeight', {
+      configurable: true,
+      value: 640,
+    });
+    history.scrollTop = 0;
+
+    harness.publish({
+      active: true,
+      pairs: [{
+        id: 'one',
+        original: 'Growing sentence complete.',
+        translation: '持續更新的完整句子。',
+      }],
+      status: { state: 'running', tabId: 42 },
+    });
+
+    await waitFor(() => expect(history.scrollTop).toBe(640));
+    expect(screen.getByRole('button', { name: '暫停自動捲動' }))
+      .toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: '有新字幕' }))
+      .not.toBeInTheDocument();
+  });
+
+  it('pauses from the header and re-enables when the user returns to bottom', async () => {
+    const harness = createHarness();
+    const { container } = render(<SidePanelApp api={harness.api} />);
+    harness.publish({
+      active: true,
+      pairs: [{ id: 'one', original: 'First sentence.', translation: '第一句。' }],
+      status: { state: 'running', tabId: 42 },
+    });
+    const pause = await screen.findByRole('button', { name: '暫停自動捲動' });
+    const history = container.querySelector<HTMLElement>('.caption-history')!;
+    Object.defineProperties(history, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 640 },
+      scrollTop: { configurable: true, value: 540, writable: true },
+    });
+
+    fireEvent.click(pause);
+    expect(await screen.findByRole('button', { name: '開啟自動捲動' }))
+      .toHaveAttribute('aria-pressed', 'false');
+    history.scrollTop = 120;
+    fireEvent.scroll(history);
+
+    harness.publish({
+      active: true,
+      pairs: [{
+        id: 'one',
+        original: 'First sentence revised.',
+        translation: '第一句修訂。',
+      }],
+      status: { state: 'running', tabId: 42 },
+    });
+    await screen.findByText('First sentence revised.');
+    expect(history.scrollTop).toBe(120);
+
+    history.scrollTop = 540;
+    fireEvent.scroll(history);
+    expect(await screen.findByRole('button', { name: '暫停自動捲動' }))
+      .toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('returns captions to the floating webpage surface', async () => {
     const harness = createHarness();
     render(<SidePanelApp api={harness.api} />);
