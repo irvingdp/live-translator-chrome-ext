@@ -26,13 +26,11 @@ export interface SidePanelConnection {
 
 export interface SidePanelApi {
   connect(): SidePanelConnection;
-  returnToFloating(): Promise<void>;
 }
 
 export function SidePanelApp({ api }: { api: SidePanelApi }) {
   const [snapshot, setSnapshot] = useState<SidePanelSnapshot>();
   const [autoFollow, setAutoFollow] = useState(true);
-  const [error, setError] = useState('');
   const forceFrameRef = useRef<number | undefined>(undefined);
   const forcingScrollRef = useRef(false);
   const historyContentRef = useRef<HTMLDivElement>(null);
@@ -130,15 +128,6 @@ export function SidePanelApp({ api }: { api: SidePanelApi }) {
     });
   };
 
-  const returnToFloating = async () => {
-    setError('');
-    try {
-      await api.returnToFloating();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'surface_change_failed');
-    }
-  };
-
   const running = snapshot?.status.state === 'running';
   const appearance = snapshot?.appearance;
   return (
@@ -165,15 +154,6 @@ export function SidePanelApp({ api }: { api: SidePanelApi }) {
               onClick={toggleAutoFollow}
             >
               ↓
-            </button>
-            <button
-              aria-label={t('returnToFloating')}
-              className="surface-button"
-              title={t('returnToFloating')}
-              type="button"
-              onClick={() => void returnToFloating()}
-            >
-              ↗
             </button>
           </div>
         )}
@@ -215,7 +195,6 @@ export function SidePanelApp({ api }: { api: SidePanelApi }) {
           </div>
         </>
       )}
-      {error && <p className="panel-error" role="status">{error}</p>}
     </main>
   );
 }

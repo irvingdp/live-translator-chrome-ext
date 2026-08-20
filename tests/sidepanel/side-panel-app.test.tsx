@@ -15,7 +15,6 @@ function createHarness() {
       onDisconnect: vi.fn(),
       onState: vi.fn((listener) => { stateListener = listener; }),
     })),
-    returnToFloating: vi.fn().mockResolvedValue(undefined),
   };
   return {
     api,
@@ -122,7 +121,7 @@ describe('SidePanelApp', () => {
       .toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('returns captions to the floating webpage surface', async () => {
+  it('does not render a manual return-to-floating action', async () => {
     const harness = createHarness();
     render(<SidePanelApp api={harness.api} />);
     harness.publish({
@@ -131,9 +130,10 @@ describe('SidePanelApp', () => {
       status: { state: 'running', tabId: 42 },
     });
 
-    fireEvent.click(await screen.findByRole('button', { name: '回到浮動字幕' }));
-
-    await waitFor(() => expect(harness.api.returnToFloating).toHaveBeenCalledOnce());
+    expect(await screen.findByRole('button', { name: '暫停自動捲動' }))
+      .toBeVisible();
+    expect(screen.queryByRole('button', { name: '回到浮動字幕' }))
+      .not.toBeInTheDocument();
   });
 
   it('does not offer a minimized webpage state while the panel is inactive', async () => {

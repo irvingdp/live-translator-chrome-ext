@@ -7,7 +7,6 @@ import {
 } from '../src/core/message-security';
 import type { ExtensionMessage } from '../src/core/messages';
 import {
-  DEFAULT_OVERLAY_LAYOUT,
   httpsOrigin,
   layoutForOrigin,
   normalizeOverlayLayout,
@@ -126,6 +125,22 @@ export default defineBackground(() => {
     }
   }
 
+  async function restoreFloatingAfterSidePanelClosed(): Promise<void> {
+    if (sidePanelPorts.size > 0) return;
+    const status = controller.status();
+    if (status.state !== 'running') return;
+    const current = await getOverlayLayout(status.tabId);
+    if (sidePanelPorts.size > 0 || current?.mode !== 'native') return;
+    const layout = await persistOverlayLayout(status.tabId, {
+      ...current,
+      mode: 'floating',
+    });
+    await chrome.tabs.sendMessage(status.tabId, {
+      type: 'OVERLAY_LAYOUT',
+      payload: { layout },
+    });
+  }
+
   function enqueueLifecycle<T>(operation: () => Promise<T>): Promise<T> {
     const result = lifecycleTail.then(operation, operation);
     lifecycleTail = result.then(
@@ -208,7 +223,13 @@ export default defineBackground(() => {
       !isExtensionPage(port.sender ?? {}, chrome.runtime.id, sidePanelUrl)
     ) return;
     sidePanelPorts.add(port);
-    port.onDisconnect.addListener(() => sidePanelPorts.delete(port));
+    port.onDisconnect.addListener(() => {
+      sidePanelPorts.delete(port);
+      if (sidePanelPorts.size === 0) {
+        void enqueueLifecycle(restoreFloatingAfterSidePanelClosed)
+          .catch(() => undefined);
+      }
+    });
     void ready
       .then(() => sidePanelState())
       .then((state) => port.postMessage(state))
@@ -245,9 +266,6 @@ export default defineBackground(() => {
     }
     if (popupMessageTypes.has(message.type)) {
       return isExtensionPage(sender, chrome.runtime.id, popupUrl);
-    }
-    if (message.type === 'SET_CAPTION_SURFACE') {
-      return isExtensionPage(sender, chrome.runtime.id, sidePanelUrl);
     }
     return contentMessageTypes.has(message.type) &&
       isTopFrameContentScript(sender, chrome.runtime.id);
@@ -342,23 +360,6 @@ export default defineBackground(() => {
               mode: 'native',
             });
             await chrome.tabs.sendMessage(tabId, {
-              type: 'OVERLAY_LAYOUT',
-              payload: { layout },
-            });
-            return { layout, ok: true };
-          }
-          case 'SET_CAPTION_SURFACE': {
-            const status = controller.status();
-            if (status.state !== 'running') {
-              return { error: 'inactive_session', ok: false };
-            }
-            const current = await getOverlayLayout(status.tabId) ??
-              DEFAULT_OVERLAY_LAYOUT;
-            const layout = await persistOverlayLayout(status.tabId, {
-              ...current,
-              mode: message.payload.mode,
-            });
-            await chrome.tabs.sendMessage(status.tabId, {
               type: 'OVERLAY_LAYOUT',
               payload: { layout },
             });

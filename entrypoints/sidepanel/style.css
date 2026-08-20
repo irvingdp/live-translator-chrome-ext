@@ -31,4 +31,3 @@ button:focus-visible { box-shadow: 0 0 0 3px rgba(94,234,212,.28); outline: 1px 
 .caption-translation { color: #fde68a; font-size: 22px; font-weight: 550; line-height: 1.35; margin: 4px 0 0; overflow-wrap: anywhere; }
 .empty-state, .inactive-state { color: var(--muted); font-size: 13px; line-height: 1.6; margin: auto; max-width: 30ch; padding: 24px; text-align: center; }
 .inactive-state { background: #111827; border: 1px solid var(--border); border-radius: 10px; }
-.panel-error { background: #450a0a; border-top: 1px solid #991b1b; color: #fecaca; font-size: 12px; margin: 0; padding: 10px 14px; }

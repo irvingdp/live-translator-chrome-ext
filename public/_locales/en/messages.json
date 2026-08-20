@@ -147,13 +147,13 @@
     "message": "Open captions in Side Panel",
     "description": "Accessible label for the caption overlay Side Panel button."
   },
+  "captionOverlayTitle": {
+    "message": "Live Captions",
+    "description": "Title shown in the floating caption toolbar."
+  },
   "sidePanelTitle": {
     "message": "Live caption history",
     "description": "Heading in the Chrome Side Panel."
-  },
-  "returnToFloating": {
-    "message": "Return to floating captions",
-    "description": "Button that moves captions from Side Panel back to the webpage overlay."
   },
   "enableAutoScroll": {
     "message": "Enable automatic scrolling",

@@ -23,8 +23,11 @@ const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
 };
 
 const VIEWPORT_MARGIN = 8;
+const TITLEBAR_HEIGHT = 32;
+const RESIZE_HANDLE_OFFSET = 10;
+const HOVER_BUFFER = 18;
 const MIN_WIDTH = 280;
-const MIN_HEIGHT = 120;
+const MIN_HEIGHT = 80;
 
 function videoCandidates(document: Document): HTMLVideoElement[] {
   const hostname = document.location.hostname;
@@ -55,26 +58,40 @@ const OVERLAY_CSS = `
   :host { all: initial; }
   .stage { box-sizing: border-box; height: 100%; pointer-events: none; position: relative; width: 100%; }
   .captions {
-    background: rgba(3, 7, 18, var(--caption-bg-opacity, 0.78));
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 10px;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
     box-sizing: border-box;
     color: #fff;
-    cursor: grab;
     display: flex;
     flex-direction: column;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     line-height: 1.35;
-    overflow: hidden;
-    padding: 12px 14px 10px;
+    overflow: visible;
     pointer-events: auto;
     position: absolute;
     text-align: center;
     touch-action: none;
     user-select: none;
   }
-  .captions.dragging { cursor: grabbing; }
+  .captions::before {
+    bottom: -${HOVER_BUFFER}px;
+    content: '';
+    left: -${HOVER_BUFFER}px;
+    position: absolute;
+    right: -${HOVER_BUFFER}px;
+    top: -${TITLEBAR_HEIGHT + HOVER_BUFFER}px;
+  }
+  .caption-body {
+    background: rgba(3, 7, 18, var(--caption-bg-opacity, 0.78));
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    padding: 12px 14px 10px;
+    transition: border-radius 140ms ease-out, border-top-color 140ms ease-out;
+  }
   .viewport { display: flex; flex: 1; flex-direction: column; justify-content: flex-end; min-height: 0; overflow: hidden; pointer-events: none; }
   .track { display: flex; flex-direction: column; justify-content: flex-end; }
   .pair { padding: 2px 0; }
@@ -83,42 +100,93 @@ const OVERLAY_CSS = `
   .translation { color: #fde68a; font-size: var(--caption-translation-size, 22px); font-weight: 550; margin-top: 3px; overflow-wrap: break-word; text-shadow: 0 1px 2px #000; }
   .status-message { color: #fca5a5; flex: 0 0 auto; font-size: 16px; font-weight: 600; margin-top: 5px; overflow-wrap: anywhere; pointer-events: none; text-shadow: 0 1px 2px #000; }
   .original:empty, .translation:empty, .status-message:empty { display: none; }
-  .side-panel-button {
+  .caption-toolbar {
     align-items: center;
-    background: rgba(15, 23, 42, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.24);
-    border-radius: 7px;
-    color: #99f6e4;
+    background: linear-gradient(to bottom, rgba(17, 24, 39, 0.96), rgba(17, 24, 39, 0.86));
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+    border-radius: 10px 10px 0 0;
+    bottom: 100%;
+    box-sizing: border-box;
+    display: flex;
+    height: ${TITLEBAR_HEIGHT}px;
+    justify-content: space-between;
+    left: 0;
+    opacity: 0;
+    padding: 0 8px 0 10px;
+    pointer-events: none;
+    position: absolute;
+    right: 0;
+    transform: translateY(6px);
+    transition: opacity 140ms ease-out, transform 140ms ease-out;
+    z-index: 4;
+  }
+  .captions:hover .caption-toolbar,
+  .captions:focus-within .caption-toolbar,
+  .captions.interacting .caption-toolbar { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  .captions:hover .caption-body,
+  .captions:focus-within .caption-body,
+  .captions.interacting .caption-body { border-radius: 0 0 10px 10px; border-top-color: transparent; }
+  .drag-region { align-items: center; color: rgba(255, 255, 255, 0.6); cursor: grab; display: flex; flex: 1; gap: 6px; height: 100%; min-width: 0; }
+  .captions.moving .drag-region { cursor: grabbing; }
+  .toolbar-label { font: 700 9px/1 system-ui, sans-serif; letter-spacing: 0.12em; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+  .toolbar-actions { align-items: center; display: flex; gap: 3px; }
+  .toolbar-button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.72);
     cursor: pointer;
     display: flex;
-    font: 700 15px/1 system-ui, sans-serif;
-    height: 30px;
+    height: 26px;
     justify-content: center;
-    opacity: 0.72;
     padding: 0;
-    pointer-events: auto;
-    position: absolute;
-    right: 7px;
-    top: 7px;
-    width: 32px;
-    z-index: 2;
+    width: 28px;
   }
-  .side-panel-button:hover { opacity: 1; }
-  .side-panel-button:focus-visible { box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.35); outline: 1px solid #5eead4; }
-  .resize-handle { background: #5eead4; border: 1px solid rgba(3, 7, 18, 0.75); border-radius: 50%; box-sizing: border-box; height: 10px; opacity: 0.58; pointer-events: auto; position: absolute; width: 10px; z-index: 3; }
-  .captions:hover .resize-handle { opacity: 0.9; }
-  .resize-nw { cursor: nw-resize; left: -5px; top: -5px; }
-  .resize-n { cursor: n-resize; left: calc(50% - 5px); top: -5px; }
-  .resize-ne { cursor: ne-resize; right: -5px; top: -5px; }
-  .resize-e { cursor: e-resize; right: -5px; top: calc(50% - 5px); }
-  .resize-se { bottom: -5px; cursor: se-resize; right: -5px; }
-  .resize-s { bottom: -5px; cursor: s-resize; left: calc(50% - 5px); }
-  .resize-sw { bottom: -5px; cursor: sw-resize; left: -5px; }
-  .resize-w { cursor: w-resize; left: -5px; top: calc(50% - 5px); }
-  @media (prefers-reduced-motion: no-preference) { .captions { transition: opacity 160ms ease-out; } }
+  .toolbar-button:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+  .toolbar-button:focus-visible { box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.35); outline: 1px solid #5eead4; }
+  .side-panel-button { color: #99f6e4; }
+  .toolbar-icon { fill: none; height: 16px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; width: 16px; }
+  .resize-handle {
+    background: transparent;
+    box-sizing: border-box;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.65));
+    height: 16px;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    transition: opacity 140ms ease-out, transform 140ms ease-out;
+    width: 16px;
+    z-index: 5;
+  }
+  .captions:hover .resize-handle,
+  .captions:focus-within .resize-handle,
+  .captions.interacting .resize-handle { opacity: 0.95; pointer-events: auto; }
+  .resize-handle:hover { transform: scale(1.15); }
+  .resize-nw { border-left: 5px solid #5eead4; border-top: 5px solid #5eead4; border-top-left-radius: 9px; cursor: nw-resize; left: -${RESIZE_HANDLE_OFFSET}px; top: -${TITLEBAR_HEIGHT + RESIZE_HANDLE_OFFSET}px; }
+  .resize-ne { border-right: 5px solid #5eead4; border-top: 5px solid #5eead4; border-top-right-radius: 9px; cursor: ne-resize; right: -${RESIZE_HANDLE_OFFSET}px; top: -${TITLEBAR_HEIGHT + RESIZE_HANDLE_OFFSET}px; }
+  .resize-se { border-bottom: 5px solid #5eead4; border-bottom-right-radius: 9px; border-right: 5px solid #5eead4; bottom: -${RESIZE_HANDLE_OFFSET}px; cursor: se-resize; right: -${RESIZE_HANDLE_OFFSET}px; }
+  .resize-sw { border-bottom: 5px solid #5eead4; border-bottom-left-radius: 9px; border-left: 5px solid #5eead4; bottom: -${RESIZE_HANDLE_OFFSET}px; cursor: sw-resize; left: -${RESIZE_HANDLE_OFFSET}px; }
+  @media (prefers-reduced-motion: reduce) { .caption-body, .caption-toolbar, .resize-handle { transition: none; } }
 `;
 
-type ResizeDirection = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw';
+type ResizeDirection = 'ne' | 'se' | 'sw' | 'nw';
+
+function createIcon(document: Document, paths: string[]): SVGSVGElement {
+  const namespace = 'http://www.w3.org/2000/svg';
+  const icon = document.createElementNS(namespace, 'svg');
+  icon.classList.add('toolbar-icon');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.setAttribute('focusable', 'false');
+  icon.setAttribute('viewBox', '0 0 24 24');
+  for (const data of paths) {
+    const path = document.createElementNS(namespace, 'path');
+    path.setAttribute('d', data);
+    icon.append(path);
+  }
+  return icon;
+}
 
 interface PixelRect {
   height: number;
@@ -283,8 +351,14 @@ export class CaptionOverlay {
   private defaultLayout(): OverlayLayout {
     const viewport = this.viewportSize();
     const bounds = findLargestVisibleVideo(this.document)?.getBoundingClientRect();
-    const maxWidth = Math.max(1, viewport.width - VIEWPORT_MARGIN * 2);
-    const maxHeight = Math.max(1, viewport.height - VIEWPORT_MARGIN * 2);
+    const horizontalMargin = Math.max(VIEWPORT_MARGIN, RESIZE_HANDLE_OFFSET);
+    const topMargin = Math.max(
+      VIEWPORT_MARGIN,
+      TITLEBAR_HEIGHT + RESIZE_HANDLE_OFFSET,
+    );
+    const bottomMargin = Math.max(VIEWPORT_MARGIN, RESIZE_HANDLE_OFFSET);
+    const maxWidth = Math.max(1, viewport.width - horizontalMargin * 2);
+    const maxHeight = Math.max(1, viewport.height - topMargin - bottomMargin);
     const width = Math.min(maxWidth, Math.max(Math.min(MIN_WIDTH, maxWidth), (bounds?.width ?? viewport.width) * 0.7));
     const height = Math.min(maxHeight, Math.max(Math.min(MIN_HEIGHT, maxHeight), 180));
     const left = bounds ? bounds.left + (bounds.width - width) / 2 : (viewport.width - width) / 2;
@@ -307,14 +381,26 @@ export class CaptionOverlay {
 
   private clampPixelRect(rect: PixelRect): PixelRect {
     const viewport = this.viewportSize();
-    const maxWidth = Math.max(1, viewport.width - VIEWPORT_MARGIN * 2);
-    const maxHeight = Math.max(1, viewport.height - VIEWPORT_MARGIN * 2);
+    const horizontalMargin = Math.max(VIEWPORT_MARGIN, RESIZE_HANDLE_OFFSET);
+    const topMargin = Math.max(
+      VIEWPORT_MARGIN,
+      TITLEBAR_HEIGHT + RESIZE_HANDLE_OFFSET,
+    );
+    const bottomMargin = Math.max(VIEWPORT_MARGIN, RESIZE_HANDLE_OFFSET);
+    const maxWidth = Math.max(1, viewport.width - horizontalMargin * 2);
+    const maxHeight = Math.max(1, viewport.height - topMargin - bottomMargin);
     const width = Math.min(maxWidth, Math.max(Math.min(MIN_WIDTH, maxWidth), rect.width));
     const height = Math.min(maxHeight, Math.max(Math.min(MIN_HEIGHT, maxHeight), rect.height));
     return {
       height,
-      left: Math.min(viewport.width - width - VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, rect.left)),
-      top: Math.min(viewport.height - height - VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, rect.top)),
+      left: Math.min(
+        viewport.width - width - horizontalMargin,
+        Math.max(horizontalMargin, rect.left),
+      ),
+      top: Math.min(
+        viewport.height - height - bottomMargin,
+        Math.max(topMargin, rect.top),
+      ),
       width,
     };
   }
@@ -374,32 +460,56 @@ export class CaptionOverlay {
     stage.className = 'stage';
     const captions = this.document.createElement('div');
     captions.className = 'captions';
-    captions.setAttribute('aria-live', 'polite');
-    captions.setAttribute('role', 'status');
     captions.addEventListener('pointerdown', (event) => this.beginInteraction(event));
     captions.addEventListener('pointermove', (event) => this.moveInteraction(event));
     captions.addEventListener('pointerup', (event) => this.endInteraction(event));
     captions.addEventListener('pointercancel', (event) => this.endInteraction(event));
 
+    const toolbar = this.document.createElement('div');
+    toolbar.className = 'caption-toolbar';
+    const dragRegion = this.document.createElement('div');
+    dragRegion.className = 'drag-region';
+    dragRegion.dataset.dragHandle = '';
+    dragRegion.append(createIcon(this.document, [
+      'M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01',
+    ]));
+    const toolbarLabel = this.document.createElement('span');
+    toolbarLabel.className = 'toolbar-label';
+    toolbarLabel.textContent = t('captionOverlayTitle');
+    dragRegion.append(toolbarLabel);
+    const toolbarActions = this.document.createElement('div');
+    toolbarActions.className = 'toolbar-actions';
+
     const sidePanelButton = this.document.createElement('button');
-    sidePanelButton.className = 'side-panel-button';
+    sidePanelButton.className = 'toolbar-button side-panel-button';
     sidePanelButton.type = 'button';
-    sidePanelButton.textContent = '▤';
+    sidePanelButton.append(createIcon(this.document, [
+      'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z',
+      'M9 3v18',
+    ]));
     sidePanelButton.title = t('openSidePanel');
     sidePanelButton.setAttribute('aria-label', t('openSidePanel'));
     sidePanelButton.addEventListener('pointerdown', (event) => event.stopPropagation());
     sidePanelButton.addEventListener('click', () => this.openSidePanel());
 
+    toolbarActions.append(sidePanelButton);
+    toolbar.append(dragRegion, toolbarActions);
+
+    const body = this.document.createElement('div');
+    body.className = 'caption-body';
     const viewport = this.document.createElement('div');
     viewport.className = 'viewport';
+    viewport.setAttribute('aria-live', 'polite');
+    viewport.setAttribute('role', 'status');
     const track = this.document.createElement('div');
     track.className = 'track';
     viewport.append(track);
     const status = this.document.createElement('div');
     status.className = 'status-message';
     status.textContent = this.statusTextValue;
-    captions.append(sidePanelButton, viewport, status);
-    for (const direction of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const) {
+    body.append(viewport, status);
+    captions.append(toolbar, body);
+    for (const direction of ['nw', 'ne', 'se', 'sw'] as const) {
       const handle = this.document.createElement('span');
       handle.className = `resize-handle resize-${direction}`;
       handle.dataset.resizeDirection = direction;
@@ -430,9 +540,12 @@ export class CaptionOverlay {
     if (event.button !== 0 || !this.captionsElement || !this.layout) return;
     const target = event.target instanceof Element ? event.target : undefined;
     if (target?.closest('button')) return;
-    const direction = target instanceof HTMLElement
-      ? target.dataset.resizeDirection as ResizeDirection | undefined
-      : undefined;
+    const resizeHandle = target?.closest<HTMLElement>('[data-resize-direction]');
+    const dragHandle = target?.closest<HTMLElement>('[data-drag-handle]');
+    if (!resizeHandle && !dragHandle) return;
+    const direction = resizeHandle?.dataset.resizeDirection as
+      | ResizeDirection
+      | undefined;
     this.interaction = {
       direction: direction ?? 'move',
       pointerId: event.pointerId,
@@ -440,7 +553,8 @@ export class CaptionOverlay {
       startClientY: event.clientY,
       startRect: this.pixelRect(),
     };
-    this.captionsElement.classList.add('dragging');
+    this.captionsElement.classList.add('interacting');
+    this.captionsElement.classList.toggle('moving', direction === undefined);
     this.captionsElement.setPointerCapture?.(event.pointerId);
     event.preventDefault();
   }
@@ -494,7 +608,7 @@ export class CaptionOverlay {
       this.applyLayout();
     }
     this.captionsElement?.releasePointerCapture?.(event.pointerId);
-    this.captionsElement?.classList.remove('dragging');
+    this.captionsElement?.classList.remove('interacting', 'moving');
     this.interaction = undefined;
     this.pendingPoint = undefined;
     if (this.layout) this.callbacks.onLayoutChanged?.(this.currentLayout());

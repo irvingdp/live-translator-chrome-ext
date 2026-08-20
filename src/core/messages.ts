@@ -51,7 +51,6 @@ export type ExtensionMessage =
       type: 'OVERLAY_LAYOUT_CHANGED';
       payload: { layout: OverlayLayout };
     }
-  | { target: 'background'; type: 'SET_CAPTION_SURFACE'; payload: { mode: 'floating' } }
   | { target: 'background'; type: 'TRANSCRIPT_EVENT'; payload: { event: TranscriptEvent; sessionId: string } }
   | {
       target: 'background';

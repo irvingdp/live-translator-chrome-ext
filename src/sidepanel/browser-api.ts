@@ -1,4 +1,3 @@
-import type { ExtensionMessage } from '../core/messages';
 import type {
   SidePanelApi,
   SidePanelConnection,
@@ -27,13 +26,5 @@ export const browserSidePanelApi: SidePanelApi = {
         });
       },
     };
-  },
-  async returnToFloating() {
-    const response = await chrome.runtime.sendMessage({
-      target: 'background',
-      type: 'SET_CAPTION_SURFACE',
-      payload: { mode: 'floating' },
-    } satisfies ExtensionMessage) as { error?: string; ok?: boolean };
-    if (!response?.ok) throw new Error(response?.error ?? 'surface_change_failed');
   },
 };

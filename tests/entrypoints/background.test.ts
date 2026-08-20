@@ -437,7 +437,7 @@ describe('background offscreen document lifecycle', () => {
     });
   });
 
-  it('lets only the Side Panel restore the floating caption surface', async () => {
+  it('restores the floating caption surface when the Side Panel closes', async () => {
     await startSession();
     await dispatchFrom(
       {
@@ -459,33 +459,22 @@ describe('background offscreen document lifecycle', () => {
       { frameId: 0, id: 'test', tab: { id: 42 } as chrome.tabs.Tab },
     );
     tabsSendMessage.mockClear();
-
-    const response = await dispatchFrom(
-      {
-        target: 'background',
-        type: 'SET_CAPTION_SURFACE',
-        payload: { mode: 'floating' },
+    let disconnect: (() => void) | undefined;
+    onRuntimeConnect({
+      name: 'caption-side-panel',
+      onDisconnect: {
+        addListener: vi.fn((listener: () => void) => { disconnect = listener; }),
       },
-      { id: 'test', url: 'chrome-extension://test/sidepanel.html' },
-    );
+      postMessage: vi.fn(),
+      sender: { id: 'test', url: 'chrome-extension://test/sidepanel.html' },
+    } as unknown as chrome.runtime.Port);
 
-    expect(response).toMatchObject({ ok: true, layout: { mode: 'floating' } });
-    expect(tabsSendMessage).toHaveBeenCalledWith(42, {
+    disconnect?.();
+
+    await vi.waitFor(() => expect(tabsSendMessage).toHaveBeenCalledWith(42, {
       type: 'OVERLAY_LAYOUT',
       payload: { layout: expect.objectContaining({ mode: 'floating' }) },
-    });
-
-    const sendResponse = vi.fn();
-    expect(listener(
-      {
-        target: 'background',
-        type: 'SET_CAPTION_SURFACE',
-        payload: { mode: 'floating' },
-      },
-      { frameId: 0, id: 'test', tab: { id: 42 } as chrome.tabs.Tab },
-      sendResponse,
-    )).toBe(false);
-    expect(sendResponse).not.toHaveBeenCalled();
+    }));
   });
 
   it('shares caption state only with the trusted Side Panel port', async () => {

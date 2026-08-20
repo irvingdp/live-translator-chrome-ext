@@ -23,20 +23,4 @@ describe('browserSidePanelApi', () => {
     listener({ type: 'SIDE_PANEL_STATE', payload: { active: true } });
     expect(onState).toHaveBeenCalledWith({ active: true });
   });
-
-  it('requests the floating surface and reports background failures', async () => {
-    const sendMessage = vi.fn()
-      .mockResolvedValueOnce({ ok: true })
-      .mockResolvedValueOnce({ error: 'inactive_session', ok: false });
-    vi.stubGlobal('chrome', { runtime: { sendMessage } });
-
-    await browserSidePanelApi.returnToFloating();
-    await expect(browserSidePanelApi.returnToFloating())
-      .rejects.toThrow('inactive_session');
-    expect(sendMessage).toHaveBeenCalledWith({
-      target: 'background',
-      type: 'SET_CAPTION_SURFACE',
-      payload: { mode: 'floating' },
-    });
-  });
 });

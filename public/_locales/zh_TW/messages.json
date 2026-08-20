@@ -147,13 +147,13 @@
     "message": "在側邊面板顯示字幕",
     "description": "Accessible label for the caption overlay Side Panel button."
   },
+  "captionOverlayTitle": {
+    "message": "即時字幕",
+    "description": "Title shown in the floating caption toolbar."
+  },
   "sidePanelTitle": {
     "message": "即時字幕紀錄",
     "description": "Heading in the Chrome Side Panel."
-  },
-  "returnToFloating": {
-    "message": "回到浮動字幕",
-    "description": "Button that moves captions from Side Panel back to the webpage overlay."
   },
   "enableAutoScroll": {
     "message": "開啟自動捲動",

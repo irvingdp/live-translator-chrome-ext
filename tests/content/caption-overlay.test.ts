@@ -111,12 +111,24 @@ describe('CaptionOverlay', () => {
     expect(host?.style.getPropertyValue('--caption-width')).toBe('');
   });
 
-  it('has no title row and exposes eight resize handles', () => {
+  it('renders a hover toolbar and exactly four rounded corner handles', () => {
     const overlay = new CaptionOverlay(document);
     overlay.show(appearance, layout);
 
-    expect(shadow()?.textContent).not.toContain('DRAG TO MOVE');
-    expect(shadow()?.querySelectorAll('.resize-handle')).toHaveLength(8);
+    expect(shadow()?.querySelector('.caption-toolbar')).toBeInTheDocument();
+    expect(shadow()?.querySelector('.toolbar-label')).toHaveTextContent('即時字幕');
+    const css = shadow()?.querySelector('style')?.textContent;
+    expect(css).toContain('height: 32px');
+    expect(css).toContain('bottom: 100%');
+    expect(css).toContain('height: 16px');
+    expect(css).toContain('top: -42px');
+    expect(css).toContain('bottom: -18px');
+    expect(css).toContain('top: -50px');
+    expect(css).toContain('border-left: 5px solid #5eead4');
+    expect(shadow()?.querySelectorAll('.resize-handle')).toHaveLength(4);
+    expect([...shadow()!.querySelectorAll<HTMLElement>('.resize-handle')].map(
+      (handle) => handle.dataset.resizeDirection,
+    )).toEqual(['nw', 'ne', 'se', 'sw']);
     expect(shadow()?.querySelector('.side-panel-button')).toHaveAttribute(
       'aria-label',
       '在側邊面板顯示字幕',
@@ -160,7 +172,8 @@ describe('CaptionOverlay', () => {
       setPointerCapture: vi.fn(),
     });
 
-    captions.dispatchEvent(pointer('pointerdown', 220, 260));
+    shadow()?.querySelector<HTMLElement>('.drag-region')
+      ?.dispatchEvent(pointer('pointerdown', 220, 260));
     captions.dispatchEvent(pointer('pointerup', 320, 360));
 
     expect(onLayoutChanged).toHaveBeenCalledOnce();
@@ -170,22 +183,40 @@ describe('CaptionOverlay', () => {
     });
   });
 
-  it('resizes from the bottom edge and enforces the minimum size', () => {
+  it('does not drag from the caption body', () => {
     const onLayoutChanged = vi.fn();
     const overlay = new CaptionOverlay(document, { onLayoutChanged });
     overlay.show(appearance, layout);
     const captions = shadow()?.querySelector<HTMLElement>('.captions')!;
-    const south = shadow()?.querySelector<HTMLElement>('.resize-s')!;
     Object.assign(captions, {
       releasePointerCapture: vi.fn(),
       setPointerCapture: vi.fn(),
     });
 
-    south.dispatchEvent(pointer('pointerdown', 500, 440));
+    shadow()?.querySelector<HTMLElement>('.caption-body')
+      ?.dispatchEvent(pointer('pointerdown', 220, 260));
+    captions.dispatchEvent(pointer('pointerup', 320, 360));
+
+    expect(onLayoutChanged).not.toHaveBeenCalled();
+    expect(overlay.currentLayout().floatingRect).toEqual(layout.floatingRect);
+  });
+
+  it('resizes from a corner and enforces the 80px minimum content height', () => {
+    const onLayoutChanged = vi.fn();
+    const overlay = new CaptionOverlay(document, { onLayoutChanged });
+    overlay.show(appearance, layout);
+    const captions = shadow()?.querySelector<HTMLElement>('.captions')!;
+    const southEast = shadow()?.querySelector<HTMLElement>('.resize-se')!;
+    Object.assign(captions, {
+      releasePointerCapture: vi.fn(),
+      setPointerCapture: vi.fn(),
+    });
+
+    southEast.dispatchEvent(pointer('pointerdown', 700, 440));
     captions.dispatchEvent(pointer('pointerup', 500, 250));
 
     const changed = onLayoutChanged.mock.calls[0]![0] as OverlayLayout;
-    expect(changed.floatingRect.heightRatio).toBeCloseTo(0.15);
+    expect(changed.floatingRect.heightRatio).toBeCloseTo(0.1);
   });
 
   it('hides only complete older pairs when height is exhausted', () => {
