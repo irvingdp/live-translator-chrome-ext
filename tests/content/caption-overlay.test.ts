@@ -115,7 +115,7 @@ describe('CaptionOverlay', () => {
     expect(host?.style.getPropertyValue('--caption-width')).toBe('');
   });
 
-  it('renders a hover toolbar and exactly four rounded corner handles', () => {
+  it('keeps the caption body click-through and renders four rounded corner handles', () => {
     const overlay = new CaptionOverlay(document);
     overlay.show(appearance, layout);
 
@@ -126,8 +126,9 @@ describe('CaptionOverlay', () => {
     expect(css).toContain('bottom: 100%');
     expect(css).toContain('height: 16px');
     expect(css).toContain('top: -42px');
-    expect(css).toContain('bottom: -18px');
-    expect(css).toContain('top: -50px');
+    expect(css).toMatch(/\.captions\s*\{[^}]*pointer-events: none;/);
+    expect(css).not.toContain('.captions::before');
+    expect(css).toContain('.captions.proximity-hover .caption-toolbar');
     expect(css).toContain('border-left: 5px solid #5eead4');
     expect(shadow()?.querySelectorAll('.resize-handle')).toHaveLength(4);
     expect([...shadow()!.querySelectorAll<HTMLElement>('.resize-handle')].map(
@@ -137,6 +138,21 @@ describe('CaptionOverlay', () => {
       'aria-label',
       '在側邊面板顯示字幕',
     );
+  });
+
+  it('shows controls within the expanded proximity zone without a hit-test layer', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show(appearance, layout);
+    const captions = shadow()?.querySelector<HTMLElement>('.captions')!;
+    vi.spyOn(captions, 'getBoundingClientRect').mockReturnValue(
+      rect(500, 200, 200, 240),
+    );
+
+    document.dispatchEvent(pointer('pointermove', 190, 200));
+    expect(captions).toHaveClass('proximity-hover');
+
+    document.dispatchEvent(pointer('pointermove', 100, 100));
+    expect(captions).not.toHaveClass('proximity-hover');
   });
 
   it('applies the saved viewport-relative rectangle', () => {
@@ -302,6 +318,33 @@ describe('CaptionOverlay', () => {
     overlay.position();
 
     expect(host?.parentElement).toBe(player);
+  });
+
+  it('keeps the overlay in body when the document element is fullscreen', () => {
+    const overlay = new CaptionOverlay(document);
+
+    overlay.show(appearance, layout);
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      value: document.documentElement,
+    });
+    overlay.position();
+
+    const host = document.querySelector('[data-bilingual-caption-root]');
+    expect(host?.parentElement).toBe(document.body);
+  });
+
+  it('keeps the host detached throughout a fullscreen transition', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show(appearance, layout);
+    const host = document.querySelector<HTMLElement>('[data-bilingual-caption-root]');
+
+    overlay.suspendForFullscreenTransition();
+    overlay.position();
+    expect(host?.isConnected).toBe(false);
+
+    overlay.resumeAfterFullscreenTransition();
+    expect(host?.parentElement).toBe(document.body);
   });
 
   it('uses a text track fallback for native video fullscreen', () => {

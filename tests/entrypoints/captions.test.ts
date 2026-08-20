@@ -12,6 +12,8 @@ const overlay = vi.hoisted(() => ({
   setSessionError: vi.fn(),
   setWindow: vi.fn(),
   show: vi.fn(),
+  resumeAfterFullscreenTransition: vi.fn(),
+  suspendForFullscreenTransition: vi.fn(),
 }));
 
 vi.mock('../../src/content/caption-overlay', () => ({
@@ -24,6 +26,8 @@ vi.mock('../../src/content/caption-overlay', () => ({
     setSessionError = overlay.setSessionError;
     setWindow = overlay.setWindow;
     show = overlay.show;
+    resumeAfterFullscreenTransition = overlay.resumeAfterFullscreenTransition;
+    suspendForFullscreenTransition = overlay.suspendForFullscreenTransition;
   },
 }));
 
@@ -52,6 +56,12 @@ beforeEach(async () => {
   disconnectObserver = vi.fn();
   observe = vi.fn();
   runtimeSendMessage = vi.fn().mockResolvedValue(undefined);
+  vi.spyOn(console, 'info').mockImplementation(() => undefined);
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  Object.defineProperty(document, 'fullscreenElement', {
+    configurable: true,
+    value: null,
+  });
 
   vi.stubGlobal('defineUnlistedScript', (register: () => void) => register());
   vi.stubGlobal(
@@ -76,7 +86,10 @@ beforeEach(async () => {
   await import('../../entrypoints/captions');
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('captions unlisted entrypoint', () => {
   it('starts with only a message receiver and no page observer or storage access', () => {
@@ -124,6 +137,108 @@ describe('captions unlisted entrypoint', () => {
 
     expect(overlay.show).not.toHaveBeenCalled();
     expect(sendResponse).not.toHaveBeenCalled();
+  });
+
+  it('logs pointer hit testing and fullscreen failures while captions are visible', () => {
+    dispatch({ type: 'OVERLAY_SHOW', payload: { appearance } });
+
+    document.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      clientX: 900,
+      clientY: 700,
+    }));
+    document.dispatchEvent(new Event('fullscreenerror'));
+
+    expect(console.info).toHaveBeenCalledWith(
+      '[Bilingual Captions][fullscreen-debug]',
+      'pointer event',
+      expect.objectContaining({
+        point: { x: 900, y: 700 },
+        type: 'click',
+      }),
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      '[Bilingual Captions][fullscreen-debug]',
+      'fullscreenerror',
+      expect.objectContaining({ type: 'fullscreenerror' }),
+    );
+
+    dispatch({ type: 'OVERLAY_HIDE' });
+  });
+
+  it('detaches the overlay while YouTube enters fullscreen and restores it afterward', () => {
+    vi.useFakeTimers();
+    dispatch({ type: 'OVERLAY_SHOW', payload: { appearance } });
+    const button = document.createElement('button');
+    button.className = 'ytp-fullscreen-button';
+    document.body.append(button);
+
+    button.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    expect(overlay.suspendForFullscreenTransition).toHaveBeenCalledOnce();
+
+    document.dispatchEvent(new Event('fullscreenchange'));
+    vi.advanceTimersByTime(350);
+    expect(overlay.resumeAfterFullscreenTransition).toHaveBeenCalledOnce();
+
+    dispatch({ type: 'OVERLAY_HIDE' });
+  });
+
+  it('requests immersive fullscreen itself instead of letting YouTube use auto navigation UI', async () => {
+    dispatch({ type: 'OVERLAY_SHOW', payload: { appearance } });
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(document.documentElement, 'requestFullscreen', {
+      configurable: true,
+      value: requestFullscreen,
+    });
+    const button = document.createElement('button');
+    button.className = 'ytp-fullscreen-button';
+    const youtubeClick = vi.fn();
+    button.addEventListener('click', youtubeClick);
+    document.body.append(button);
+
+    button.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+    }));
+    await Promise.resolve();
+
+    expect(requestFullscreen).toHaveBeenCalledWith({ navigationUI: 'hide' });
+    expect(youtubeClick).not.toHaveBeenCalled();
+
+    Reflect.deleteProperty(document.documentElement, 'requestFullscreen');
+    dispatch({ type: 'OVERLAY_HIDE' });
+  });
+
+  it('requests browser fullscreen fallback while the captured tab is fullscreen', async () => {
+    vi.useFakeTimers();
+    dispatch({ type: 'OVERLAY_SHOW', payload: { appearance } });
+    runtimeSendMessage.mockClear();
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      value: document.documentElement,
+    });
+
+    document.dispatchEvent(new Event('fullscreenchange'));
+    await Promise.resolve();
+    expect(runtimeSendMessage).toHaveBeenCalledWith({
+      target: 'background',
+      type: 'BROWSER_FULLSCREEN_FALLBACK',
+      payload: { active: true },
+    });
+
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      value: null,
+    });
+    document.dispatchEvent(new Event('fullscreenchange'));
+    await Promise.resolve();
+    expect(runtimeSendMessage).toHaveBeenCalledWith({
+      target: 'background',
+      type: 'BROWSER_FULLSCREEN_FALLBACK',
+      payload: { active: false },
+    });
+
+    dispatch({ type: 'OVERLAY_HIDE' });
   });
 });
 

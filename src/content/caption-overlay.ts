@@ -65,19 +65,11 @@ const OVERLAY_CSS = `
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     line-height: 1.35;
     overflow: visible;
-    pointer-events: auto;
+    pointer-events: none;
     position: absolute;
     text-align: center;
     touch-action: none;
     user-select: none;
-  }
-  .captions::before {
-    bottom: -${HOVER_BUFFER}px;
-    content: '';
-    left: -${HOVER_BUFFER}px;
-    position: absolute;
-    right: -${HOVER_BUFFER}px;
-    top: -${TITLEBAR_HEIGHT + HOVER_BUFFER}px;
   }
   .caption-body {
     background: rgba(3, 7, 18, var(--caption-bg-opacity, 0.78));
@@ -121,10 +113,10 @@ const OVERLAY_CSS = `
     transition: opacity 140ms ease-out, transform 140ms ease-out;
     z-index: 4;
   }
-  .captions:hover .caption-toolbar,
+  .captions.proximity-hover .caption-toolbar,
   .captions:focus-within .caption-toolbar,
   .captions.interacting .caption-toolbar { opacity: 1; pointer-events: auto; transform: translateY(0); }
-  .captions:hover .caption-body,
+  .captions.proximity-hover .caption-body,
   .captions:focus-within .caption-body,
   .captions.interacting .caption-body { border-radius: 0 0 10px 10px; border-top-color: transparent; }
   .drag-region { align-items: center; color: rgba(255, 255, 255, 0.6); cursor: grab; display: flex; flex: 1; gap: 6px; height: 100%; min-width: 0; }
@@ -160,7 +152,7 @@ const OVERLAY_CSS = `
     width: 16px;
     z-index: 5;
   }
-  .captions:hover .resize-handle,
+  .captions.proximity-hover .resize-handle,
   .captions:focus-within .resize-handle,
   .captions.interacting .resize-handle { opacity: 0.95; pointer-events: auto; }
   .resize-handle:hover { transform: scale(1.15); }
@@ -224,7 +216,29 @@ export class CaptionOverlay {
   private statusElement?: HTMLElement;
   private statusTextValue = '';
   private trackElement?: HTMLElement;
+  private transitionSuspended = false;
   private viewportElement?: HTMLElement;
+  private readonly clearPointerProximity = () => {
+    this.captionsElement?.classList.remove('proximity-hover');
+  };
+  private readonly trackPointerProximity = (event: PointerEvent) => {
+    const captions = this.captionsElement;
+    if (
+      !captions ||
+      this.layout?.mode !== 'floating' ||
+      event.pointerType === 'touch'
+    ) {
+      this.clearPointerProximity();
+      return;
+    }
+    const bounds = captions.getBoundingClientRect();
+    const nearby =
+      event.clientX >= bounds.left - HOVER_BUFFER &&
+      event.clientX <= bounds.right + HOVER_BUFFER &&
+      event.clientY >= bounds.top - TITLEBAR_HEIGHT - HOVER_BUFFER &&
+      event.clientY <= bounds.bottom + HOVER_BUFFER;
+    captions.classList.toggle('proximity-hover', nearby);
+  };
 
   constructor(
     private readonly document: Document,
@@ -242,6 +256,7 @@ export class CaptionOverlay {
   }
 
   hide(): void {
+    this.transitionSuspended = false;
     this.disableNativeTextTrack();
     this.resizeObserver?.disconnect();
     this.resizeObserver = undefined;
@@ -251,6 +266,15 @@ export class CaptionOverlay {
     this.pendingFrame = undefined;
     this.pendingPoint = undefined;
     this.interaction = undefined;
+    this.document.removeEventListener(
+      'pointermove',
+      this.trackPointerProximity,
+      true,
+    );
+    this.document.defaultView?.removeEventListener(
+      'blur',
+      this.clearPointerProximity,
+    );
     this.host?.remove();
     this.host = undefined;
     this.captionsElement = undefined;
@@ -260,6 +284,19 @@ export class CaptionOverlay {
     this.pairElements.clear();
     this.pairs = [];
     this.statusTextValue = '';
+  }
+
+  suspendForFullscreenTransition(): void {
+    if (!this.host) return;
+    this.transitionSuspended = true;
+    this.clearPointerProximity();
+    this.host.remove();
+  }
+
+  resumeAfterFullscreenTransition(): void {
+    if (!this.transitionSuspended) return;
+    this.transitionSuspended = false;
+    this.position();
   }
 
   setAppearance(appearance: CaptionAppearance): void {
@@ -324,14 +361,17 @@ export class CaptionOverlay {
 
   position(): void {
     const host = this.host;
-    if (!host || !this.layout) return;
+    if (!host || !this.layout || this.transitionSuspended) return;
     const fullscreenRoot = this.document.fullscreenElement;
+    const normalParent = this.document.body ?? this.document.documentElement;
     const targetParent = fullscreenRoot instanceof HTMLElement &&
+      fullscreenRoot !== this.document.documentElement &&
       !(fullscreenRoot instanceof HTMLVideoElement)
       ? fullscreenRoot
-      : this.document.documentElement;
+      : normalParent;
     if (host.parentElement !== targetParent) targetParent.append(host);
     if (fullscreenRoot instanceof HTMLVideoElement && this.layout.mode === 'floating') {
+      this.clearPointerProximity();
       host.style.visibility = 'hidden';
       this.enableNativeTextTrack(fullscreenRoot);
       return;
@@ -429,6 +469,7 @@ export class CaptionOverlay {
     if (!host || !captions || !this.layout) return;
     host.style.display = this.layout.mode === 'native' ? 'none' : 'block';
     if (this.layout.mode === 'native') {
+      this.clearPointerProximity();
       this.disableNativeTextTrack();
       return;
     }
@@ -520,12 +561,20 @@ export class CaptionOverlay {
     }
     stage.append(captions);
     shadow.append(style, stage);
-    this.document.documentElement.append(host);
+    (this.document.body ?? this.document.documentElement).append(host);
     this.host = host;
     this.captionsElement = captions;
     this.statusElement = status;
     this.trackElement = track;
     this.viewportElement = viewport;
+    this.document.addEventListener('pointermove', this.trackPointerProximity, {
+      capture: true,
+      passive: true,
+    });
+    this.document.defaultView?.addEventListener(
+      'blur',
+      this.clearPointerProximity,
+    );
     for (const pair of this.pairs) {
       const element = this.createPair(pair);
       track.append(element);

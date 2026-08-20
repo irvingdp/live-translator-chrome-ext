@@ -43,6 +43,11 @@ export type ExtensionMessage =
   | { target: 'background'; type: 'CONTENT_READY' }
   | {
       target: 'background';
+      type: 'BROWSER_FULLSCREEN_FALLBACK';
+      payload: { active: boolean };
+    }
+  | {
+      target: 'background';
       type: 'OPEN_SIDE_PANEL';
       payload: { layout: OverlayLayout };
     }

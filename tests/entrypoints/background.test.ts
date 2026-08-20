@@ -46,10 +46,13 @@ let getStreamId: ReturnType<typeof vi.fn>;
 let localStorageData: Record<string, unknown>;
 let removeSessionStorage: ReturnType<typeof vi.fn>;
 let runtimeSendMessage: ReturnType<typeof vi.fn>;
+let sessionStorageData: Record<string, unknown>;
 let setLocalAccessLevel: ReturnType<typeof vi.fn>;
 let sidePanelOpen: ReturnType<typeof vi.fn>;
 let sidePanelSetOptions: ReturnType<typeof vi.fn>;
 let tabsSendMessage: ReturnType<typeof vi.fn>;
+let windowsGet: ReturnType<typeof vi.fn>;
+let windowsUpdate: ReturnType<typeof vi.fn>;
 
 beforeEach(async () => {
   vi.resetModules();
@@ -63,7 +66,10 @@ beforeEach(async () => {
   executeScript = vi.fn().mockResolvedValue(undefined);
   getStreamId = vi.fn().mockResolvedValue('stream-id');
   localStorageData = {};
-  removeSessionStorage = vi.fn().mockResolvedValue(undefined);
+  sessionStorageData = {};
+  removeSessionStorage = vi.fn(async (key: string) => {
+    delete sessionStorageData[key];
+  });
   setLocalAccessLevel = vi.fn().mockResolvedValue(undefined);
   sidePanelOpen = vi.fn().mockResolvedValue(undefined);
   sidePanelSetOptions = vi.fn().mockResolvedValue(undefined);
@@ -75,6 +81,14 @@ beforeEach(async () => {
     async (_tabId: number, message: { type: string }) =>
       message.type === 'CONTENT_PING' ? { ok: true } : undefined,
   );
+  windowsGet = vi.fn(async (windowId: number) => ({
+    id: windowId,
+    state: 'maximized',
+  }));
+  windowsUpdate = vi.fn(async (windowId: number, updateInfo: { state?: string }) => ({
+    id: windowId,
+    state: updateInfo.state,
+  }));
   vi.stubGlobal('defineBackground', (register: () => void) => register());
   vi.stubGlobal('chrome', {
     offscreen: {
@@ -122,9 +136,11 @@ beforeEach(async () => {
         ),
       },
       session: {
-        get: vi.fn().mockResolvedValue({}),
+        get: vi.fn(async (key: string) => ({ [key]: sessionStorageData[key] })),
         remove: removeSessionStorage,
-        set: vi.fn().mockResolvedValue(undefined),
+        set: vi.fn(async (values: Record<string, unknown>) => {
+          Object.assign(sessionStorageData, values);
+        }),
       },
     },
     tabCapture: { getMediaStreamId: getStreamId },
@@ -155,6 +171,17 @@ beforeEach(async () => {
         }),
       },
       sendMessage: tabsSendMessage,
+    },
+    windows: {
+      WindowState: {
+        FULLSCREEN: 'fullscreen',
+        LOCKED_FULLSCREEN: 'locked-fullscreen',
+        MAXIMIZED: 'maximized',
+        MINIMIZED: 'minimized',
+        NORMAL: 'normal',
+      },
+      get: windowsGet,
+      update: windowsUpdate,
     },
   });
 
@@ -461,6 +488,33 @@ describe('background offscreen document lifecycle', () => {
       type: 'OVERLAY_LAYOUT',
       payload: { layout: expect.objectContaining({ mode: 'native' }) },
     });
+  });
+
+  it('forces browser fullscreen for a captured tab and restores the prior window state', async () => {
+    await startSession();
+    const sender = {
+      frameId: 0,
+      id: 'test',
+      tab: { id: 42, windowId: 7 } as chrome.tabs.Tab,
+    };
+
+    const entered = await dispatchFrom({
+      target: 'background',
+      type: 'BROWSER_FULLSCREEN_FALLBACK',
+      payload: { active: true },
+    }, sender);
+
+    expect(entered).toMatchObject({ active: true, forced: true, ok: true });
+    expect(windowsUpdate).toHaveBeenCalledWith(7, { state: 'fullscreen' });
+
+    await dispatchFrom({
+      target: 'background',
+      type: 'BROWSER_FULLSCREEN_FALLBACK',
+      payload: { active: false },
+    }, sender);
+
+    expect(windowsUpdate).toHaveBeenLastCalledWith(7, { state: 'maximized' });
+    expect(sessionStorageData.browserFullscreenFallback).toBeUndefined();
   });
 
   it('restores the floating caption surface when the Side Panel closes', async () => {

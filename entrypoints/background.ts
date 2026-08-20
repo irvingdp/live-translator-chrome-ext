@@ -20,6 +20,7 @@ import { createOffscreenTranslationTransport } from '../src/providers/offscreen-
 
 export default defineBackground(() => {
   const activeSessionKey = 'activeSession';
+  const browserFullscreenFallbackKey = 'browserFullscreenFallback';
   let lifecycleTail: Promise<void> = Promise.resolve();
   const offscreenUrl = chrome.runtime.getURL('offscreen.html');
   const popupUrl = chrome.runtime.getURL('popup.html');
@@ -172,6 +173,69 @@ export default defineBackground(() => {
     await closeOffscreenIfUnused();
   }
 
+  type BrowserFullscreenFallback = {
+    previousState: NonNullable<chrome.windows.Window['state']>;
+    tabId: number;
+    windowId: number;
+  };
+
+  async function storedBrowserFullscreenFallback(): Promise<
+    BrowserFullscreenFallback | undefined
+  > {
+    const stored = await chrome.storage.session.get(browserFullscreenFallbackKey);
+    const value = stored[browserFullscreenFallbackKey] as Partial<
+      BrowserFullscreenFallback
+    > | undefined;
+    if (
+      typeof value?.tabId !== 'number' ||
+      typeof value.windowId !== 'number' ||
+      typeof value.previousState !== 'string'
+    ) return undefined;
+    return value as BrowserFullscreenFallback;
+  }
+
+  async function enterBrowserFullscreenFallback(
+    tabId: number,
+    windowId: number,
+  ) {
+    const existing = await storedBrowserFullscreenFallback();
+    if (existing?.tabId === tabId && existing.windowId === windowId) {
+      return { active: true, forced: true, ok: true };
+    }
+    if (existing) await restoreBrowserFullscreenFallback();
+
+    const currentWindow = await chrome.windows.get(windowId);
+    if (currentWindow.state === chrome.windows.WindowState.FULLSCREEN) {
+      return { active: true, forced: false, ok: true };
+    }
+    const fallback: BrowserFullscreenFallback = {
+      previousState: currentWindow.state ?? chrome.windows.WindowState.NORMAL,
+      tabId,
+      windowId,
+    };
+    await chrome.storage.session.set({
+      [browserFullscreenFallbackKey]: fallback,
+    });
+    try {
+      await chrome.windows.update(windowId, {
+        state: chrome.windows.WindowState.FULLSCREEN,
+      });
+    } catch (error) {
+      await chrome.storage.session.remove(browserFullscreenFallbackKey);
+      throw error;
+    }
+    return { active: true, forced: true, ok: true };
+  }
+
+  async function restoreBrowserFullscreenFallback(tabId?: number): Promise<void> {
+    const existing = await storedBrowserFullscreenFallback();
+    if (!existing || (tabId !== undefined && existing.tabId !== tabId)) return;
+    await chrome.storage.session.remove(browserFullscreenFallbackKey);
+    await chrome.windows.update(existing.windowId, {
+      state: existing.previousState,
+    }).catch(() => undefined);
+  }
+
   const ready = chrome.storage.local.setAccessLevel({
     accessLevel: 'TRUSTED_CONTEXTS',
   }).then(async () => {
@@ -193,6 +257,7 @@ export default defineBackground(() => {
       });
       if (contexts.length === 0) {
         await chrome.storage.session.remove(activeSessionKey);
+        await restoreBrowserFullscreenFallback(snapshot.tabId);
         return;
       }
       const local = await chrome.storage.local.get('settings');
@@ -213,7 +278,9 @@ export default defineBackground(() => {
         path: 'sidepanel.html',
         tabId: snapshot.tabId,
       });
+      return;
     }
+    await restoreBrowserFullscreenFallback();
   });
   void ready.catch(() => undefined);
 
@@ -248,6 +315,7 @@ export default defineBackground(() => {
     'SESSION_STOP',
   ]);
   const contentMessageTypes = new Set([
+    'BROWSER_FULLSCREEN_FALLBACK',
     'CONTENT_READY',
     'OPEN_SIDE_PANEL',
     'OVERLAY_LAYOUT_CHANGED',
@@ -332,6 +400,22 @@ export default defineBackground(() => {
               await controller.handleContentReady(sender.tab.id);
             }
             return { ok: true };
+          case 'BROWSER_FULLSCREEN_FALLBACK': {
+            const tabId = sender.tab?.id;
+            const windowId = sender.tab?.windowId;
+            if (tabId === undefined || windowId === undefined) {
+              return { error: 'missing_tab', ok: false };
+            }
+            const status = controller.status();
+            if (status.state !== 'running' || status.tabId !== tabId) {
+              return { error: 'inactive_tab', ok: false };
+            }
+            if (message.payload.active) {
+              return enterBrowserFullscreenFallback(tabId, windowId);
+            }
+            await restoreBrowserFullscreenFallback(tabId);
+            return { active: false, ok: true };
+          }
           case 'OVERLAY_LAYOUT_CHANGED': {
             const tabId = sender.tab?.id;
             if (tabId === undefined) return { error: 'missing_tab', ok: false };
@@ -399,6 +483,10 @@ export default defineBackground(() => {
             });
           case 'SESSION_STOP':
             return enqueueLifecycle(async () => {
+              const statusBeforeStop = controller.status();
+              if ('tabId' in statusBeforeStop) {
+                await restoreBrowserFullscreenFallback(statusBeforeStop.tabId);
+              }
               await controller.stop();
               const status = controller.status();
               await chrome.storage.session.remove(activeSessionKey);
@@ -435,6 +523,7 @@ export default defineBackground(() => {
       .then(() => enqueueLifecycle(async () => {
         const status = controller.status();
         if ('tabId' in status && status.tabId === tabId) {
+          await restoreBrowserFullscreenFallback(tabId);
           await controller.stop();
           await chrome.storage.session.remove(activeSessionKey);
           await closeOffscreenIfUnused();
@@ -457,6 +546,7 @@ export default defineBackground(() => {
           // cross-origin navigation. Failing closed also covers restricted
           // pages where Chrome refuses script injection.
           await controller.stop();
+          await restoreBrowserFullscreenFallback(tabId);
           await chrome.storage.session.remove(activeSessionKey);
           await closeOffscreenIfUnused();
         }
