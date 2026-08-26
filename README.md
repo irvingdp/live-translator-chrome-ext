@@ -97,3 +97,11 @@ CRX；需要可點擊安裝的封裝版本時，必須發布到 Chrome Web Store
 ## 隱私與費用
 
 Deepgram 模式下，分頁音訊會傳送至 Deepgram，穩定的辨識文字會傳送至 DeepL；Gemini 模式下，分頁音訊只會傳送至 Google Gemini，原文與譯文都由它產生。使用者需自行提供並負擔所選服務的 API 額度：Deepgram/DeepL 按用量計費，Gemini Live 則按每分鐘 token 計費，語音約 25 tokens/秒，也就是一條連線持續消耗約 1500 input tokens/分鐘，即使沒人說話也一樣。API Key 不會同步到其他裝置，但能存取這個 Chrome profile 的人或程式仍可能讀取本機擴充功能資料。
+
+## 授權
+
+Copyright © 2026 Ivan Chang
+
+本專案僅依 [GNU General Public License v3.0](LICENSE)（`GPL-3.0-only`）授權。你可以使用、研究、修改及散布本軟體；若散布本專案或其修改版本，必須依 GPL-3.0 提供相應原始碼，並以相同授權條款發布。
+
+本軟體不提供任何明示或默示的擔保。Google Gemini、Deepgram 與 DeepL 等第三方服務及其 API 不屬於本專案授權範圍，仍分別受各自的服務條款、隱私政策及費用規則約束。
