@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const built = join(root, 'output', 'chrome-mv3');
 const LOCALE = process.argv[2] ?? 'en';
-const outDir = join(root, 'docs', 'store-assets', '1.1.0', LOCALE);
+const outDir = join(root, 'docs', 'store-assets', '1.2.0', LOCALE);
 
 // The Chrome Web Store shows one screenshot set to every visitor regardless of
 // listing language, so these are shot in the default locale to match the
