@@ -434,6 +434,32 @@ describe('background offscreen document lifecycle', () => {
     }));
   });
 
+  it('accepts appearance changes from the Side Panel without a sender tab', async () => {
+    await startSession();
+    const appearance = {
+      backgroundOpacity: 78,
+      originalFontSize: 25,
+      originalTextColor: '#ffffff',
+      translationFontSize: 23,
+      translationTextColor: '#fde68a',
+    };
+
+    const response = await dispatchFrom(
+      {
+        target: 'background',
+        type: 'OVERLAY_APPEARANCE_CHANGED',
+        payload: { appearance },
+      },
+      { id: 'test', url: 'chrome-extension://test/sidepanel.html' },
+    );
+
+    expect(response).toEqual({ appearance, ok: true });
+    expect(localStorageData.settings).toEqual(expect.objectContaining({
+      originalFontSize: 25,
+      translationFontSize: 23,
+    }));
+  });
+
   it('restores the overlay after a same-origin tab reload', async () => {
     await startSession();
     tabsSendMessage.mockClear();
@@ -613,6 +639,7 @@ describe('background offscreen document lifecycle', () => {
           floatingRect: nativeLayout.floatingRect,
           mode: 'floating',
         }),
+        placement: 'video-bottom',
       },
     });
   });

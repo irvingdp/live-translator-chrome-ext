@@ -17,10 +17,10 @@ describe('captionAppearance', () => {
     const appearance = captionAppearance(settingsWithSecret);
 
     expect(appearance).toEqual({
-      backgroundOpacity: 50,
-      originalFontSize: 24,
+      backgroundOpacity: 0,
+      originalFontSize: 16,
       originalTextColor: '#ffffff',
-      translationFontSize: 22,
+      translationFontSize: 16,
       translationTextColor: '#fde68a',
     });
     expect(appearance).not.toHaveProperty('geminiApiKey');
@@ -28,13 +28,13 @@ describe('captionAppearance', () => {
 });
 
 describe('normalizeSettings', () => {
-  it('applies defaults and clamps both caption sizes to 16–48 px', () => {
+  it('applies defaults and clamps both caption sizes to 12–36 px', () => {
     expect(
       normalizeSettings({ originalFontSize: 99, translationFontSize: 2 }),
     ).toEqual({
       ...DEFAULT_SETTINGS,
-      originalFontSize: 48,
-      translationFontSize: 16,
+      originalFontSize: 36,
+      translationFontSize: 12,
     });
   });
 
@@ -77,9 +77,9 @@ describe('normalizeSettings', () => {
     });
   });
 
-  it('defaults the layout settings to a visible caption box', () => {
+  it('defaults the caption background to transparent', () => {
     expect(DEFAULT_SETTINGS).toMatchObject({
-      backgroundOpacity: 50,
+      backgroundOpacity: 0,
       maxLineWidth: 90,
     });
   });

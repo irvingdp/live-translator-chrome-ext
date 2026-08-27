@@ -5,6 +5,14 @@ import type {
 } from './SidePanelApp';
 
 export const browserSidePanelApi: SidePanelApi = {
+  async updateAppearance(appearance) {
+    const response = await chrome.runtime.sendMessage({
+      target: 'background',
+      type: 'OVERLAY_APPEARANCE_CHANGED',
+      payload: { appearance },
+    });
+    if (!response?.ok) throw new Error(response?.error ?? 'appearance_update_failed');
+  },
   connect(): SidePanelConnection {
     const port = chrome.runtime.connect({ name: 'caption-side-panel' });
     return {

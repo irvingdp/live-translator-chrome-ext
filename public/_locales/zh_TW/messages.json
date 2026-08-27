@@ -71,6 +71,14 @@
     "message": "API Key 尚未設定",
     "description": "Popup line telling the user the selected provider has no key yet."
   },
+  "resetApiKey": {
+    "message": "重新設定",
+    "description": "Link that reveals a configured API Key field so it can be replaced."
+  },
+  "increaseCaptionFont": { "message": "同時加大原文與譯文字體", "description": "Caption toolbar action that increases both font sizes." },
+  "decreaseCaptionFont": { "message": "同時縮小原文與譯文字體", "description": "Caption toolbar action that decreases both font sizes." },
+  "increaseCaptionBackground": { "message": "增加字幕背景透明度", "description": "Caption toolbar action that increases background opacity." },
+  "decreaseCaptionBackground": { "message": "減少字幕背景透明度", "description": "Caption toolbar action that decreases background opacity." },
   "providerSignupLink": {
     "message": "前往申請 API Key：$1",
     "description": "Link under a provider dropdown. $1 is the provider's sign-up domain.",
@@ -221,11 +229,11 @@
     "description": "Popup error when stopping a session fails."
   },
   "needGeminiKey": {
-    "message": "請先在設定頁輸入 Gemini API Key。",
+    "message": "請先輸入 Gemini API Key。",
     "description": "Popup error when starting in Gemini mode without a key."
   },
   "needDeepgramAndDeeplKeys": {
-    "message": "請先在設定頁輸入 Deepgram 與 DeepL API Key。",
+    "message": "請先輸入 Deepgram 與 DeepL API Key。",
     "description": "Popup error when starting in Deepgram mode without both keys."
   },
   "startFailed": {

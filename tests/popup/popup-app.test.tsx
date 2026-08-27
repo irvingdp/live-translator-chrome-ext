@@ -7,7 +7,6 @@ import { DEFAULT_SETTINGS } from '../../src/core/settings';
 function createApi(overrides: Partial<PopupApi> = {}): PopupApi {
   return {
     loadSettings: vi.fn().mockResolvedValue(DEFAULT_SETTINGS),
-    openOptions: vi.fn().mockResolvedValue(undefined),
     saveSettings: vi.fn().mockResolvedValue(undefined),
     start: vi.fn().mockResolvedValue({ state: 'running', tabId: 42 }),
     status: vi.fn().mockResolvedValue({ state: 'idle' }),
@@ -52,16 +51,25 @@ describe('PopupApp', () => {
     expect(transcriber).toHaveValue('gemini');
   });
 
-  it('removes API Key fields and directs unconfigured users to options', async () => {
+  it('shows only the API Key required by the selected transcriber', async () => {
     const api = createApi();
     render(<PopupApp api={api} />);
 
     expect(await screen.findByText('API Key 尚未設定')).toBeVisible();
+    expect(screen.getByLabelText('Gemini API Key')).toHaveAttribute(
+      'type',
+      'password',
+    );
     expect(screen.queryByLabelText('Deepgram API Key')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('DeepL API Key')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '開啟設定' }));
-    await waitFor(() => expect(api.openOptions).toHaveBeenCalledOnce());
+    fireEvent.change(screen.getByLabelText('語音辨識'), {
+      target: { value: 'deepgram' },
+    });
+
+    expect(screen.queryByLabelText('Gemini API Key')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Deepgram API Key')).toBeVisible();
+    expect(screen.getByLabelText('DeepL API Key')).toBeVisible();
   });
 
   it('shows configured status when both stored keys are non-empty', async () => {
@@ -72,25 +80,43 @@ describe('PopupApp', () => {
     );
 
     expect(await screen.findByText('API Key 已設定')).toBeVisible();
+    expect(screen.queryByLabelText('Deepgram API Key')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('DeepL API Key')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /重新設定/ })).toHaveLength(2);
   });
 
-  it('shows guidance when Chrome cannot open the options page', async () => {
+  it('reveals only the configured API Key selected for resetting', async () => {
     render(
       <PopupApp
-        api={createApi({
-          openOptions: vi.fn().mockRejectedValue(new Error('unavailable')),
-        })}
+        api={createDeepgramApi({ deepgramApiKey: 'dg', deeplApiKey: 'dl' })}
       />,
     );
-    await screen.findByText('API Key 尚未設定');
+    await screen.findByText('API Key 已設定');
 
-    fireEvent.click(screen.getByRole('button', { name: '開啟設定' }));
+    fireEvent.click(screen.getByRole('button', {
+      name: '重新設定 Deepgram API Key',
+    }));
 
-    expect(
-      await screen.findByText(
-        '無法開啟設定頁，請從擴充功能選單選擇「選項」。',
-      ),
-    ).toBeVisible();
+    expect(screen.getByLabelText('Deepgram API Key')).toHaveValue('dg');
+    expect(screen.getByLabelText('Deepgram API Key')).toHaveAttribute(
+      'type',
+      'password',
+    );
+    expect(screen.queryByLabelText('DeepL API Key')).not.toBeInTheDocument();
+  });
+
+  it('saves API Keys inline and can reveal the selected field', async () => {
+    const api = createApi();
+    render(<PopupApp api={api} />);
+    const key = await screen.findByLabelText('Gemini API Key');
+
+    fireEvent.change(key, { target: { value: 'gm-new' } });
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ geminiApiKey: 'gm-new' }),
+    ));
+
+    fireEvent.click(screen.getByRole('button', { name: '顯示 Gemini API Key' }));
+    expect(key).toHaveAttribute('type', 'text');
   });
 
   it('names the key the selected provider actually needs', async () => {
@@ -98,10 +124,10 @@ describe('PopupApp', () => {
     render(<PopupApp api={api} />);
     await screen.findByText('API Key 尚未設定');
 
-    fireEvent.click(screen.getByRole('button', { name: '開始即時字幕' }));
+    fireEvent.click(screen.getByRole('switch', { name: '開始即時字幕' }));
 
     expect(
-      await screen.findByText('請先在設定頁輸入 Gemini API Key。'),
+      await screen.findByText('請先輸入 Gemini API Key。'),
     ).toBeVisible();
     expect(api.start).not.toHaveBeenCalled();
   });
@@ -111,11 +137,11 @@ describe('PopupApp', () => {
     render(<PopupApp api={api} />);
     await screen.findByText('API Key 尚未設定');
 
-    fireEvent.click(screen.getByRole('button', { name: '開始即時字幕' }));
+    fireEvent.click(screen.getByRole('switch', { name: '開始即時字幕' }));
 
     expect(
       await screen.findByText(
-        '請先在設定頁輸入 Deepgram 與 DeepL API Key。',
+        '請先輸入 Deepgram 與 DeepL API Key。',
       ),
     ).toBeVisible();
     expect(api.start).not.toHaveBeenCalled();
@@ -126,11 +152,11 @@ describe('PopupApp', () => {
     render(<PopupApp api={api} />);
 
     fireEvent.click(
-      await screen.findByRole('button', { name: '開始即時字幕' }),
+      await screen.findByRole('switch', { name: '開始即時字幕' }),
     );
 
     await waitFor(() => expect(api.start).toHaveBeenCalledOnce());
-    expect(await screen.findByRole('button', { name: '停止字幕' })).toBeVisible();
+    expect(await screen.findByRole('switch', { name: '停止字幕' })).toBeChecked();
   });
 
   it('keeps original and translation font controls independent', async () => {
@@ -142,7 +168,7 @@ describe('PopupApp', () => {
     fireEvent.change(original, { target: { value: '32' } });
 
     expect(original).toHaveValue('32');
-    expect(translation).toHaveValue('22');
+    expect(translation).toHaveValue('16');
   });
 
   it('saves colors from both the palette and an exact Hex value', async () => {
@@ -199,7 +225,7 @@ describe('PopupApp', () => {
     })} />);
 
     expect(await screen.findByText('翻譯異常')).toBeVisible();
-    expect(screen.getByRole('button', { name: '停止字幕' })).toBeVisible();
+    expect(screen.getByRole('switch', { name: '停止字幕' })).toBeChecked();
   });
 
   it('shows translation disabled while capture remains active', async () => {
@@ -212,7 +238,7 @@ describe('PopupApp', () => {
     })} />);
 
     expect(await screen.findByText('翻譯已停用')).toBeVisible();
-    expect(screen.getByRole('button', { name: '停止字幕' })).toBeVisible();
+    expect(screen.getByRole('switch', { name: '停止字幕' })).toBeChecked();
   });
 
   it('serializes settings writes so an older save cannot finish last', async () => {
@@ -243,15 +269,17 @@ describe('PopupApp', () => {
     const original = await screen.findByLabelText('原文字級');
     const translation = screen.getByLabelText('譯文字級');
 
-    expect(original).toHaveAttribute('min', '16');
-    expect(original).toHaveAttribute('max', '48');
-    expect(translation).toHaveAttribute('min', '16');
-    expect(translation).toHaveAttribute('max', '48');
+    expect(original).toHaveAttribute('min', '12');
+    expect(original).toHaveAttribute('max', '36');
+    expect(original).toHaveValue('16');
+    expect(translation).toHaveAttribute('min', '12');
+    expect(translation).toHaveAttribute('max', '36');
+    expect(translation).toHaveValue('16');
 
-    fireEvent.change(original, { target: { value: '40' } });
+    fireEvent.change(original, { target: { value: '34' } });
     fireEvent.change(translation, { target: { value: '18' } });
 
-    expect(original).toHaveValue('40');
+    expect(original).toHaveValue('34');
     expect(translation).toHaveValue('18');
   });
 
@@ -426,15 +454,15 @@ describe('PopupApp', () => {
       ),
     });
     render(<PopupApp api={api} />);
-    fireEvent.click(await screen.findByRole('button', { name: '開始即時字幕' }));
+    fireEvent.click(await screen.findByRole('switch', { name: '開始即時字幕' }));
 
-    const stop = await screen.findByRole('button', { name: '停止字幕' });
+    const stop = await screen.findByRole('switch', { name: '停止字幕' });
     expect(stop).toBeEnabled();
     await waitFor(() => expect(api.start).toHaveBeenCalledOnce());
     fireEvent.click(stop);
     await waitFor(() => expect(api.stop).toHaveBeenCalledOnce());
 
     releaseStart({ state: 'running', tabId: 42 });
-    expect(await screen.findByRole('button', { name: '開始即時字幕' })).toBeVisible();
+    expect(await screen.findByRole('switch', { name: '開始即時字幕' })).not.toBeChecked();
   });
 });

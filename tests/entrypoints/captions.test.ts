@@ -102,9 +102,21 @@ describe('captions unlisted entrypoint', () => {
   });
 
   it('observes the page only while the overlay is visible', () => {
-    dispatch({ type: 'OVERLAY_SHOW', payload: { appearance } });
+    dispatch({
+      type: 'OVERLAY_SHOW',
+      payload: { appearance, placement: 'video-bottom' },
+    });
 
-    expect(overlay.show).toHaveBeenCalledWith(appearance, undefined);
+    expect(overlay.show).toHaveBeenCalledWith(
+      appearance,
+      undefined,
+      'video-bottom',
+    );
+    expect(console.info).toHaveBeenCalledWith(
+      '[Bilingual Captions][placement-debug]',
+      'overlay show received',
+      { hasSavedLayout: false, placement: 'video-bottom' },
+    );
     expect(observe).toHaveBeenCalledWith(document.documentElement, {
       childList: true,
       subtree: true,

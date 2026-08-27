@@ -18,7 +18,6 @@ import {
 
 export interface PopupApi {
   loadSettings(): Promise<AppSettings>;
-  openOptions(): Promise<void>;
   saveSettings(settings: AppSettings): Promise<void>;
   start(settings: AppSettings): Promise<SessionStatus>;
   status(): Promise<SessionStatus>;
@@ -31,6 +30,8 @@ export function PopupApp({ api }: { api: PopupApi }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [translator, setTranslator] = useState('deepl');
+  const [revealedSecret, setRevealedSecret] = useState<string>();
+  const [editingSecrets, setEditingSecrets] = useState<Record<string, boolean>>({});
   const saveTail = useRef<Promise<void>>(Promise.resolve());
   const sessionAttempt = useRef(0);
 
@@ -63,14 +64,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
     key: Key,
     value: AppSettings[Key],
   ) => updateSettings({ [key]: value });
-
-  const openOptions = async () => {
-    try {
-      await api.openOptions();
-    } catch {
-      setMessage(t('optionsOpenFailed'));
-    }
-  };
 
   const toggleSession = async () => {
     if (!settings || busy) return;
@@ -137,9 +130,20 @@ export function PopupApp({ api }: { api: PopupApi }) {
           <p className="eyebrow">LIVE CAPTIONS</p>
           <h1>{t('extName')}</h1>
         </div>
-        <span className={`status status-${'error' in status && status.error ? 'error' : status.state}`}>
-          {t(statusMessageKey(status))}
-        </span>
+        <button
+          aria-checked={running}
+          aria-label={t(busy ? 'working' : running ? 'stopCaptions' : 'startCaptions')}
+          className={`session-toggle session-toggle-${'error' in status && status.error ? 'error' : status.state}`}
+          disabled={busy}
+          role="switch"
+          type="button"
+          onClick={() => void toggleSession()}
+        >
+          <span className="session-status">{t(statusMessageKey(status))}</span>
+          <span aria-hidden="true" className="toggle-track">
+            <span className="toggle-thumb" />
+          </span>
+        </button>
       </header>
 
       <section className="card" aria-labelledby="provider-heading">
@@ -158,6 +162,27 @@ export function PopupApp({ api }: { api: PopupApi }) {
         </select>
         <ProviderLink provider={transcriber} />
 
+        {isGemini && (
+          <ConfigurableSecretField
+            editing={Boolean(editingSecrets['gemini-key'])}
+            id="gemini-key"
+            label="Gemini API Key"
+            onChange={(geminiApiKey) => {
+              setEditingSecrets((current) => ({ ...current, 'gemini-key': true }));
+              update('geminiApiKey', geminiApiKey);
+            }}
+            onEdit={() => setEditingSecrets((current) => ({
+              ...current,
+              'gemini-key': true,
+            }))}
+            onToggle={() => setRevealedSecret((current) =>
+              current === 'gemini-key' ? undefined : 'gemini-key'
+            )}
+            revealed={revealedSecret === 'gemini-key'}
+            value={settings.geminiApiKey}
+          />
+        )}
+
         {/* Gemini Live Translate returns the translation with the transcript,
             so there is no second provider left to choose. */}
         {!isGemini && (
@@ -172,19 +197,54 @@ export function PopupApp({ api }: { api: PopupApi }) {
               <option value="deepl">DeepL API</option>
             </select>
             <ProviderLink provider={translator} />
+            <ConfigurableSecretField
+              editing={Boolean(editingSecrets['deepgram-key'])}
+              id="deepgram-key"
+              label="Deepgram API Key"
+              onChange={(deepgramApiKey) => {
+                setEditingSecrets((current) => ({
+                  ...current,
+                  'deepgram-key': true,
+                }));
+                update('deepgramApiKey', deepgramApiKey)
+              }}
+              onEdit={() => setEditingSecrets((current) => ({
+                ...current,
+                'deepgram-key': true,
+              }))}
+              onToggle={() => setRevealedSecret((current) =>
+                current === 'deepgram-key' ? undefined : 'deepgram-key'
+              )}
+              revealed={revealedSecret === 'deepgram-key'}
+              value={settings.deepgramApiKey}
+            />
+            <ConfigurableSecretField
+              editing={Boolean(editingSecrets['deepl-key'])}
+              id="deepl-key"
+              label="DeepL API Key"
+              onChange={(deeplApiKey) => {
+                setEditingSecrets((current) => ({
+                  ...current,
+                  'deepl-key': true,
+                }));
+                update('deeplApiKey', deeplApiKey);
+              }}
+              onEdit={() => setEditingSecrets((current) => ({
+                ...current,
+                'deepl-key': true,
+              }))}
+              onToggle={() => setRevealedSecret((current) =>
+                current === 'deepl-key' ? undefined : 'deepl-key'
+              )}
+              revealed={revealedSecret === 'deepl-key'}
+              value={settings.deeplApiKey}
+            />
           </>
         )}
         <div className="provider-summary">
           <p className={`provider-state ${keysConfigured ? 'configured' : ''}`}>
             {t(keysConfigured ? 'keysConfigured' : 'keysMissing')}
           </p>
-          <button
-            className="secondary"
-            type="button"
-            onClick={() => void openOptions()}
-          >
-            {t('openOptions')}
-          </button>
         </div>
       </section>
 
@@ -255,14 +315,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
       </section>
 
       {message && <p className="feedback" role="status">{message}</p>}
-      <button
-        className={`primary ${running ? 'stop' : ''}`}
-        disabled={busy}
-        type="button"
-        onClick={() => void toggleSession()}
-      >
-        {t(busy ? 'working' : running ? 'stopCaptions' : 'startCaptions')}
-      </button>
 
       <section className="card" aria-labelledby="size-heading">
         <h2 id="size-heading">{t('sizeHeading')}</h2>
@@ -396,6 +448,63 @@ function ProviderLink({ provider }: { provider: string }) {
     >
       {t('providerSignupLink', signup.label)}
     </a>
+  );
+}
+
+function ConfigurableSecretField({
+  editing,
+  id,
+  label,
+  onChange,
+  onEdit,
+  onToggle,
+  revealed,
+  value,
+}: {
+  editing: boolean;
+  id: string;
+  label: string;
+  onChange(value: string): void;
+  onEdit(): void;
+  onToggle(): void;
+  revealed: boolean;
+  value: string;
+}) {
+  if (value.trim() && !editing) {
+    return (
+      <div className="configured-secret">
+        <span>{label}</span>
+        <button
+          aria-label={`${t('resetApiKey')} ${label}`}
+          className="link-button"
+          type="button"
+          onClick={onEdit}
+        >
+          {t('resetApiKey')}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <div className="secret-row">
+        <input
+          autoComplete="off"
+          id={id}
+          type={revealed ? 'text' : 'password'}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <button
+          aria-label={t(revealed ? 'hideSecret' : 'showSecret', label)}
+          type="button"
+          onClick={onToggle}
+        >
+          {t(revealed ? 'hide' : 'show')}
+        </button>
+      </div>
+    </div>
   );
 }
 

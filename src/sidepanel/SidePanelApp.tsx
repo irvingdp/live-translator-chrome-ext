@@ -9,7 +9,7 @@ import {
 import type { CaptionPair } from '../core/caption-window';
 import type { SessionStatus } from '../core/capture-session-controller';
 import { t } from '../core/i18n';
-import type { CaptionAppearance } from '../core/settings';
+import { SETTING_RANGES, type CaptionAppearance } from '../core/settings';
 
 export interface SidePanelSnapshot {
   active: boolean;
@@ -26,10 +26,28 @@ export interface SidePanelConnection {
 
 export interface SidePanelApi {
   connect(): SidePanelConnection;
+  updateAppearance(appearance: CaptionAppearance): Promise<void>;
+}
+
+function sameAppearance(
+  left: CaptionAppearance | undefined,
+  right: CaptionAppearance | undefined,
+): boolean {
+  return Boolean(
+    left && right &&
+    left.backgroundOpacity === right.backgroundOpacity &&
+    left.originalFontSize === right.originalFontSize &&
+    left.originalTextColor === right.originalTextColor &&
+    left.translationFontSize === right.translationFontSize &&
+    left.translationTextColor === right.translationTextColor
+  );
 }
 
 export function SidePanelApp({ api }: { api: SidePanelApi }) {
   const [snapshot, setSnapshot] = useState<SidePanelSnapshot>();
+  const [pendingAppearance, setPendingAppearance] =
+    useState<CaptionAppearance>();
+  const pendingAppearanceRef = useRef<CaptionAppearance | undefined>(undefined);
   const [autoFollow, setAutoFollow] = useState(true);
   const forceFrameRef = useRef<number | undefined>(undefined);
   const forcingScrollRef = useRef(false);
@@ -67,7 +85,13 @@ export function SidePanelApp({ api }: { api: SidePanelApi }) {
     const connect = () => {
       if (disposed) return;
       connection = api.connect();
-      connection.onState(setSnapshot);
+      connection.onState((state) => {
+        setSnapshot(state);
+        if (sameAppearance(state.appearance, pendingAppearanceRef.current)) {
+          pendingAppearanceRef.current = undefined;
+          setPendingAppearance(undefined);
+        }
+      });
       connection.onDisconnect(() => {
         if (!disposed) reconnectTimer = window.setTimeout(connect, 250);
       });
@@ -112,24 +136,35 @@ export function SidePanelApp({ api }: { api: SidePanelApi }) {
     wasAtBottomRef.current = atBottom;
   };
 
-  const toggleAutoFollow = () => {
-    setAutoFollow((current) => {
-      const next = !current;
-      if (next) {
-        scrollToLatest();
-      } else {
-        if (forceFrameRef.current !== undefined) {
-          window.cancelAnimationFrame(forceFrameRef.current);
-          forceFrameRef.current = undefined;
-        }
-        forcingScrollRef.current = false;
-      }
-      return next;
+  const running = snapshot?.status.state === 'running';
+  const appearance = pendingAppearance ?? snapshot?.appearance;
+  const adjustFontSize = (delta: number) => {
+    if (!appearance) return;
+    const next = {
+      ...appearance,
+      originalFontSize: Math.min(
+        SETTING_RANGES.originalFontSize.max,
+        Math.max(
+          SETTING_RANGES.originalFontSize.min,
+          appearance.originalFontSize + delta,
+        ),
+      ),
+      translationFontSize: Math.min(
+        SETTING_RANGES.translationFontSize.max,
+        Math.max(
+          SETTING_RANGES.translationFontSize.min,
+          appearance.translationFontSize + delta,
+        ),
+      ),
+    };
+    pendingAppearanceRef.current = next;
+    setPendingAppearance(next);
+    void api.updateAppearance(next).catch(() => {
+      if (pendingAppearanceRef.current !== next) return;
+      pendingAppearanceRef.current = undefined;
+      setPendingAppearance(undefined);
     });
   };
-
-  const running = snapshot?.status.state === 'running';
-  const appearance = snapshot?.appearance;
   return (
     <main className="side-panel">
       <header className="side-panel-header">
@@ -139,22 +174,36 @@ export function SidePanelApp({ api }: { api: SidePanelApi }) {
         </div>
         {running && snapshot.active && (
           <div className="header-actions">
-            <button
-              aria-label={t(
-                autoFollow ? 'disableAutoScroll' : 'enableAutoScroll',
-              )}
-              aria-pressed={autoFollow}
-              className={`surface-button auto-scroll-button${
-                autoFollow ? ' active' : ''
-              }`}
-              title={t(
-                autoFollow ? 'disableAutoScroll' : 'enableAutoScroll',
-              )}
-              type="button"
-              onClick={toggleAutoFollow}
-            >
-              ↓
-            </button>
+            {appearance && (
+              <>
+                <button
+                  aria-label={t('increaseCaptionFont')}
+                  className="surface-button font-size-button"
+                  disabled={
+                    appearance.originalFontSize >= SETTING_RANGES.originalFontSize.max &&
+                    appearance.translationFontSize >= SETTING_RANGES.translationFontSize.max
+                  }
+                  title={t('increaseCaptionFont')}
+                  type="button"
+                  onClick={() => adjustFontSize(1)}
+                >
+                  T+
+                </button>
+                <button
+                  aria-label={t('decreaseCaptionFont')}
+                  className="surface-button font-size-button"
+                  disabled={
+                    appearance.originalFontSize <= SETTING_RANGES.originalFontSize.min &&
+                    appearance.translationFontSize <= SETTING_RANGES.translationFontSize.min
+                  }
+                  title={t('decreaseCaptionFont')}
+                  type="button"
+                  onClick={() => adjustFontSize(-1)}
+                >
+                  T−
+                </button>
+              </>
+            )}
           </div>
         )}
       </header>

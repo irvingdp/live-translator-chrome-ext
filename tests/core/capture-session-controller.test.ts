@@ -128,6 +128,7 @@ describe('CaptureSessionController', () => {
           backgroundOpacity: settings.backgroundOpacity,
         }),
         layout: undefined,
+        placement: 'video-bottom',
       },
     });
     expect(controller.status()).toEqual({ state: 'running', tabId: 42 });

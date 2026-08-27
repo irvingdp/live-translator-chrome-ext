@@ -10,6 +10,7 @@ import {
 function createHarness() {
   let stateListener: ((state: SidePanelSnapshot) => void) | undefined;
   const api: SidePanelApi = {
+    updateAppearance: vi.fn().mockResolvedValue(undefined),
     connect: vi.fn(() => ({
       disconnect: vi.fn(),
       onDisconnect: vi.fn(),
@@ -56,6 +57,65 @@ describe('SidePanelApp', () => {
     expect(screen.getByText('Second sentence.')).toBeVisible();
   });
 
+  it('adjusts original and translation font sizes together from the title bar', async () => {
+    const harness = createHarness();
+    render(<SidePanelApp api={harness.api} />);
+    harness.publish({
+      active: true,
+      appearance: {
+        backgroundOpacity: 0,
+        originalFontSize: 20,
+        originalTextColor: '#ffffff',
+        translationFontSize: 18,
+        translationTextColor: '#fde68a',
+      },
+      pairs: [{ id: 'one', original: 'Original', translation: '譯文' }],
+      status: { state: 'running', tabId: 42 },
+    });
+
+    fireEvent.click(await screen.findByRole('button', {
+      name: '同時加大原文與譯文字體',
+    }));
+
+    expect(screen.getByText('Original')).toHaveStyle({ fontSize: '21px' });
+    expect(screen.getByText('譯文')).toHaveStyle({ fontSize: '19px' });
+    expect(harness.api.updateAppearance).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originalFontSize: 21,
+        translationFontSize: 19,
+      }),
+    );
+
+    harness.publish({
+      active: true,
+      appearance: {
+        backgroundOpacity: 0,
+        originalFontSize: 20,
+        originalTextColor: '#ffffff',
+        translationFontSize: 18,
+        translationTextColor: '#fde68a',
+      },
+      pairs: [{ id: 'one', original: 'Original', translation: '譯文' }],
+      status: { state: 'running', tabId: 42 },
+    });
+    expect(screen.getByText('Original')).toHaveStyle({ fontSize: '21px' });
+    expect(screen.getByText('譯文')).toHaveStyle({ fontSize: '19px' });
+
+    harness.publish({
+      active: true,
+      appearance: {
+        backgroundOpacity: 0,
+        originalFontSize: 21,
+        originalTextColor: '#ffffff',
+        translationFontSize: 19,
+        translationTextColor: '#fde68a',
+      },
+      pairs: [{ id: 'one', original: 'Original', translation: '譯文' }],
+      status: { state: 'running', tabId: 42 },
+    });
+    expect(screen.getByText('Original')).toHaveStyle({ fontSize: '21px' });
+  });
+
   it('forces the history to the bottom after every caption revision', async () => {
     const harness = createHarness();
     const { container } = render(<SidePanelApp api={harness.api} />);
@@ -83,13 +143,13 @@ describe('SidePanelApp', () => {
     });
 
     await waitFor(() => expect(history.scrollTop).toBe(640));
-    expect(screen.getByRole('button', { name: '暫停自動捲動' }))
-      .toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: '暫停自動捲動' }))
+      .not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '有新字幕' }))
       .not.toBeInTheDocument();
   });
 
-  it('pauses from the header and re-enables when the user returns to bottom', async () => {
+  it('pauses when the user scrolls up and re-enables at the bottom', async () => {
     const harness = createHarness();
     const { container } = render(<SidePanelApp api={harness.api} />);
     harness.publish({
@@ -97,7 +157,7 @@ describe('SidePanelApp', () => {
       pairs: [{ id: 'one', original: 'First sentence.', translation: '第一句。' }],
       status: { state: 'running', tabId: 42 },
     });
-    const pause = await screen.findByRole('button', { name: '暫停自動捲動' });
+    await screen.findByText('First sentence.');
     const history = container.querySelector<HTMLElement>('.caption-history')!;
     Object.defineProperties(history, {
       clientHeight: { configurable: true, value: 100 },
@@ -105,9 +165,7 @@ describe('SidePanelApp', () => {
       scrollTop: { configurable: true, value: 540, writable: true },
     });
 
-    fireEvent.click(pause);
-    expect(await screen.findByRole('button', { name: '開啟自動捲動' }))
-      .toHaveAttribute('aria-pressed', 'false');
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     history.scrollTop = 120;
     fireEvent.scroll(history);
 
@@ -125,8 +183,7 @@ describe('SidePanelApp', () => {
 
     history.scrollTop = 540;
     fireEvent.scroll(history);
-    expect(await screen.findByRole('button', { name: '暫停自動捲動' }))
-      .toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText('↓')).not.toBeInTheDocument();
   });
 
   it('does not render a manual return-to-floating action', async () => {
@@ -138,8 +195,9 @@ describe('SidePanelApp', () => {
       status: { state: 'running', tabId: 42 },
     });
 
-    expect(await screen.findByRole('button', { name: '暫停自動捲動' }))
+    expect(await screen.findByRole('heading', { name: '即時字幕紀錄' }))
       .toBeVisible();
+    expect(screen.queryByText('↓')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '回到浮動字幕' }))
       .not.toBeInTheDocument();
   });

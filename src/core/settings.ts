@@ -42,25 +42,25 @@ export const SETTING_RANGES = {
   backgroundOpacity: { max: 100, min: 0 },
   maxLineWidth: { max: 140, min: 40 },
   minLineWidth: { max: 120, min: 0 },
-  originalFontSize: { max: 48, min: 16 },
-  translationFontSize: { max: 48, min: 16 },
+  originalFontSize: { max: 36, min: 12 },
+  translationFontSize: { max: 36, min: 12 },
 } as const;
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  backgroundOpacity: 50,
+  backgroundOpacity: 0,
   deepgramApiKey: '',
   deeplApiKey: '',
   geminiApiKey: '',
   geminiTargetLanguage: 'zh-Hant',
   maxLineWidth: 90,
   minLineWidth: 40,
-  originalFontSize: 24,
+  originalFontSize: 16,
   originalTextColor: '#ffffff',
   sourceLanguage: 'EN',
   sourceLocale: 'en-US',
   targetLanguage: 'ZH-HANT',
   transcriber: 'gemini',
-  translationFontSize: 22,
+  translationFontSize: 16,
   translationTextColor: '#fde68a',
 };
 

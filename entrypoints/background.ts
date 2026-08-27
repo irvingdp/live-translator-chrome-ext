@@ -318,6 +318,7 @@ export default defineBackground(() => {
     'BROWSER_FULLSCREEN_FALLBACK',
     'CONTENT_READY',
     'OPEN_SIDE_PANEL',
+    'OVERLAY_APPEARANCE_CHANGED',
     'OVERLAY_LAYOUT_CHANGED',
   ]);
 
@@ -334,6 +335,10 @@ export default defineBackground(() => {
     }
     if (popupMessageTypes.has(message.type)) {
       return isExtensionPage(sender, chrome.runtime.id, popupUrl);
+    }
+    if (message.type === 'OVERLAY_APPEARANCE_CHANGED') {
+      return isTopFrameContentScript(sender, chrome.runtime.id) ||
+        isExtensionPage(sender, chrome.runtime.id, sidePanelUrl);
     }
     return contentMessageTypes.has(message.type) &&
       isTopFrameContentScript(sender, chrome.runtime.id);
@@ -428,6 +433,23 @@ export default defineBackground(() => {
               message.payload.layout,
             );
             return { layout, ok: true };
+          }
+          case 'OVERLAY_APPEARANCE_CHANGED': {
+            const status = controller.status();
+            const tabId = sender.tab?.id ?? (
+              status.state === 'running' ? status.tabId : undefined
+            );
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            if (status.state !== 'running' || status.tabId !== tabId) {
+              return { error: 'inactive_tab', ok: false };
+            }
+            const stored = await chrome.storage.local.get('settings');
+            const settings = normalizeSettings({
+              ...((stored.settings as Partial<AppSettings> | undefined) ?? {}),
+              ...message.payload.appearance,
+            });
+            await chrome.storage.local.set({ settings });
+            return { appearance: message.payload.appearance, ok: true };
           }
           case 'OPEN_SIDE_PANEL': {
             const tabId = sender.tab?.id;

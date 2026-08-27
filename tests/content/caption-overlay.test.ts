@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   CaptionOverlay,
+  findLargestVisiblePlayerFrame,
   findLargestVisibleVideo,
 } from '../../src/content/caption-overlay';
 import type { OverlayLayout } from '../../src/core/overlay-layout';
@@ -59,6 +60,7 @@ function pairsOf() {
 }
 
 beforeEach(() => {
+  vi.spyOn(console, 'info').mockImplementation(() => undefined);
   document.body.replaceChildren();
   document.documentElement
     .querySelectorAll('[data-bilingual-caption-root]')
@@ -71,7 +73,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe('findLargestVisibleVideo', () => {
   it('selects the largest visible HTML video', () => {
@@ -93,7 +98,98 @@ describe('findLargestVisibleVideo', () => {
   });
 });
 
+describe('findLargestVisiblePlayerFrame', () => {
+  it('prefers a large player iframe over banner and hidden frames', () => {
+    const player = document.createElement('iframe');
+    player.src = 'https://jav.sb/static/player/videojs.html?token=secret';
+    const banner = document.createElement('iframe');
+    banner.src = 'https://jav.sb/videojs/strip.php';
+    const hidden = document.createElement('iframe');
+    hidden.src = 'https://jav.sb/videojs/player.html';
+    vi.spyOn(player, 'getBoundingClientRect').mockReturnValue(
+      rect(800, 450, 100, -410),
+    );
+    vi.spyOn(banner, 'getBoundingClientRect').mockReturnValue(
+      rect(900, 100, 50, 600),
+    );
+    vi.spyOn(hidden, 'getBoundingClientRect').mockReturnValue(rect(0, 0));
+    document.body.append(player, banner, hidden);
+
+    expect(findLargestVisiblePlayerFrame(document)).toBe(player);
+  });
+
+  it('accepts an unlabelled iframe with a video-shaped rectangle', () => {
+    const frame = document.createElement('iframe');
+    frame.src = 'https://media.example/content.html';
+    vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue(
+      rect(640, 360, 100, 100),
+    );
+    document.body.append(frame);
+
+    expect(findLargestVisiblePlayerFrame(document)).toBe(frame);
+  });
+});
+
 describe('CaptionOverlay', () => {
+  it('adjusts both font sizes and background opacity from the hover toolbar', () => {
+    const onAppearanceChanged = vi.fn();
+    const overlay = new CaptionOverlay(document, { onAppearanceChanged });
+    overlay.show(appearance, layout);
+
+    const buttons = shadow()?.querySelectorAll<HTMLButtonElement>(
+      '[data-appearance-action]',
+    );
+    expect([...buttons ?? []].map((button) => button.getAttribute('aria-label'))).toEqual([
+      '同時加大原文與譯文字體',
+      '同時縮小原文與譯文字體',
+      '增加字幕背景透明度',
+      '減少字幕背景透明度',
+    ]);
+    expect([...buttons ?? []].every((button) => button.querySelector('svg')))
+      .toBe(true);
+    expect([...buttons ?? []].map((button) =>
+      button.querySelector('.appearance-symbol')?.textContent
+    )).toEqual(['+', '−', '+', '−']);
+    expect([...buttons ?? []].every((button) =>
+      button.classList.contains('symbol-appearance-button')
+    )).toBe(true);
+
+    const pointerDown = new Event('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+    });
+    buttons?.[0]?.dispatchEvent(pointerDown);
+    expect(pointerDown.defaultPrevented).toBe(true);
+
+    shadow()?.querySelector<HTMLButtonElement>(
+      '[data-appearance-action="font-increase"]',
+    )?.click();
+    expect(onAppearanceChanged).toHaveBeenLastCalledWith({
+      ...appearance,
+      originalFontSize: 31,
+      translationFontSize: 21,
+    });
+
+    shadow()?.querySelector<HTMLButtonElement>(
+      '[data-appearance-action="background-decrease"]',
+    )?.click();
+    expect(onAppearanceChanged).toHaveBeenLastCalledWith({
+      ...appearance,
+      backgroundOpacity: 45,
+      originalFontSize: 31,
+      translationFontSize: 21,
+    });
+
+    const fontButton = buttons?.[0];
+    fontButton?.focus();
+    expect(shadow()?.activeElement).toBe(fontButton);
+    fontButton?.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      detail: 1,
+    }));
+    expect(shadow()?.activeElement).not.toBe(fontButton);
+  });
+
   it('renders bilingual pairs and only visual appearance variables', () => {
     const overlay = new CaptionOverlay(document);
     overlay.show(appearance, layout);
@@ -125,6 +221,12 @@ describe('CaptionOverlay', () => {
     expect(css).toContain('height: 32px');
     expect(css).toContain('bottom: 100%');
     expect(css).toContain('height: 16px');
+    expect(css).toContain('var(--caption-original-size, 16px)');
+    expect(css).toContain('var(--caption-translation-size, 16px)');
+    expect(css).toContain('var(--caption-bg-opacity, 0)');
+    expect(css).toMatch(/\.caption-body\s*\{[^}]*border: 0;/);
+    expect(css).toMatch(/\.caption-body\s*\{[^}]*box-shadow: none;/);
+    expect(css).not.toContain('0 8px 28px rgba(0, 0, 0, 0.34)');
     expect(css).toContain('top: -42px');
     expect(css).toMatch(/\.captions\s*\{[^}]*pointer-events: none;/);
     expect(css).not.toContain('.captions::before');
@@ -138,6 +240,19 @@ describe('CaptionOverlay', () => {
       'aria-label',
       '在側邊面板顯示字幕',
     );
+  });
+
+  it('makes the caption background transparent at zero opacity without a border', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show({ ...appearance, backgroundOpacity: 0 }, layout);
+    const host = document.querySelector<HTMLElement>(
+      '[data-bilingual-caption-root]',
+    );
+
+    expect(host?.style.getPropertyValue('--caption-bg-opacity')).toBe('0');
+    const css = shadow()?.querySelector('style')?.textContent;
+    expect(css).toMatch(/\.caption-body\s*\{[^}]*border: 0;/);
+    expect(css).toMatch(/\.caption-body\s*\{[^}]*box-shadow: none;/);
   });
 
   it('shows controls within the expanded proximity zone without a hit-test layer', () => {
@@ -180,6 +295,120 @@ describe('CaptionOverlay', () => {
     expect(current.widthRatio).toBeCloseTo(0.56);
     expect(current.heightRatio).toBeCloseTo(0.225);
     expect(current.xRatio).toBeCloseTo(0.22);
+    expect(current.yRatio).toBeCloseTo(0.44);
+  });
+
+  it('repositions a saved rectangle at the video bottom at 70% video width', async () => {
+    const video = document.createElement('video');
+    vi.spyOn(video, 'getBoundingClientRect').mockReturnValue(
+      rect(800, 450, 100, 100),
+    );
+    document.body.append(video);
+    const onLayoutChanged = vi.fn();
+    const overlay = new CaptionOverlay(document, { onLayoutChanged });
+
+    overlay.show(appearance, layout, 'video-bottom');
+
+    const current = overlay.currentLayout().floatingRect;
+    expect(current.widthRatio).toBeCloseTo(0.56);
+    expect(current.heightRatio).toBeCloseTo(layout.floatingRect.heightRatio);
+    expect(current.xRatio).toBeCloseTo(0.22);
+    expect(current.yRatio).toBeCloseTo(0.415);
+    expect(console.info).toHaveBeenCalledWith(
+      '[Bilingual Captions][placement-debug]',
+      'computed video-bottom layout',
+      expect.objectContaining({
+        fallbackReason: undefined,
+        selection: 'top-level-video',
+        selectedVideo: expect.objectContaining({
+          rect: { height: 450, left: 100, top: 100, width: 800 },
+        }),
+      }),
+    );
+    await vi.waitFor(() => expect(onLayoutChanged).toHaveBeenCalledWith(
+      overlay.currentLayout(),
+    ));
+  });
+
+  it('uses a player iframe as the video bounds when no top-level video exists', () => {
+    const frame = document.createElement('iframe');
+    frame.src = 'https://jav.sb/static/player/videojs.html?token=secret';
+    vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue(
+      rect(800, 450, 100, 100),
+    );
+    document.body.append(frame);
+    const overlay = new CaptionOverlay(document);
+
+    overlay.show(appearance, layout, 'video-bottom');
+
+    const current = overlay.currentLayout().floatingRect;
+    expect(current.widthRatio).toBeCloseTo(0.56);
+    expect(current.heightRatio).toBeCloseTo(layout.floatingRect.heightRatio);
+    expect(current.xRatio).toBeCloseTo(0.22);
+    expect(current.yRatio).toBeCloseTo(0.415);
+    expect(console.info).toHaveBeenCalledWith(
+      '[Bilingual Captions][placement-debug]',
+      'computed video-bottom layout',
+      expect.objectContaining({
+        fallbackReason: undefined,
+        iframeCandidates: [expect.objectContaining({
+          rect: { height: 450, left: 100, top: 100, width: 800 },
+          src: 'https://jav.sb/static/player/videojs.html',
+        })],
+        selectedPlayerFrame: expect.objectContaining({
+          rect: { height: 450, left: 100, top: 100, width: 800 },
+          src: 'https://jav.sb/static/player/videojs.html',
+        }),
+        selectedVideo: undefined,
+        selection: 'player-iframe',
+        topLevelVideos: [],
+      }),
+    );
+  });
+
+  it('keeps the caption at the same position relative to the video while scrolling', () => {
+    const video = document.createElement('video');
+    let videoTop = 100;
+    vi.spyOn(video, 'getBoundingClientRect').mockImplementation(() =>
+      rect(800, 450, 100, videoTop)
+    );
+    document.body.append(video);
+    const overlay = new CaptionOverlay(document);
+
+    overlay.show(appearance, layout, 'video-bottom');
+    const captions = shadow()?.querySelector<HTMLElement>('.captions')!;
+    const initialTop = Number.parseFloat(captions.style.top);
+
+    videoTop = -100;
+    overlay.position();
+
+    expect(Number.parseFloat(captions.style.top)).toBeCloseTo(initialTop - 200);
+    expect(Number.parseFloat(captions.style.left)).toBeGreaterThanOrEqual(110);
+    expect(
+      Number.parseFloat(captions.style.left) +
+      Number.parseFloat(captions.style.width),
+    ).toBeLessThanOrEqual(890);
+  });
+
+  it('uses the viewport bottom when no video or player iframe exists', () => {
+    const overlay = new CaptionOverlay(document);
+
+    overlay.show(appearance, layout, 'video-bottom');
+
+    const current = overlay.currentLayout().floatingRect;
+    expect(current.widthRatio).toBeCloseTo(0.7);
+    expect(current.xRatio).toBeCloseTo(0.15);
+    expect(current.yRatio).toBeCloseTo(0.67);
+    expect(console.info).toHaveBeenCalledWith(
+      '[Bilingual Captions][placement-debug]',
+      'computed video-bottom layout',
+      expect.objectContaining({
+        fallbackReason: 'no-top-level-video-or-player-iframe',
+        selectedPlayerFrame: undefined,
+        selectedVideo: undefined,
+        selection: 'viewport-fallback',
+      }),
+    );
   });
 
   it('persists a drag only after pointer release', () => {

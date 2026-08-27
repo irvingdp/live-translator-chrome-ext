@@ -3,6 +3,7 @@ import { CaptionOverlay } from '../src/content/caption-overlay';
 
 export default defineUnlistedScript(() => {
   const fullscreenDebugPrefix = '[Bilingual Captions][fullscreen-debug]';
+  const placementDebugPrefix = '[Bilingual Captions][placement-debug]';
   const describeNode = (node: EventTarget | null): string => {
     if (node instanceof ShadowRoot) return '#shadow-root';
     if (!(node instanceof Element)) return node === document ? '#document' : String(node);
@@ -164,6 +165,13 @@ export default defineUnlistedScript(() => {
     console.error(fullscreenDebugPrefix, 'fullscreenerror', debugState(event));
   };
   const overlay = new CaptionOverlay(document, {
+    onAppearanceChanged(appearance) {
+      void chrome.runtime.sendMessage({
+        target: 'background',
+        type: 'OVERLAY_APPEARANCE_CHANGED',
+        payload: { appearance },
+      } satisfies import('../src/core/messages').ExtensionMessage);
+    },
     onLayoutChanged(layout) {
       void chrome.runtime.sendMessage({
         target: 'background',
@@ -249,9 +257,14 @@ export default defineUnlistedScript(() => {
           break;
         case 'OVERLAY_SHOW':
           startPositioning();
+          console.info(placementDebugPrefix, 'overlay show received', {
+            hasSavedLayout: tabMessage.payload.layout !== undefined,
+            placement: tabMessage.payload.placement,
+          });
           overlay.show(
             tabMessage.payload.appearance,
             tabMessage.payload.layout,
+            tabMessage.payload.placement,
           );
           break;
         case 'OVERLAY_APPEARANCE':

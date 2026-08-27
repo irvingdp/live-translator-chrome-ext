@@ -71,6 +71,14 @@
     "message": "API key not set",
     "description": "Popup line telling the user the selected provider has no key yet."
   },
+  "resetApiKey": {
+    "message": "Reset",
+    "description": "Link that reveals a configured API Key field so it can be replaced."
+  },
+  "increaseCaptionFont": { "message": "Increase original and translation font sizes", "description": "Caption toolbar action that increases both font sizes." },
+  "decreaseCaptionFont": { "message": "Decrease original and translation font sizes", "description": "Caption toolbar action that decreases both font sizes." },
+  "increaseCaptionBackground": { "message": "Increase caption background opacity", "description": "Caption toolbar action that increases background opacity." },
+  "decreaseCaptionBackground": { "message": "Decrease caption background opacity", "description": "Caption toolbar action that decreases background opacity." },
   "providerSignupLink": {
     "message": "Get an API key: $1",
     "description": "Link under a provider dropdown. $1 is the provider's sign-up domain.",
@@ -221,11 +229,11 @@
     "description": "Popup error when stopping a session fails."
   },
   "needGeminiKey": {
-    "message": "Enter your Gemini API key on the settings page first.",
+    "message": "Enter your Gemini API key first.",
     "description": "Popup error when starting in Gemini mode without a key."
   },
   "needDeepgramAndDeeplKeys": {
-    "message": "Enter your Deepgram and DeepL API keys on the settings page first.",
+    "message": "Enter your Deepgram and DeepL API keys first.",
     "description": "Popup error when starting in Deepgram mode without both keys."
   },
   "startFailed": {

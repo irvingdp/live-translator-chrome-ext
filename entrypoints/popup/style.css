@@ -23,9 +23,16 @@ button, select, input[type="range"] { cursor: pointer; }
 .eyebrow { color: #5eead4; font-size: 11px; font-weight: 750; letter-spacing: .14em; margin: 0 0 4px; }
 h1 { font-size: 20px; line-height: 1.25; margin: 0; }
 h2 { font-size: 13px; margin: 0 0 10px; color: #dbeafe; }
-.status { border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 12px; padding: 5px 9px; white-space: nowrap; }
-.status-running { background: rgba(20,184,166,.14); border-color: #0f766e; color: #99f6e4; }
-.status-error { background: rgba(248,113,113,.12); border-color: #991b1b; color: #fecaca; }
+.session-toggle { align-items: center; background: transparent; border: 0; color: var(--muted); display: flex; gap: 7px; padding: 3px 0; white-space: nowrap; }
+.session-toggle:hover:not(:disabled) .toggle-track { border-color: #5eead4; }
+.session-toggle:disabled { cursor: wait; opacity: .65; }
+.session-status { font-size: 12px; }
+.session-toggle-running, .session-toggle-starting { color: #99f6e4; }
+.session-toggle-error { color: #fecaca; }
+.toggle-track { background: #334155; border: 1px solid #64748b; border-radius: 999px; display: inline-flex; height: 22px; padding: 2px; transition: background 160ms ease-out, border-color 160ms ease-out; width: 38px; }
+.toggle-thumb { background: #f8fafc; border-radius: 50%; height: 16px; transform: translateX(0); transition: transform 160ms ease-out; width: 16px; }
+.session-toggle[aria-checked="true"] .toggle-track { background: var(--primary-strong); border-color: #2dd4bf; }
+.session-toggle[aria-checked="true"] .toggle-thumb { transform: translateX(16px); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; display: grid; gap: 8px; padding: 12px; }
 .grid { grid-template-columns: 1fr 1fr; }
 .grid h2 { grid-column: 1 / -1; }
@@ -38,6 +45,10 @@ select:disabled { cursor: not-allowed; opacity: .65; }
 .field { margin-top: 2px; }
 .secret-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .secret-row button { background: #243146; border: 1px solid #475569; border-radius: 8px; color: #e2e8f0; min-height: 42px; min-width: 54px; padding: 0 10px; }
+.configured-secret { align-items: center; display: flex; justify-content: space-between; gap: 12px; min-height: 28px; }
+.configured-secret span { color: #dbe4f0; font-size: 12px; font-weight: 650; }
+.link-button { background: none; border: 0; color: #5eead4; font-size: 12px; padding: 3px 0; text-decoration: underline; }
+.link-button:hover { color: #99f6e4; }
 .error { color: #fca5a5; font-size: 12px; margin: 5px 0 0; }
 .range-field + .range-field { margin-top: 4px; }
 .range-label { display: flex; justify-content: space-between; }

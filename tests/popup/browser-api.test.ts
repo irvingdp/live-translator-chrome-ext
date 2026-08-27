@@ -5,12 +5,12 @@ import { browserPopupApi } from '../../src/popup/browser-api';
 afterEach(() => vi.unstubAllGlobals());
 
 describe('browserPopupApi', () => {
-  it('opens the Chrome extension options page', async () => {
-    const openOptionsPage = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('chrome', { runtime: { openOptionsPage } });
+  it('stores settings in the popup without opening another page', async () => {
+    const set = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('chrome', { storage: { local: { set } } });
 
-    await browserPopupApi.openOptions();
+    await browserPopupApi.saveSettings({ deepgramApiKey: 'dg' } as never);
 
-    expect(openOptionsPage).toHaveBeenCalledOnce();
+    expect(set).toHaveBeenCalledWith({ settings: { deepgramApiKey: 'dg' } });
   });
 });

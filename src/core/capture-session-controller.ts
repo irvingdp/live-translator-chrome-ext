@@ -6,7 +6,7 @@ import type { TranslationRequest } from '../providers/deepl';
 import { CaptionChunker, type CaptionUnit } from './caption-chunker';
 import { CaptionWindow, type CaptionPair } from './caption-window';
 import type { ExtensionMessage } from './messages';
-import type { OverlayLayout } from './overlay-layout';
+import type { OverlayLayout, OverlayPlacement } from './overlay-layout';
 import {
   captionAppearance,
   type CaptionAppearance,
@@ -43,7 +43,11 @@ export type TabMessage =
   | { type: 'CONTENT_PING' }
   | {
       type: 'OVERLAY_SHOW';
-      payload: { appearance: CaptionAppearance; layout?: OverlayLayout };
+      payload: {
+        appearance: CaptionAppearance;
+        layout?: OverlayLayout;
+        placement?: OverlayPlacement;
+      };
     }
   | { type: 'OVERLAY_APPEARANCE'; payload: { appearance: CaptionAppearance } }
   | { type: 'OVERLAY_LAYOUT'; payload: { layout: OverlayLayout } }
@@ -254,7 +258,11 @@ export class CaptureSessionController {
       const layout = await this.dependencies.getOverlayLayout(tabId);
       await this.dependencies.sendToTab(tabId, {
         type: 'OVERLAY_SHOW',
-        payload: { appearance: captionAppearance(settings), layout },
+        payload: {
+          appearance: captionAppearance(settings),
+          layout,
+          placement: 'video-bottom',
+        },
       });
       this.currentStatus = { state: 'running', tabId };
     } catch (error) {

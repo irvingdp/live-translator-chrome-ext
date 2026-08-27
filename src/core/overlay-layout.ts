@@ -3,6 +3,7 @@ export const OVERLAY_LAYOUT_STORE_VERSION = 1;
 export const MAX_SAVED_ORIGINS = 100;
 
 export type CaptionSurface = 'floating' | 'native';
+export type OverlayPlacement = 'video-bottom';
 
 export interface FloatingRect {
   heightRatio: number;
