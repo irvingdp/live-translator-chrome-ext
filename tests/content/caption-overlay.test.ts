@@ -211,7 +211,7 @@ describe('CaptionOverlay', () => {
     expect(host?.style.getPropertyValue('--caption-width')).toBe('');
   });
 
-  it('keeps the caption body click-through and renders four rounded corner handles', () => {
+  it('supports direct hover over iframe players and renders four rounded corner handles', () => {
     const overlay = new CaptionOverlay(document);
     overlay.show(appearance, layout);
 
@@ -229,7 +229,9 @@ describe('CaptionOverlay', () => {
     expect(css).not.toContain('0 8px 28px rgba(0, 0, 0, 0.34)');
     expect(css).toContain('top: -42px');
     expect(css).toMatch(/\.captions\s*\{[^}]*pointer-events: none;/);
+    expect(css).toMatch(/\.caption-body\s*\{[^}]*pointer-events: auto;/);
     expect(css).not.toContain('.captions::before');
+    expect(css).toContain('.captions:hover .caption-toolbar');
     expect(css).toContain('.captions.proximity-hover .caption-toolbar');
     expect(css).toContain('border-left: 5px solid #5eead4');
     expect(shadow()?.querySelectorAll('.resize-handle')).toHaveLength(4);
@@ -266,6 +268,10 @@ describe('CaptionOverlay', () => {
     document.dispatchEvent(pointer('pointermove', 190, 200));
     expect(captions).toHaveClass('proximity-hover');
 
+    captions.dispatchEvent(pointer('pointerleave', 800, 700));
+    expect(captions).not.toHaveClass('proximity-hover');
+
+    document.dispatchEvent(pointer('pointermove', 190, 200));
     document.dispatchEvent(pointer('pointermove', 100, 100));
     expect(captions).not.toHaveClass('proximity-hover');
   });
@@ -547,6 +553,67 @@ describe('CaptionOverlay', () => {
     overlay.position();
 
     expect(host?.parentElement).toBe(player);
+  });
+
+  it('moves into the actual fullscreen player inside a same-origin iframe', () => {
+    const player = document.createElement('iframe');
+    document.body.append(player);
+    const framePlayer = player.contentDocument!.createElement('section');
+    player.contentDocument!.body.append(framePlayer);
+    Object.defineProperty(player.contentDocument, 'fullscreenElement', {
+      configurable: true,
+      value: framePlayer,
+    });
+    const onLayoutChanged = vi.fn();
+    const overlay = new CaptionOverlay(document, { onLayoutChanged });
+    overlay.show(appearance, layout);
+    const host = document.querySelector<HTMLElement>('[data-bilingual-caption-root]');
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      value: player,
+    });
+
+    overlay.position();
+
+    expect(host?.parentElement).toBe(framePlayer);
+    expect(host?.isConnected).toBe(true);
+
+    const captions = host?.shadowRoot?.querySelector<HTMLElement>('.captions')!;
+    Object.assign(captions, {
+      releasePointerCapture: vi.fn(),
+      setPointerCapture: vi.fn(),
+    });
+    const oldHandle = host?.shadowRoot?.querySelector('.resize-se')!;
+    const frameHandle = player.contentDocument!.createElement('span');
+    frameHandle.className = 'resize-handle resize-se';
+    frameHandle.dataset.resizeDirection = 'se';
+    oldHandle.replaceWith(frameHandle);
+    const framePointer = (type: string, x: number, y: number) => {
+      const FrameMouseEvent = (
+        player.contentWindow as Window & typeof globalThis
+      ).MouseEvent;
+      const event = new FrameMouseEvent(type, {
+        bubbles: true,
+        button: 0,
+        clientX: x,
+        clientY: y,
+      });
+      Object.defineProperty(event, 'pointerId', { value: 7 });
+      return event;
+    };
+
+    frameHandle.dispatchEvent(framePointer('pointerdown', 700, 440));
+    captions.dispatchEvent(framePointer('pointerup', 650, 400));
+
+    expect(onLayoutChanged).toHaveBeenCalledOnce();
+
+    Object.defineProperty(player.contentDocument, 'fullscreenElement', {
+      configurable: true,
+      value: null,
+    });
+    // The outer document can lag behind the iframe during fullscreen exit.
+    overlay.position();
+    expect(host?.parentElement).toBe(document.body);
   });
 
   it('keeps the overlay in body when the document element is fullscreen', () => {

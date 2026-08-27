@@ -176,6 +176,7 @@ const OVERLAY_CSS = `
     height: 100%;
     overflow: hidden;
     padding: 12px 14px 10px;
+    pointer-events: auto;
     transition: border-radius 140ms ease-out;
   }
   .viewport { display: flex; flex: 1; flex-direction: column; justify-content: flex-end; min-height: 0; overflow: hidden; pointer-events: none; }
@@ -207,9 +208,11 @@ const OVERLAY_CSS = `
     transition: opacity 140ms ease-out, transform 140ms ease-out;
     z-index: 4;
   }
+  .captions:hover .caption-toolbar,
   .captions.proximity-hover .caption-toolbar,
   .captions:focus-within .caption-toolbar,
   .captions.interacting .caption-toolbar { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  .captions:hover .caption-body,
   .captions.proximity-hover .caption-body,
   .captions:focus-within .caption-body,
   .captions.interacting .caption-body { border-radius: 0 0 10px 10px; }
@@ -251,6 +254,7 @@ const OVERLAY_CSS = `
     width: 16px;
     z-index: 5;
   }
+  .captions:hover .resize-handle,
   .captions.proximity-hover .resize-handle,
   .captions:focus-within .resize-handle,
   .captions.interacting .resize-handle { opacity: 0.95; pointer-events: auto; }
@@ -277,6 +281,12 @@ function createIcon(document: Document, paths: string[]): SVGSVGElement {
     icon.append(path);
   }
   return icon;
+}
+
+function eventTargetElement(target: EventTarget | null): Element | undefined {
+  return target && typeof (target as Element).closest === 'function'
+    ? target as Element
+    : undefined;
 }
 
 interface PixelRect {
@@ -311,6 +321,8 @@ export class CaptionOverlay {
   private nativeTrack?: TextTrack;
   private nativeVideo?: HTMLVideoElement;
   private mediaAnchor?: HTMLVideoElement | HTMLIFrameElement;
+  private mediaFullscreenDocument?: Document;
+  private mediaFullscreenTimer?: number;
   private mediaRelativeRect?: FloatingRect;
   private pairs: CaptionPair[] = [];
   private readonly pairElements = new Map<string, HTMLElement>();
@@ -324,6 +336,19 @@ export class CaptionOverlay {
   private viewportElement?: HTMLElement;
   private readonly clearPointerProximity = () => {
     this.captionsElement?.classList.remove('proximity-hover');
+  };
+  private readonly handleMediaFullscreenChange = () => {
+    this.clearPointerProximity();
+    this.position();
+    const view = this.document.defaultView;
+    view?.requestAnimationFrame(() => this.position());
+    if (this.mediaFullscreenTimer !== undefined) {
+      view?.clearTimeout(this.mediaFullscreenTimer);
+    }
+    this.mediaFullscreenTimer = view?.setTimeout(() => {
+      this.mediaFullscreenTimer = undefined;
+      this.position();
+    }, 400);
   };
   private readonly trackPointerProximity = (event: PointerEvent) => {
     const captions = this.captionsElement;
@@ -383,6 +408,7 @@ export class CaptionOverlay {
     this.pendingFrame = undefined;
     this.pendingPoint = undefined;
     this.interaction = undefined;
+    this.stopWatchingMediaFullscreen();
     this.mediaAnchor = undefined;
     this.mediaRelativeRect = undefined;
     this.document.removeEventListener(
@@ -543,11 +569,36 @@ export class CaptionOverlay {
     if (!host || !this.layout || this.transitionSuspended) return;
     const fullscreenRoot = this.document.fullscreenElement;
     const normalParent = this.document.body ?? this.document.documentElement;
-    const targetParent = fullscreenRoot instanceof HTMLElement &&
+    let targetParent: HTMLElement = normalParent;
+    if (fullscreenRoot instanceof HTMLIFrameElement) {
+      // An iframe is a replaced element, so appending the overlay to the
+      // iframe node itself renders nothing. The iframe body is not enough
+      // either: Video.js puts its own player element in the fullscreen top
+      // layer, hiding body siblings. Adopt the host into that exact element.
+      try {
+        const frameDocument = fullscreenRoot.contentDocument;
+        const frameFullscreenRoot = frameDocument?.fullscreenElement;
+        const frameFullscreenElement = frameFullscreenRoot?.nodeType === 1
+          ? frameFullscreenRoot as HTMLElement
+          : undefined;
+        // During exit, the outer document may still report the iframe as its
+        // fullscreen element after the inner player has already exited. In
+        // that gap, move straight back to the parent instead of the iframe
+        // body, whose coordinate system would offset the caption incorrectly.
+        targetParent = frameFullscreenElement ?? normalParent;
+      } catch {
+        targetParent = normalParent;
+      }
+    } else if (
+      fullscreenRoot instanceof HTMLElement &&
       fullscreenRoot !== this.document.documentElement &&
       !(fullscreenRoot instanceof HTMLVideoElement)
-      ? fullscreenRoot
-      : normalParent;
+    ) {
+      targetParent = fullscreenRoot;
+    }
+    if (targetParent.ownerDocument !== this.document) {
+      this.clearPointerProximity();
+    }
     if (host.parentElement !== targetParent) targetParent.append(host);
     if (fullscreenRoot instanceof HTMLVideoElement && this.layout.mode === 'floating') {
       this.clearPointerProximity();
@@ -580,6 +631,7 @@ export class CaptionOverlay {
       : findLargestVisiblePlayerFrame(this.document);
     const bounds = (video ?? playerFrame)?.getBoundingClientRect();
     this.mediaAnchor = video ?? playerFrame;
+    this.watchMediaFullscreen(playerFrame);
     const horizontalMargin = Math.max(VIEWPORT_MARGIN, RESIZE_HANDLE_OFFSET);
     const topMargin = Math.max(
       VIEWPORT_MARGIN,
@@ -669,6 +721,34 @@ export class CaptionOverlay {
       viewport,
     });
     return result;
+  }
+
+  private watchMediaFullscreen(frame?: HTMLIFrameElement): void {
+    let frameDocument: Document | undefined;
+    try {
+      frameDocument = frame?.contentDocument ?? undefined;
+    } catch {
+      frameDocument = undefined;
+    }
+    if (frameDocument === this.mediaFullscreenDocument) return;
+    this.stopWatchingMediaFullscreen();
+    this.mediaFullscreenDocument = frameDocument;
+    frameDocument?.addEventListener(
+      'fullscreenchange',
+      this.handleMediaFullscreenChange,
+    );
+  }
+
+  private stopWatchingMediaFullscreen(): void {
+    this.mediaFullscreenDocument?.removeEventListener(
+      'fullscreenchange',
+      this.handleMediaFullscreenChange,
+    );
+    this.mediaFullscreenDocument = undefined;
+    if (this.mediaFullscreenTimer !== undefined) {
+      this.document.defaultView?.clearTimeout(this.mediaFullscreenTimer);
+      this.mediaFullscreenTimer = undefined;
+    }
   }
 
   private pixelRect(): PixelRect {
@@ -861,6 +941,7 @@ export class CaptionOverlay {
     stage.className = 'stage';
     const captions = this.document.createElement('div');
     captions.className = 'captions';
+    captions.addEventListener('pointerleave', this.clearPointerProximity);
     captions.addEventListener('pointerdown', (event) => this.beginInteraction(event));
     captions.addEventListener('pointermove', (event) => this.moveInteraction(event));
     captions.addEventListener('pointerup', (event) => this.endInteraction(event));
@@ -1016,7 +1097,9 @@ export class CaptionOverlay {
 
   private beginInteraction(event: PointerEvent): void {
     if (event.button !== 0 || !this.captionsElement || !this.layout) return;
-    const target = event.target instanceof Element ? event.target : undefined;
+    // `instanceof Element` is false when the overlay has been adopted into a
+    // fullscreen iframe because the event target belongs to another Window.
+    const target = eventTargetElement(event.target);
     if (target?.closest('button')) return;
     const resizeHandle = target?.closest<HTMLElement>('[data-resize-direction]');
     const dragHandle = target?.closest<HTMLElement>('[data-drag-handle]');
