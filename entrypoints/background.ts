@@ -6,6 +6,7 @@ import {
   isTopFrameContentScript,
 } from '../src/core/message-security';
 import type { ExtensionMessage } from '../src/core/messages';
+import type { MediaPlaybackResponse } from '../src/core/media-playback';
 import {
   httpsOrigin,
   layoutForOrigin,
@@ -20,6 +21,7 @@ import { createOffscreenTranslationTransport } from '../src/providers/offscreen-
 
 export default defineBackground(() => {
   const activeSessionKey = 'activeSession';
+  const autoFollowTabsKey = 'autoFollowTabs';
   const browserFullscreenFallbackKey = 'browserFullscreenFallback';
   let lifecycleTail: Promise<void> = Promise.resolve();
   const offscreenUrl = chrome.runtime.getURL('offscreen.html');
@@ -27,6 +29,8 @@ export default defineBackground(() => {
   const popupUrl = chrome.runtime.getURL('popup.html');
   const sidePanelUrl = chrome.runtime.getURL('sidepanel.html');
   const sidePanelPorts = new Set<chrome.runtime.Port>();
+  const authorizedTabs = new Map<number, string>();
+  const promptedTabs = new Set<number>();
   const translateOffscreen = createOffscreenTranslationTransport(
     (message) => chrome.runtime.sendMessage(message),
   );
@@ -98,6 +102,76 @@ export default defineBackground(() => {
     translate: (sessionId, request, signal) =>
       translateOffscreen(sessionId, request, signal),
   });
+
+  async function persistAuthorizedTabs(): Promise<void> {
+    await chrome.storage.session.set({
+      [autoFollowTabsKey]: Object.fromEntries(
+        [...authorizedTabs].map(([tabId, origin]) => [String(tabId), origin]),
+      ),
+    });
+  }
+
+  async function clearAutoFollowBadge(tabId: number): Promise<void> {
+    promptedTabs.delete(tabId);
+    await Promise.all([
+      chrome.action.setBadgeText({ tabId, text: '' }),
+      chrome.action.setTitle({
+        tabId,
+        title: chrome.i18n.getMessage('extName'),
+      }),
+    ]).then(() => undefined, () => undefined);
+  }
+
+  async function promptAutoFollowAuthorization(tabId: number): Promise<void> {
+    if (promptedTabs.has(tabId)) return;
+    promptedTabs.add(tabId);
+    await Promise.all([
+      chrome.action.setBadgeBackgroundColor({ color: '#f59e0b', tabId }),
+      chrome.action.setBadgeText({ tabId, text: '!' }),
+      chrome.action.setTitle({
+        tabId,
+        title: chrome.i18n.getMessage('autoFollowAuthorizationHint'),
+      }),
+    ]).then(() => undefined, () => undefined);
+  }
+
+  async function clearAllAutoFollowBadges(): Promise<void> {
+    const tabs = await chrome.tabs.query({});
+    const tabIds = new Set([
+      ...promptedTabs,
+      ...tabs.flatMap((tab) => tab.id === undefined ? [] : [tab.id]),
+    ]);
+    await Promise.all([...tabIds].map(clearAutoFollowBadge));
+  }
+
+  async function revokeAuthorizedTab(tabId: number): Promise<void> {
+    if (!authorizedTabs.delete(tabId)) return;
+    await persistAuthorizedTabs();
+  }
+
+  async function authorizeTab(tabId: number): Promise<boolean> {
+    const tab = await chrome.tabs.get(tabId);
+    const origin = httpsOrigin(tab.url);
+    if (!origin) {
+      await clearAutoFollowBadge(tabId);
+      return false;
+    }
+    await chrome.scripting.executeScript({
+      files: ['media-playback.js'],
+      target: { allFrames: true, tabId },
+    });
+    authorizedTabs.set(tabId, origin);
+    await persistAuthorizedTabs();
+    await clearAutoFollowBadge(tabId);
+    return true;
+  }
+
+  async function isFocusedActiveTab(tabId: number): Promise<boolean> {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.active === false || tab.windowId === undefined) return false;
+    const window = await chrome.windows.get(tab.windowId);
+    return window.focused !== false;
+  }
 
   async function sidePanelState() {
     const status = controller.status();
@@ -241,9 +315,81 @@ export default defineBackground(() => {
     }).catch(() => undefined);
   }
 
+  async function persistActiveSession(previousTabId?: number): Promise<void> {
+    const snapshot = controller.snapshot();
+    if (!snapshot) {
+      await chrome.storage.session.remove(activeSessionKey);
+      return;
+    }
+    if (previousTabId !== undefined && previousTabId !== snapshot.tabId) {
+      await chrome.sidePanel.setOptions({
+        enabled: false,
+        tabId: previousTabId,
+      }).catch(() => undefined);
+    }
+    await chrome.sidePanel.setOptions({
+      enabled: true,
+      path: 'sidepanel.html',
+      tabId: snapshot.tabId,
+    });
+    await chrome.storage.session.set({
+      [activeSessionKey]: redactSessionSnapshot(snapshot),
+    });
+  }
+
+  async function transferToTab(tabId: number): Promise<boolean> {
+    const source = controller.snapshot();
+    if (!source || source.tabId === tabId || !authorizedTabs.has(tabId)) {
+      return false;
+    }
+    if (!await isFocusedActiveTab(tabId)) return false;
+
+    try {
+      const savedLayout = await getOverlayLayout(tabId);
+      if (savedLayout?.mode === 'native') {
+        await persistOverlayLayout(tabId, {
+          ...savedLayout,
+          mode: 'floating',
+        });
+      }
+      await controller.transfer(tabId);
+      if (controller.snapshot()?.tabId !== tabId) return false;
+      await restoreBrowserFullscreenFallback(source.tabId);
+      await persistActiveSession(source.tabId);
+      await clearAutoFollowBadge(tabId);
+      return true;
+    } catch (error) {
+      const current = controller.status();
+      if (current.state === 'running' && current.tabId === source.tabId) {
+        await revokeAuthorizedTab(tabId);
+        await promptAutoFollowAuthorization(tabId);
+        throw error;
+      }
+
+      try {
+        await controller.start(source.tabId, source.settings);
+        await persistActiveSession(tabId);
+      } catch {
+        await chrome.storage.session.remove(activeSessionKey);
+        await closeOffscreenIfUnused();
+      }
+      throw error;
+    }
+  }
+
   const ready = chrome.storage.local.setAccessLevel({
     accessLevel: 'TRUSTED_CONTEXTS',
   }).then(async () => {
+    const authorized = await chrome.storage.session.get(autoFollowTabsKey);
+    const storedTabs = authorized[autoFollowTabsKey];
+    if (storedTabs && typeof storedTabs === 'object') {
+      for (const [tabId, origin] of Object.entries(storedTabs)) {
+        const parsedTabId = Number(tabId);
+        if (Number.isInteger(parsedTabId) && typeof origin === 'string') {
+          authorizedTabs.set(parsedTabId, origin);
+        }
+      }
+    }
     const stored = await chrome.storage.session.get(activeSessionKey);
     const snapshot = stored[activeSessionKey] as {
       sessionId?: unknown;
@@ -288,6 +434,15 @@ export default defineBackground(() => {
     await restoreBrowserFullscreenFallback();
   });
   void ready.catch(() => undefined);
+  void ready.then(async () => {
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      lastFocusedWindow: true,
+    });
+    if (tab?.id === undefined) return;
+    if (authorizedTabs.has(tab.id)) await clearAutoFollowBadge(tab.id);
+    else await promptAutoFollowAuthorization(tab.id);
+  }).catch(() => undefined);
 
   chrome.runtime.onConnect.addListener((port) => {
     if (
@@ -315,6 +470,7 @@ export default defineBackground(() => {
     'TRANSCRIPT_EVENT',
   ]);
   const popupMessageTypes = new Set([
+    'SESSION_AUTHORIZE_TAB',
     'SESSION_START',
     'SESSION_STATUS',
     'SESSION_STOP',
@@ -341,6 +497,9 @@ export default defineBackground(() => {
     }
     if (popupMessageTypes.has(message.type)) {
       return isExtensionPage(sender, chrome.runtime.id, popupUrl);
+    }
+    if (message.type === 'MEDIA_PLAYING') {
+      return sender.id === chrome.runtime.id && sender.tab?.id !== undefined;
     }
     if (message.type === 'OVERLAY_APPEARANCE_CHANGED') {
       return isTopFrameContentScript(sender, chrome.runtime.id) ||
@@ -411,6 +570,16 @@ export default defineBackground(() => {
               await controller.handleContentReady(sender.tab.id);
             }
             return { ok: true };
+          case 'MEDIA_PLAYING': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined || !authorizedTabs.has(tabId)) {
+              return { error: 'unauthorized_tab', ok: false };
+            }
+            return enqueueLifecycle(async () => ({
+              ok: true,
+              transferred: await transferToTab(tabId),
+            }));
+          }
           case 'CLEAR_CAPTIONS': {
             const tabId = sender.tab?.id;
             if (tabId === undefined) return { error: 'missing_tab', ok: false };
@@ -497,24 +666,22 @@ export default defineBackground(() => {
                   message.payload.tabId,
                   normalizeSettings(message.payload.settings),
                 );
+                if (!authorizedTabs.has(message.payload.tabId)) {
+                  await authorizeTab(message.payload.tabId).catch(() => false);
+                }
               } catch (error) {
                 await chrome.storage.session.remove(activeSessionKey);
                 await closeOffscreenIfUnused();
                 throw error;
               }
-              const snapshot = controller.snapshot();
-              if (snapshot) {
-                await chrome.sidePanel.setOptions({
-                  enabled: true,
-                  path: 'sidepanel.html',
-                  tabId: snapshot.tabId,
-                });
-                await chrome.storage.session.set({
-                  [activeSessionKey]: redactSessionSnapshot(snapshot),
-                });
-              }
+              await persistActiveSession();
               return { ok: true, status: controller.status() };
             });
+          case 'SESSION_AUTHORIZE_TAB':
+            return enqueueLifecycle(async () => ({
+              authorized: await authorizeTab(message.payload.tabId),
+              ok: true,
+            }));
           case 'SESSION_STOP':
             return enqueueLifecycle(async () => {
               const statusBeforeStop = controller.status();
@@ -524,6 +691,7 @@ export default defineBackground(() => {
               await controller.stop();
               const status = controller.status();
               await chrome.storage.session.remove(activeSessionKey);
+              await clearAllAutoFollowBadges();
               await closeOffscreenIfUnused();
               return { ok: true, status };
             });
@@ -555,6 +723,8 @@ export default defineBackground(() => {
   chrome.tabs.onRemoved.addListener((tabId) => {
     void ready
       .then(() => enqueueLifecycle(async () => {
+        await revokeAuthorizedTab(tabId);
+        await clearAutoFollowBadge(tabId);
         const status = controller.status();
         if ('tabId' in status && status.tabId === tabId) {
           await restoreBrowserFullscreenFallback(tabId);
@@ -566,23 +736,79 @@ export default defineBackground(() => {
       .catch(() => undefined);
   });
 
-  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-    if (changeInfo.status !== 'complete') return;
+  chrome.tabs.onActivated.addListener(({ tabId }) => {
     void ready
       .then(() => enqueueLifecycle(async () => {
+        if (!authorizedTabs.has(tabId)) {
+          await promptAutoFollowAuthorization(tabId);
+          return;
+        }
+        await clearAutoFollowBadge(tabId);
         const status = controller.status();
-        if (status.state !== 'running' || status.tabId !== tabId) return;
+        if (status.state !== 'running' || status.tabId === tabId) return;
         try {
-          await ensureTabContentScript(tabId);
-          await controller.handleContentReady(tabId);
+          const tab = await chrome.tabs.get(tabId);
+          const response = await chrome.tabs.sendMessage(tabId, {
+            type: 'MEDIA_PLAYBACK_STATUS',
+          }) as MediaPlaybackResponse | undefined;
+          if (tab.audible || response?.playing) await transferToTab(tabId);
         } catch {
-          // activeTab survives same-origin reloads but is revoked by a
-          // cross-origin navigation. Failing closed also covers restricted
-          // pages where Chrome refuses script injection.
-          await controller.stop();
-          await restoreBrowserFullscreenFallback(tabId);
-          await chrome.storage.session.remove(activeSessionKey);
-          await closeOffscreenIfUnused();
+          // A later play/audible event can retry while the grant remains.
+        }
+      }))
+      .catch(() => undefined);
+  });
+
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (
+      changeInfo.status !== 'complete' &&
+      changeInfo.audible !== true &&
+      changeInfo.url === undefined
+    ) return;
+    void ready
+      .then(() => enqueueLifecycle(async () => {
+        const authorizedOrigin = authorizedTabs.get(tabId);
+        if (authorizedOrigin && changeInfo.url !== undefined) {
+          const nextOrigin = httpsOrigin(changeInfo.url);
+          if (nextOrigin !== authorizedOrigin) {
+            await revokeAuthorizedTab(tabId);
+            await clearAutoFollowBadge(tabId);
+          }
+        }
+
+        if (changeInfo.status === 'complete' && authorizedTabs.has(tabId)) {
+          try {
+            await chrome.scripting.executeScript({
+              files: ['media-playback.js'],
+              target: { allFrames: true, tabId },
+            });
+          } catch {
+            await revokeAuthorizedTab(tabId);
+          }
+        }
+
+        const status = controller.status();
+        if (changeInfo.status === 'complete' && status.state === 'running' &&
+          status.tabId === tabId) {
+          try {
+            await ensureTabContentScript(tabId);
+            await controller.handleContentReady(tabId);
+          } catch {
+            // activeTab survives same-origin reloads but is revoked by a
+            // cross-origin navigation. Failing closed also covers restricted
+            // pages where Chrome refuses script injection.
+            await controller.stop();
+            await restoreBrowserFullscreenFallback(tabId);
+            await chrome.storage.session.remove(activeSessionKey);
+            await closeOffscreenIfUnused();
+          }
+          return;
+        }
+
+        if (changeInfo.audible === true && authorizedTabs.has(tabId)) {
+          await transferToTab(tabId);
+        } else if (changeInfo.audible === true) {
+          await promptAutoFollowAuthorization(tabId);
         }
       }))
       .catch(() => undefined);

@@ -481,6 +481,10 @@
     "message": "Gemini API error",
     "description": "Reason reported when Gemini sends an error frame with no message."
   },
+  "autoFollowAuthorizationHint": {
+    "message": "Open Bilingual Live Captions once to enable automatic captions on this tab",
+    "description": "Toolbar hint shown when an active tab needs one-time authorization for caption auto-follow."
+  },
   "socketClosed": {
     "message": "WebSocket closed ($1)",
     "description": "Reason reported when the socket closes without giving one. $1 is the close code.",

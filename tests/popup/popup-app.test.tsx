@@ -6,6 +6,7 @@ import { DEFAULT_SETTINGS } from '../../src/core/settings';
 
 function createApi(overrides: Partial<PopupApi> = {}): PopupApi {
   return {
+    authorizeCurrentTab: vi.fn().mockResolvedValue(undefined),
     loadSettings: vi.fn().mockResolvedValue(DEFAULT_SETTINGS),
     saveSettings: vi.fn().mockResolvedValue(undefined),
     start: vi.fn().mockResolvedValue({ state: 'running', tabId: 42 }),
@@ -28,6 +29,15 @@ function createDeepgramApi(settings: Record<string, unknown> = {}): PopupApi {
 }
 
 describe('PopupApp', () => {
+  it('authorizes the current tab while loading the popup', async () => {
+    const api = createApi();
+
+    render(<PopupApp api={api} />);
+
+    await screen.findByLabelText('Gemini API Key');
+    expect(api.authorizeCurrentTab).toHaveBeenCalledOnce();
+  });
+
   it('offers no translator we are not actually shipping', async () => {
     render(<PopupApp api={createDeepgramApi()} />);
 

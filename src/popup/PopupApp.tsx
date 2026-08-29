@@ -17,6 +17,7 @@ import {
 } from '../core/settings';
 
 export interface PopupApi {
+  authorizeCurrentTab(): Promise<void>;
   loadSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<void>;
   start(settings: AppSettings): Promise<SessionStatus>;
@@ -35,7 +36,11 @@ export function PopupApp({ api }: { api: PopupApi }) {
   const sessionAttempt = useRef(0);
 
   useEffect(() => {
-    void Promise.all([api.loadSettings(), api.status()]).then(
+    void Promise.all([
+      api.loadSettings(),
+      api.status(),
+      api.authorizeCurrentTab().catch(() => undefined),
+    ]).then(
       ([loadedSettings, loadedStatus]) => {
         setSettings(normalizeSettings(loadedSettings));
         setStatus(loadedStatus);
@@ -137,7 +142,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
             type="button"
             onClick={() => void toggleSession()}
           >
-            <span className="session-status">{t(running ? 'hide' : 'show')}</span>
             <span aria-hidden="true" className="toggle-track">
               <span className="toggle-thumb" />
             </span>

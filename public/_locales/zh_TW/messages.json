@@ -481,6 +481,10 @@
     "message": "Gemini API 錯誤",
     "description": "Reason reported when Gemini sends an error frame with no message."
   },
+  "autoFollowAuthorizationHint": {
+    "message": "開啟一次雙語即時字幕，即可在這個分頁啟用自動字幕",
+    "description": "Toolbar hint shown when an active tab needs one-time authorization for caption auto-follow."
+  },
   "socketClosed": {
     "message": "WebSocket 已關閉 ($1)",
     "description": "Reason reported when the socket closes without giving one. $1 is the close code.",

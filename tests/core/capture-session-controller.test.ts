@@ -134,6 +134,61 @@ describe('CaptureSessionController', () => {
     expect(controller.status()).toEqual({ state: 'running', tabId: 42 });
   });
 
+  it('preflights a transfer before stopping the current tab', async () => {
+    const harness = createHarness();
+    const { controller, dependencies } = harness;
+    await startSession(harness);
+    vi.mocked(dependencies.sendToOffscreen).mockClear();
+    vi.mocked(dependencies.ensureContentScript).mockRejectedValueOnce(
+      new Error('tab access revoked'),
+    );
+
+    await expect(controller.transfer(43)).rejects.toThrow('tab access revoked');
+
+    expect(controller.status()).toEqual({ state: 'running', tabId: 42 });
+    expect(dependencies.sendToOffscreen).not.toHaveBeenCalled();
+    expect(dependencies.sendToTab).not.toHaveBeenCalledWith(42, {
+      type: 'OVERLAY_HIDE',
+    });
+  });
+
+  it('replaces the active capture with a fresh session on an authorized tab', async () => {
+    const harness = createHarness();
+    const { controller, dependencies } = harness;
+    vi.mocked(dependencies.getStreamId).mockImplementation(
+      async (tabId) => `stream-${tabId}`,
+    );
+    await startSession(harness);
+    vi.mocked(dependencies.sendToOffscreen).mockClear();
+    vi.mocked(dependencies.sendToTab).mockClear();
+
+    await controller.transfer(43);
+
+    expect(dependencies.ensureContentScript).toHaveBeenCalledWith(43);
+    expect(dependencies.getStreamId).toHaveBeenLastCalledWith(43);
+    expect(dependencies.sendToOffscreen).toHaveBeenNthCalledWith(1, {
+      target: 'offscreen',
+      type: 'CAPTURE_STOP',
+      payload: { sessionId: expect.any(String) },
+    });
+    expect(dependencies.sendToOffscreen).toHaveBeenNthCalledWith(2, {
+      target: 'offscreen',
+      type: 'CAPTURE_START',
+      payload: expect.objectContaining({
+        sessionId: expect.any(String),
+        streamId: 'stream-43',
+      }),
+    });
+    expect(dependencies.sendToTab).toHaveBeenCalledWith(42, {
+      type: 'OVERLAY_HIDE',
+    });
+    expect(dependencies.sendToTab).toHaveBeenCalledWith(43, {
+      type: 'OVERLAY_SHOW',
+      payload: expect.objectContaining({ placement: 'video-bottom' }),
+    });
+    expect(controller.status()).toEqual({ state: 'running', tabId: 43 });
+  });
+
   it('sends interim original text immediately and translates stable text', async () => {
     const harness = createHarness();
     const { controller, dependencies } = harness;

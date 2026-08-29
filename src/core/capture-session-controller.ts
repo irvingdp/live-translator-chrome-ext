@@ -192,9 +192,41 @@ export class CaptureSessionController {
     return this.enqueueLifecycle(() => this.startInternal(tabId, settings));
   }
 
+  transfer(tabId: number): Promise<void> {
+    return this.enqueueLifecycle(async () => {
+      if (
+        this.currentStatus.state !== 'running' ||
+        this.currentStatus.tabId === tabId ||
+        !this.activeSessionId ||
+        !this.settings
+      ) return;
+
+      const sourceGeneration = this.generation;
+      const sourceSessionId = this.activeSessionId;
+      const settings = this.settings;
+
+      // Prepare everything that can fail because of tab access before
+      // interrupting the session that is still producing captions.
+      await this.dependencies.ensureContentScript(tabId);
+      await this.dependencies.ensureOffscreen();
+      const streamId = await this.dependencies.getStreamId(tabId);
+      if (
+        sourceGeneration !== this.generation ||
+        sourceSessionId !== this.activeSessionId ||
+        this.currentStatus.state !== 'running'
+      ) return;
+
+      await this.startInternal(tabId, settings, {
+        contentReady: true,
+        streamId,
+      });
+    });
+  }
+
   private async startInternal(
     tabId: number,
     settings: SessionSettings,
+    prepared?: { contentReady: boolean; streamId: string },
   ): Promise<void> {
     if (this.currentStatus.state !== 'idle') await this.stopInternal();
     const generation = ++this.generation;
@@ -218,9 +250,12 @@ export class CaptureSessionController {
     try {
       await this.dependencies.ensureOffscreen();
       if (generation !== this.generation) return;
-      const streamId = await this.dependencies.getStreamId(tabId);
+      const streamId = prepared?.streamId ??
+        await this.dependencies.getStreamId(tabId);
       if (generation !== this.generation) return;
-      await this.dependencies.ensureContentScript(tabId);
+      if (!prepared?.contentReady) {
+        await this.dependencies.ensureContentScript(tabId);
+      }
       if (generation !== this.generation) return;
       const payload: CaptureStartRequest =
         settings.transcriber === 'gemini'

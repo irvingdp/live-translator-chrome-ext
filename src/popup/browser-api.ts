@@ -23,6 +23,18 @@ async function control(message: ExtensionMessage): Promise<SessionStatus> {
 }
 
 export const browserPopupApi: PopupApi = {
+  async authorizeCurrentTab() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id === undefined) return;
+    const response = await chrome.runtime.sendMessage({
+      target: 'background',
+      type: 'SESSION_AUTHORIZE_TAB',
+      payload: { tabId: tab.id },
+    } satisfies ExtensionMessage) as SessionResponse;
+    if (!response?.ok) {
+      throw new Error(response?.error ?? t('backgroundNoResponse'));
+    }
+  },
   async loadSettings() {
     const stored = await chrome.storage.local.get('settings');
     return normalizeSettings(

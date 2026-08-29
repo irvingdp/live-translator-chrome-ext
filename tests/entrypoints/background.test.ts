@@ -34,11 +34,15 @@ let onSettingsChanged: (
 ) => void;
 let onRuntimeConnect: (port: chrome.runtime.Port) => void;
 let onRuntimeInstalled: (details: chrome.runtime.InstalledDetails) => void;
+let onTabActivated: (activeInfo: { tabId: number; windowId: number }) => void;
 let onTabRemoved: (tabId: number) => void;
 let onTabUpdated: (
   tabId: number,
-  changeInfo: { status?: string },
+  changeInfo: { audible?: boolean; status?: string; url?: string },
 ) => void;
+let actionSetBadgeBackgroundColor: ReturnType<typeof vi.fn>;
+let actionSetBadgeText: ReturnType<typeof vi.fn>;
+let actionSetTitle: ReturnType<typeof vi.fn>;
 let offscreenExists: boolean;
 let closeDocument: ReturnType<typeof vi.fn>;
 let createDocument: ReturnType<typeof vi.fn>;
@@ -59,6 +63,9 @@ let windowsUpdate: ReturnType<typeof vi.fn>;
 beforeEach(async () => {
   vi.resetModules();
   offscreenExists = false;
+  actionSetBadgeBackgroundColor = vi.fn().mockResolvedValue(undefined);
+  actionSetBadgeText = vi.fn().mockResolvedValue(undefined);
+  actionSetTitle = vi.fn().mockResolvedValue(undefined);
   closeDocument = vi.fn(async () => {
     offscreenExists = false;
   });
@@ -94,6 +101,14 @@ beforeEach(async () => {
   }));
   vi.stubGlobal('defineBackground', (register: () => void) => register());
   vi.stubGlobal('chrome', {
+    action: {
+      setBadgeBackgroundColor: actionSetBadgeBackgroundColor,
+      setBadgeText: actionSetBadgeText,
+      setTitle: actionSetTitle,
+    },
+    i18n: {
+      getMessage: vi.fn((key: string) => key),
+    },
     offscreen: {
       Reason: { USER_MEDIA: 'USER_MEDIA' },
       closeDocument,
@@ -159,15 +174,23 @@ beforeEach(async () => {
     tabs: {
       create: tabsCreate,
       get: vi.fn(async (tabId: number) => ({
+        active: true,
+        audible: false,
         id: tabId,
         url: 'https://example.com/watch',
+        windowId: 7,
       })),
+      onActivated: {
+        addListener: vi.fn((registered: typeof onTabActivated) => {
+          onTabActivated = registered;
+        }),
+      },
       onUpdated: {
         addListener: vi.fn(
           (
             registered: (
               tabId: number,
-              changeInfo: { status?: string },
+              changeInfo: { audible?: boolean; status?: string; url?: string },
             ) => void,
           ) => {
             onTabUpdated = registered;
@@ -179,6 +202,10 @@ beforeEach(async () => {
           onTabRemoved = registered;
         }),
       },
+      query: vi.fn().mockResolvedValue([
+        { id: 42 },
+        { id: 43 },
+      ]),
       sendMessage: tabsSendMessage,
     },
     windows: {
@@ -200,6 +227,15 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('background offscreen document lifecycle', () => {
+  it('prompts for the active tab even before captions are running', async () => {
+    await dispatch({ target: 'background', type: 'SESSION_STATUS' });
+
+    await vi.waitFor(() => expect(actionSetBadgeText).toHaveBeenCalledWith({
+      tabId: 42,
+      text: '!',
+    }));
+  });
+
   it('opens onboarding only after a fresh install', async () => {
     onRuntimeInstalled({ reason: 'install' } as chrome.runtime.InstalledDetails);
     await vi.waitFor(() => expect(tabsCreate).toHaveBeenCalledWith({
@@ -232,6 +268,221 @@ describe('background offscreen document lifecycle', () => {
       files: ['captions.js'],
       target: { tabId: 42 },
     });
+  });
+
+  it('authorizes the popup tab once and installs its playback watcher', async () => {
+    const response = await dispatch({
+      target: 'background',
+      type: 'SESSION_AUTHORIZE_TAB',
+      payload: { tabId: 43 },
+    });
+
+    expect(response).toEqual({ authorized: true, ok: true });
+    expect(executeScript).toHaveBeenCalledWith({
+      files: ['media-playback.js'],
+      target: { allFrames: true, tabId: 43 },
+    });
+    expect(sessionStorageData.autoFollowTabs).toEqual({
+      43: 'https://example.com',
+    });
+    expect(actionSetBadgeText).toHaveBeenCalledWith({ tabId: 43, text: '' });
+  });
+
+  it('prompts once when captions are active on another unauthorized tab', async () => {
+    await startSession();
+
+    onTabActivated({ tabId: 43, windowId: 7 });
+
+    await vi.waitFor(() => expect(actionSetBadgeText).toHaveBeenCalledWith({
+      tabId: 43,
+      text: '!',
+    }));
+    expect(actionSetTitle).toHaveBeenCalledWith({
+      tabId: 43,
+      title: 'autoFollowAuthorizationHint',
+    });
+  });
+
+  it('moves the active session when an authorized tab is already playing', async () => {
+    await dispatch({
+      target: 'background',
+      type: 'SESSION_AUTHORIZE_TAB',
+      payload: { tabId: 43 },
+    });
+    await startSession();
+    tabsSendMessage.mockImplementation(
+      async (_tabId: number, message: { type: string }) => {
+        if (message.type === 'CONTENT_PING') return { ok: true };
+        if (message.type === 'MEDIA_PLAYBACK_STATUS') return { playing: true };
+        return undefined;
+      },
+    );
+
+    onTabActivated({ tabId: 43, windowId: 7 });
+
+    await vi.waitFor(() => expect(sessionStorageData.activeSession).toEqual(
+      expect.objectContaining({ tabId: 43 }),
+    ));
+    expect(runtimeSendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'CAPTURE_STOP' }),
+    );
+    expect(runtimeSendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: 'CAPTURE_START',
+        payload: expect.objectContaining({ streamId: 'stream-id' }),
+      }),
+    );
+    expect(tabsSendMessage).toHaveBeenCalledWith(42, { type: 'OVERLAY_HIDE' });
+    expect(tabsSendMessage).toHaveBeenCalledWith(43, expect.objectContaining({
+      type: 'OVERLAY_SHOW',
+    }));
+    expect(sidePanelSetOptions).toHaveBeenCalledWith({
+      enabled: false,
+      tabId: 42,
+    });
+  });
+
+  it('ignores playback reports from a tab that was not authorized', async () => {
+    await startSession();
+
+    const response = await dispatchFrom(
+      { target: 'background', type: 'MEDIA_PLAYING' },
+      {
+        frameId: 0,
+        id: 'test',
+        tab: { active: true, id: 43, windowId: 7 } as chrome.tabs.Tab,
+      },
+    );
+
+    expect(response).toEqual({ error: 'unauthorized_tab', ok: false });
+    expect(sessionStorageData.activeSession).toEqual(
+      expect.objectContaining({ tabId: 42 }),
+    );
+  });
+
+  it('moves captions when an authorized active tab reports video playback', async () => {
+    await dispatch({
+      target: 'background',
+      type: 'SESSION_AUTHORIZE_TAB',
+      payload: { tabId: 43 },
+    });
+    await startSession();
+
+    const response = await dispatchFrom(
+      { target: 'background', type: 'MEDIA_PLAYING' },
+      {
+        frameId: 0,
+        id: 'test',
+        tab: { active: true, id: 43, windowId: 7 } as chrome.tabs.Tab,
+      },
+    );
+
+    expect(response).toEqual({ ok: true, transferred: true });
+    expect(sessionStorageData.activeSession).toEqual(
+      expect.objectContaining({ tabId: 43 }),
+    );
+  });
+
+  it('keeps the old session when a target tab loses capture access', async () => {
+    await dispatch({
+      target: 'background',
+      type: 'SESSION_AUTHORIZE_TAB',
+      payload: { tabId: 43 },
+    });
+    await startSession();
+    tabsSendMessage.mockRejectedValue(new Error('receiver unavailable'));
+
+    const response = await dispatchFrom(
+      { target: 'background', type: 'MEDIA_PLAYING' },
+      {
+        frameId: 0,
+        id: 'test',
+        tab: { active: true, id: 43, windowId: 7 } as chrome.tabs.Tab,
+      },
+    );
+
+    expect(response).toMatchObject({
+      error: 'content_script_unavailable',
+      ok: false,
+      status: { state: 'running', tabId: 42 },
+    });
+    expect(sessionStorageData.activeSession).toEqual(
+      expect.objectContaining({ tabId: 42 }),
+    );
+    expect(sessionStorageData.autoFollowTabs).toEqual({
+      42: 'https://example.com',
+    });
+    expect(actionSetBadgeText).toHaveBeenCalledWith({ tabId: 43, text: '!' });
+  });
+
+  it('restores the old tab when the replacement provider session fails', async () => {
+    await dispatch({
+      target: 'background',
+      type: 'SESSION_AUTHORIZE_TAB',
+      payload: { tabId: 43 },
+    });
+    await startSession();
+    let rejectNextStart = true;
+    runtimeSendMessage.mockImplementation(async (message: ExtensionMessage) => {
+      if (message.target !== 'offscreen') return undefined;
+      if (message.type === 'CAPTURE_START' && rejectNextStart) {
+        rejectNextStart = false;
+        throw new Error('provider unavailable');
+      }
+      return { ok: true };
+    });
+
+    const response = await dispatchFrom(
+      { target: 'background', type: 'MEDIA_PLAYING' },
+      {
+        frameId: 0,
+        id: 'test',
+        tab: { active: true, id: 43, windowId: 7 } as chrome.tabs.Tab,
+      },
+    );
+
+    expect(response).toMatchObject({
+      error: 'provider unavailable',
+      ok: false,
+      status: { state: 'running', tabId: 42 },
+    });
+    expect(sessionStorageData.activeSession).toEqual(
+      expect.objectContaining({ tabId: 42 }),
+    );
+  });
+
+  it('does not restart captions from playback after a manual stop', async () => {
+    await dispatch({
+      target: 'background',
+      type: 'SESSION_AUTHORIZE_TAB',
+      payload: { tabId: 43 },
+    });
+    await startSession();
+    await dispatch({ target: 'background', type: 'SESSION_STOP' });
+
+    const response = await dispatchFrom(
+      { target: 'background', type: 'MEDIA_PLAYING' },
+      {
+        frameId: 0,
+        id: 'test',
+        tab: { active: true, id: 43, windowId: 7 } as chrome.tabs.Tab,
+      },
+    );
+
+    expect(response).toEqual({ ok: true, transferred: false });
+    expect(sessionStorageData.activeSession).toBeUndefined();
+  });
+
+  it('revokes automatic follow after a cross-origin navigation', async () => {
+    await dispatch({
+      target: 'background',
+      type: 'SESSION_AUTHORIZE_TAB',
+      payload: { tabId: 43 },
+    });
+
+    onTabUpdated(43, { url: 'https://other.example/watch' });
+
+    await vi.waitFor(() => expect(sessionStorageData.autoFollowTabs).toEqual({}));
   });
 
   it('awaits CAPTURE_STOP before closing the document on normal stop', async () => {

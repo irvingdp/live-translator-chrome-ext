@@ -42,6 +42,7 @@ export type ExtensionMessage =
   | { target: 'background'; type: 'CAPTURE_KEEPALIVE'; payload: { sessionId: string } }
   | { target: 'background'; type: 'CONTENT_READY' }
   | { target: 'background'; type: 'CLEAR_CAPTIONS' }
+  | { target: 'background'; type: 'MEDIA_PLAYING' }
   | {
       target: 'background';
       type: 'BROWSER_FULLSCREEN_FALLBACK';
@@ -67,6 +68,11 @@ export type ExtensionMessage =
       target: 'background';
       type: 'SESSION_START';
       payload: { settings: AppSettings; tabId: number };
+    }
+  | {
+      target: 'background';
+      type: 'SESSION_AUTHORIZE_TAB';
+      payload: { tabId: number };
     }
   | { target: 'background'; type: 'SESSION_STOP' }
   | { target: 'background'; type: 'SESSION_STATUS' };

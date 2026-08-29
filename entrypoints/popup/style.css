@@ -27,7 +27,6 @@ h2 { font-size: 13px; margin: 0 0 10px; color: #dbeafe; }
 .session-toggle { align-items: center; background: transparent; border: 0; color: var(--muted); display: flex; gap: 7px; padding: 3px 0; white-space: nowrap; }
 .session-toggle:hover:not(:disabled) .toggle-track { border-color: #5eead4; }
 .session-toggle:disabled { cursor: wait; opacity: .65; }
-.session-status { font-size: 12px; }
 .session-toggle-running, .session-toggle-starting { color: #99f6e4; }
 .session-toggle-error { color: #fecaca; }
 .toggle-track { background: #334155; border: 1px solid #64748b; border-radius: 999px; display: inline-flex; height: 22px; padding: 2px; transition: background 160ms ease-out, border-color 160ms ease-out; width: 38px; }
