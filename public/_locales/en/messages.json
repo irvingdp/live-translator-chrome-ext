@@ -86,6 +86,94 @@
       "domain": { "content": "$1", "example": "aistudio.google.com" }
     }
   },
+  "geminiGuideLink": {
+    "message": "How to create a Gemini API key",
+    "description": "Link from the popup to the first-use Gemini API key guide."
+  },
+  "onboardingPageTitle": {
+    "message": "Create a Gemini API key | Bilingual Live Captions",
+    "description": "Browser tab title for the Gemini onboarding guide."
+  },
+  "onboardingEyebrow": {
+    "message": "FIRST-TIME SETUP",
+    "description": "Small heading above the onboarding title."
+  },
+  "onboardingTitle": {
+    "message": "Create your Gemini API key",
+    "description": "Main heading of the onboarding guide."
+  },
+  "onboardingSubtitle": {
+    "message": "Follow these four steps in Google AI Studio, then paste the key into Bilingual Live Captions.",
+    "description": "Introductory copy for the onboarding guide."
+  },
+  "onboardingOpenAiStudio": {
+    "message": "Open Google AI Studio",
+    "description": "Button that opens the Google AI Studio API Keys page."
+  },
+  "onboardingStepSignInTitle": {
+    "message": "Sign in to Google AI Studio",
+    "description": "Onboarding step one heading."
+  },
+  "onboardingStepSignInBody": {
+    "message": "Open the API Keys page and sign in with your Google Account. If Google shows its terms, review and accept them before continuing.",
+    "description": "Onboarding step one instructions."
+  },
+  "onboardingStepCreateTitle": {
+    "message": "Use an existing key or create one",
+    "description": "Onboarding step two heading."
+  },
+  "onboardingStepCreateBody": {
+    "message": "New users may already have a project and key. If a key is listed, you can skip to step 4. Otherwise, select Create API key.",
+    "description": "Onboarding step two instructions."
+  },
+  "onboardingStepProjectTitle": {
+    "message": "Name the key and choose a project",
+    "description": "Onboarding step three heading."
+  },
+  "onboardingStepProjectBody": {
+    "message": "Name it “Bilingual Live Captions”, choose an imported project, and select Create key. If no project is available, use Import projects first.",
+    "description": "Onboarding step three instructions."
+  },
+  "onboardingStepCopyTitle": {
+    "message": "Copy the key and set it in the extension",
+    "description": "Onboarding step four heading."
+  },
+  "onboardingStepCopyBody": {
+    "message": "Select the Copy icon beside the key. Open the extension popup, paste it into Gemini API Key, then select Set.",
+    "description": "Onboarding step four instructions."
+  },
+  "onboardingCreateButtonAlt": {
+    "message": "Google AI Studio API Keys page with the Create API key button highlighted.",
+    "description": "Alternative text for the create-button screenshot."
+  },
+  "onboardingCreateDialogAlt": {
+    "message": "Create a new key dialog with the key name, project, and Create key button highlighted.",
+    "description": "Alternative text for the create-dialog screenshot."
+  },
+  "onboardingCopyKeyAlt": {
+    "message": "Google AI Studio key list with the Copy icon highlighted.",
+    "description": "Alternative text for the copy-key screenshot."
+  },
+  "onboardingNotesLabel": {
+    "message": "Important API key notes",
+    "description": "Accessible label for the onboarding notes section."
+  },
+  "onboardingSecurityTitle": {
+    "message": "Keep your key private",
+    "description": "Onboarding security note heading."
+  },
+  "onboardingSecurityBody": {
+    "message": "Never share or post your API key. If it is exposed, delete it in AI Studio and create a replacement. The extension keeps it in local Chrome storage on this device.",
+    "description": "Onboarding security guidance."
+  },
+  "onboardingBillingTitle": {
+    "message": "Billing is optional to start",
+    "description": "Onboarding billing note heading."
+  },
+  "onboardingBillingBody": {
+    "message": "AI Studio offers a limited free tier. You only need Set up billing if you choose paid usage or need higher limits.",
+    "description": "Onboarding billing guidance."
+  },
 
   "languageHeading": {
     "message": "Languages",

@@ -33,6 +33,7 @@ let onSettingsChanged: (
   area: string,
 ) => void;
 let onRuntimeConnect: (port: chrome.runtime.Port) => void;
+let onRuntimeInstalled: (details: chrome.runtime.InstalledDetails) => void;
 let onTabRemoved: (tabId: number) => void;
 let onTabUpdated: (
   tabId: number,
@@ -51,6 +52,7 @@ let setLocalAccessLevel: ReturnType<typeof vi.fn>;
 let sidePanelOpen: ReturnType<typeof vi.fn>;
 let sidePanelSetOptions: ReturnType<typeof vi.fn>;
 let tabsSendMessage: ReturnType<typeof vi.fn>;
+let tabsCreate: ReturnType<typeof vi.fn>;
 let windowsGet: ReturnType<typeof vi.fn>;
 let windowsUpdate: ReturnType<typeof vi.fn>;
 
@@ -81,6 +83,7 @@ beforeEach(async () => {
     async (_tabId: number, message: { type: string }) =>
       message.type === 'CONTENT_PING' ? { ok: true } : undefined,
   );
+  tabsCreate = vi.fn().mockResolvedValue({ id: 99 });
   windowsGet = vi.fn(async (windowId: number) => ({
     id: windowId,
     state: 'maximized',
@@ -108,6 +111,11 @@ beforeEach(async () => {
       onConnect: {
         addListener: vi.fn((registered: (port: chrome.runtime.Port) => void) => {
           onRuntimeConnect = registered;
+        }),
+      },
+      onInstalled: {
+        addListener: vi.fn((registered: typeof onRuntimeInstalled) => {
+          onRuntimeInstalled = registered;
         }),
       },
       sendMessage: runtimeSendMessage,
@@ -149,6 +157,7 @@ beforeEach(async () => {
       setOptions: sidePanelSetOptions,
     },
     tabs: {
+      create: tabsCreate,
       get: vi.fn(async (tabId: number) => ({
         id: tabId,
         url: 'https://example.com/watch',
@@ -191,6 +200,18 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('background offscreen document lifecycle', () => {
+  it('opens onboarding only after a fresh install', async () => {
+    onRuntimeInstalled({ reason: 'install' } as chrome.runtime.InstalledDetails);
+    await vi.waitFor(() => expect(tabsCreate).toHaveBeenCalledWith({
+      url: 'chrome-extension://test/onboarding.html',
+    }));
+
+    tabsCreate.mockClear();
+    onRuntimeInstalled({ reason: 'update' } as chrome.runtime.InstalledDetails);
+    await Promise.resolve();
+    expect(tabsCreate).not.toHaveBeenCalled();
+  });
+
   it('restricts local storage before accepting session control', async () => {
     await dispatch({ target: 'background', type: 'SESSION_STATUS' });
 

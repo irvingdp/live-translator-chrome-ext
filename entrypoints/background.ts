@@ -23,12 +23,17 @@ export default defineBackground(() => {
   const browserFullscreenFallbackKey = 'browserFullscreenFallback';
   let lifecycleTail: Promise<void> = Promise.resolve();
   const offscreenUrl = chrome.runtime.getURL('offscreen.html');
+  const onboardingUrl = chrome.runtime.getURL('onboarding.html');
   const popupUrl = chrome.runtime.getURL('popup.html');
   const sidePanelUrl = chrome.runtime.getURL('sidepanel.html');
   const sidePanelPorts = new Set<chrome.runtime.Port>();
   const translateOffscreen = createOffscreenTranslationTransport(
     (message) => chrome.runtime.sendMessage(message),
   );
+  chrome.runtime.onInstalled.addListener(({ reason }) => {
+    if (reason !== 'install') return;
+    void chrome.tabs.create({ url: onboardingUrl }).catch(() => undefined);
+  });
   const sendToOffscreen = async (message: ExtensionMessage) => {
     const response = await chrome.runtime.sendMessage(message) as {
       error?: string;

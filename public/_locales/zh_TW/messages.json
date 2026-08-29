@@ -86,6 +86,94 @@
       "domain": { "content": "$1", "example": "aistudio.google.com" }
     }
   },
+  "geminiGuideLink": {
+    "message": "如何建立 Gemini API Key？",
+    "description": "Link from the popup to the first-use Gemini API key guide."
+  },
+  "onboardingPageTitle": {
+    "message": "建立 Gemini API Key｜雙語即時字幕翻譯",
+    "description": "Browser tab title for the Gemini onboarding guide."
+  },
+  "onboardingEyebrow": {
+    "message": "初次使用設定",
+    "description": "Small heading above the onboarding title."
+  },
+  "onboardingTitle": {
+    "message": "建立你的 Gemini API Key",
+    "description": "Main heading of the onboarding guide."
+  },
+  "onboardingSubtitle": {
+    "message": "按照以下四個步驟在 Google AI Studio 建立 Key，再貼回雙語即時字幕翻譯。",
+    "description": "Introductory copy for the onboarding guide."
+  },
+  "onboardingOpenAiStudio": {
+    "message": "開啟 Google AI Studio",
+    "description": "Button that opens the Google AI Studio API Keys page."
+  },
+  "onboardingStepSignInTitle": {
+    "message": "登入 Google AI Studio",
+    "description": "Onboarding step one heading."
+  },
+  "onboardingStepSignInBody": {
+    "message": "開啟 API Keys 頁面並登入 Google 帳號。若 Google 顯示服務條款，請閱讀並同意後繼續。",
+    "description": "Onboarding step one instructions."
+  },
+  "onboardingStepCreateTitle": {
+    "message": "使用現有 Key 或建立新 Key",
+    "description": "Onboarding step two heading."
+  },
+  "onboardingStepCreateBody": {
+    "message": "新使用者可能已有系統自動建立的 project 與 Key；若列表中已有 Key，可直接跳到步驟 4。否則請按 Create API key。",
+    "description": "Onboarding step two instructions."
+  },
+  "onboardingStepProjectTitle": {
+    "message": "命名 Key 並選擇 project",
+    "description": "Onboarding step three heading."
+  },
+  "onboardingStepProjectBody": {
+    "message": "名稱輸入「Bilingual Live Captions」，選擇已匯入的 project，再按 Create key。若沒有可選項目，請先使用 Import projects。",
+    "description": "Onboarding step three instructions."
+  },
+  "onboardingStepCopyTitle": {
+    "message": "複製 Key 並回到擴充功能設定",
+    "description": "Onboarding step four heading."
+  },
+  "onboardingStepCopyBody": {
+    "message": "按 Key 右側的 Copy icon，開啟擴充功能 Popup，貼到 Gemini API Key 欄位，再按「設定」。",
+    "description": "Onboarding step four instructions."
+  },
+  "onboardingCreateButtonAlt": {
+    "message": "Google AI Studio API Keys 頁面，Create API key 按鈕已標示。",
+    "description": "Alternative text for the create-button screenshot."
+  },
+  "onboardingCreateDialogAlt": {
+    "message": "建立新 Key 對話框，Key 名稱、project 與 Create key 按鈕清楚可見。",
+    "description": "Alternative text for the create-dialog screenshot."
+  },
+  "onboardingCopyKeyAlt": {
+    "message": "Google AI Studio Key 列表，Copy icon 已標示。",
+    "description": "Alternative text for the copy-key screenshot."
+  },
+  "onboardingNotesLabel": {
+    "message": "API Key 重要提醒",
+    "description": "Accessible label for the onboarding notes section."
+  },
+  "onboardingSecurityTitle": {
+    "message": "妥善保管你的 Key",
+    "description": "Onboarding security note heading."
+  },
+  "onboardingSecurityBody": {
+    "message": "請勿分享或公開 API Key。若 Key 外洩，請立即到 AI Studio 刪除並建立新的 Key。擴充功能只會將 Key 保存在這台裝置的 Chrome 本機儲存空間。",
+    "description": "Onboarding security guidance."
+  },
+  "onboardingBillingTitle": {
+    "message": "開始使用不必設定付費",
+    "description": "Onboarding billing note heading."
+  },
+  "onboardingBillingBody": {
+    "message": "AI Studio 提供有用量限制的免費方案；只有選擇付費用量或需要更高額度時，才需要使用 Set up billing。",
+    "description": "Onboarding billing guidance."
+  },
 
   "languageHeading": {
     "message": "語言",

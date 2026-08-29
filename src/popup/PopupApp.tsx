@@ -148,11 +148,10 @@ export function PopupApp({ api }: { api: PopupApi }) {
                 <>
                   {message}
                   <a
-                    href="https://aistudio.google.com/api-keys"
-                    rel="noreferrer"
+                    href="onboarding.html"
                     target="_blank"
                   >
-                    aistudio.google.com
+                    {t('geminiGuideLink')}
                   </a>
                 </>
               ) : message || t(statusMessageKey(status))}
@@ -175,7 +174,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
           <option value="gemini">Gemini live translate 3.5</option>
           <option value="deepgram">Deepgram Nova-3</option>
         </select>
-        <ProviderLink provider={transcriber} />
+        {isGemini ? <GeminiGuideLink /> : <ProviderLink provider={transcriber} />}
 
         {isGemini && (
           <ConfigurableSecretField
@@ -415,11 +414,15 @@ function statusMessageKey(status: SessionStatus): MessageKey {
 const PROVIDER_SIGNUP: Record<string, { href: string; label: string }> = {
   deepgram: { href: 'https://console.deepgram.com/', label: 'console.deepgram.com' },
   deepl: { href: 'https://www.deepl.com/', label: 'www.deepl.com' },
-  gemini: {
-    href: 'https://aistudio.google.com/api-keys',
-    label: 'aistudio.google.com/api-keys',
-  },
 };
+
+function GeminiGuideLink() {
+  return (
+    <a className="provider-link" href="onboarding.html" target="_blank">
+      {t('geminiGuideLink')}
+    </a>
+  );
+}
 
 function ProviderLink({ provider }: { provider: string }) {
   const signup = PROVIDER_SIGNUP[provider];
@@ -452,7 +455,7 @@ function ConfigurableSecretField({
   value: string;
 }) {
   const [draft, setDraft] = useState(value);
-  const configured = Boolean(draft.trim());
+  const [configured, setConfigured] = useState(Boolean(value.trim()));
 
   return (
     <div className="field">
@@ -463,7 +466,10 @@ function ConfigurableSecretField({
           id={id}
           type={revealed ? 'text' : 'password'}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setConfigured(false);
+            }}
         />
         <button
           aria-label={t(revealed ? 'hideSecret' : 'showSecret', label)}
@@ -483,7 +489,10 @@ function ConfigurableSecretField({
           className="secret-submit"
           disabled={!draft.trim()}
           type="button"
-          onClick={() => onSave(draft.trim())}
+            onClick={() => {
+              onSave(draft.trim());
+              setConfigured(true);
+            }}
         >
           {t('setApiKey')}
         </button>

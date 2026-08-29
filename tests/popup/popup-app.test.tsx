@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PopupApp, type PopupApi } from '../../src/popup/PopupApp';
@@ -128,6 +128,8 @@ describe('PopupApp', () => {
 
     fireEvent.change(key, { target: { value: 'gm-new' } });
     expect(api.saveSettings).not.toHaveBeenCalled();
+    expect(screen.getByText('API Key 尚未設定')).toBeVisible();
+    expect(screen.queryByText('API Key 已設定')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '顯示 Gemini API Key' }));
     expect(key).toHaveAttribute('type', 'text');
@@ -147,12 +149,17 @@ describe('PopupApp', () => {
 
     fireEvent.click(screen.getByRole('switch', { name: '開始即時字幕' }));
 
-    expect(
-      await screen.findByText(/請先輸入 Gemini API Key，前往申請:/),
-    ).toBeVisible();
-    expect(screen.getByRole('link', { name: 'aistudio.google.com' })).toHaveAttribute(
+    const missingKeyMessage = await screen.findByText(
+      /請先輸入 Gemini API Key，前往申請:/,
+    );
+    expect(missingKeyMessage).toBeVisible();
+    const guidance = missingKeyMessage.closest<HTMLElement>('[role="status"]');
+    expect(guidance).not.toBeNull();
+    expect(within(guidance!).getByRole('link', {
+      name: '如何建立 Gemini API Key？',
+    })).toHaveAttribute(
       'href',
-      'https://aistudio.google.com/api-keys',
+      'onboarding.html',
     );
     expect(api.start).not.toHaveBeenCalled();
   });
@@ -160,7 +167,7 @@ describe('PopupApp', () => {
   it('blocks startup with guidance when an API Key is missing', async () => {
     const api = createDeepgramApi();
     render(<PopupApp api={api} />);
-    await screen.findByText('API Key 尚未設定');
+    expect(await screen.findAllByText('API Key 尚未設定')).toHaveLength(2);
 
     fireEvent.click(screen.getByRole('switch', { name: '開始即時字幕' }));
 
@@ -382,8 +389,8 @@ describe('PopupApp', () => {
     );
     expect(screen.queryByLabelText('翻譯')).not.toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /aistudio\.google\.com/ }),
-    ).toHaveAttribute('href', 'https://aistudio.google.com/');
+      screen.getByRole('link', { name: '如何建立 Gemini API Key？' }),
+    ).toHaveAttribute('href', 'onboarding.html');
     // Gemini pairs complete semantic sentences; visual wrapping must not
     // create different source and target row counts.
     expect(screen.queryByLabelText('每行長度上限')).not.toBeInTheDocument();
