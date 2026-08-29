@@ -242,6 +242,12 @@ describe('CaptionOverlay', () => {
       'aria-label',
       '在側邊面板顯示字幕',
     );
+    expect([
+      ...shadow()!.querySelectorAll('.toolbar-actions .toolbar-button'),
+    ].slice(-2).map((button) => button.className)).toEqual([
+      'toolbar-button clear-button',
+      'toolbar-button side-panel-button',
+    ]);
   });
 
   it('makes the caption background transparent at zero opacity without a border', () => {

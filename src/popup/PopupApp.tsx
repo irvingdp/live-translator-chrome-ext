@@ -31,7 +31,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
   const [message, setMessage] = useState('');
   const [translator, setTranslator] = useState('deepl');
   const [revealedSecret, setRevealedSecret] = useState<string>();
-  const [editingSecrets, setEditingSecrets] = useState<Record<string, boolean>>({});
   const saveTail = useRef<Promise<void>>(Promise.resolve());
   const sessionAttempt = useRef(0);
 
@@ -121,8 +120,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
   const running = status.state === 'running' || status.state === 'starting';
   const transcriber = settings.transcriber;
   const isGemini = transcriber === 'gemini';
-  const keysConfigured =
-    Object.keys(validateSettingsForStart(settings)).length === 0;
   return (
     <main className="popup">
       <header className="header">
@@ -130,20 +127,38 @@ export function PopupApp({ api }: { api: PopupApi }) {
           <p className="eyebrow">LIVE CAPTIONS</p>
           <h1>{t('extName')}</h1>
         </div>
-        <button
-          aria-checked={running}
-          aria-label={t(busy ? 'working' : running ? 'stopCaptions' : 'startCaptions')}
-          className={`session-toggle session-toggle-${'error' in status && status.error ? 'error' : status.state}`}
-          disabled={busy}
-          role="switch"
-          type="button"
-          onClick={() => void toggleSession()}
-        >
-          <span className="session-status">{t(statusMessageKey(status))}</span>
-          <span aria-hidden="true" className="toggle-track">
-            <span className="toggle-thumb" />
-          </span>
-        </button>
+        <div className="session-control">
+          <button
+            aria-checked={running}
+            aria-label={t(busy ? 'working' : running ? 'stopCaptions' : 'startCaptions')}
+            className={`session-toggle session-toggle-${'error' in status && status.error ? 'error' : status.state}`}
+            disabled={busy}
+            role="switch"
+            type="button"
+            onClick={() => void toggleSession()}
+          >
+            <span className="session-status">{t(running ? 'hide' : 'show')}</span>
+            <span aria-hidden="true" className="toggle-track">
+              <span className="toggle-thumb" />
+            </span>
+          </button>
+          {(message || ('error' in status && status.error)) && (
+            <p className="toggle-error" role="status">
+              {message === t('needGeminiKey') ? (
+                <>
+                  {message}
+                  <a
+                    href="https://aistudio.google.com/api-keys"
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    aistudio.google.com
+                  </a>
+                </>
+              ) : message || t(statusMessageKey(status))}
+            </p>
+          )}
+        </div>
       </header>
 
       <section className="card" aria-labelledby="provider-heading">
@@ -164,17 +179,11 @@ export function PopupApp({ api }: { api: PopupApi }) {
 
         {isGemini && (
           <ConfigurableSecretField
-            editing={Boolean(editingSecrets['gemini-key'])}
             id="gemini-key"
             label="Gemini API Key"
-            onChange={(geminiApiKey) => {
-              setEditingSecrets((current) => ({ ...current, 'gemini-key': true }));
+            onSave={(geminiApiKey) => {
               update('geminiApiKey', geminiApiKey);
             }}
-            onEdit={() => setEditingSecrets((current) => ({
-              ...current,
-              'gemini-key': true,
-            }))}
             onToggle={() => setRevealedSecret((current) =>
               current === 'gemini-key' ? undefined : 'gemini-key'
             )}
@@ -198,20 +207,11 @@ export function PopupApp({ api }: { api: PopupApi }) {
             </select>
             <ProviderLink provider={translator} />
             <ConfigurableSecretField
-              editing={Boolean(editingSecrets['deepgram-key'])}
               id="deepgram-key"
               label="Deepgram API Key"
-              onChange={(deepgramApiKey) => {
-                setEditingSecrets((current) => ({
-                  ...current,
-                  'deepgram-key': true,
-                }));
-                update('deepgramApiKey', deepgramApiKey)
+              onSave={(deepgramApiKey) => {
+                update('deepgramApiKey', deepgramApiKey);
               }}
-              onEdit={() => setEditingSecrets((current) => ({
-                ...current,
-                'deepgram-key': true,
-              }))}
               onToggle={() => setRevealedSecret((current) =>
                 current === 'deepgram-key' ? undefined : 'deepgram-key'
               )}
@@ -219,20 +219,11 @@ export function PopupApp({ api }: { api: PopupApi }) {
               value={settings.deepgramApiKey}
             />
             <ConfigurableSecretField
-              editing={Boolean(editingSecrets['deepl-key'])}
               id="deepl-key"
               label="DeepL API Key"
-              onChange={(deeplApiKey) => {
-                setEditingSecrets((current) => ({
-                  ...current,
-                  'deepl-key': true,
-                }));
+              onSave={(deeplApiKey) => {
                 update('deeplApiKey', deeplApiKey);
               }}
-              onEdit={() => setEditingSecrets((current) => ({
-                ...current,
-                'deepl-key': true,
-              }))}
               onToggle={() => setRevealedSecret((current) =>
                 current === 'deepl-key' ? undefined : 'deepl-key'
               )}
@@ -241,11 +232,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
             />
           </>
         )}
-        <div className="provider-summary">
-          <p className={`provider-state ${keysConfigured ? 'configured' : ''}`}>
-            {t(keysConfigured ? 'keysConfigured' : 'keysMissing')}
-          </p>
-        </div>
       </section>
 
       <section className="card grid" aria-labelledby="language-heading">
@@ -314,9 +300,9 @@ export function PopupApp({ api }: { api: PopupApi }) {
         </div>
       </section>
 
-      {message && <p className="feedback" role="status">{message}</p>}
-
-      <section className="card" aria-labelledby="size-heading">
+      <details className="more-settings">
+        <summary>{t('showMoreSettings')}</summary>
+        <section className="card" aria-labelledby="size-heading">
         <h2 id="size-heading">{t('sizeHeading')}</h2>
         <RangeField
           id="original-size"
@@ -362,9 +348,9 @@ export function PopupApp({ api }: { api: PopupApi }) {
         >
           {t('resetTextColors')}
         </button>
-      </section>
+        </section>
 
-      <section className="card" aria-labelledby="layout-heading">
+        <section className="card" aria-labelledby="layout-heading">
         <h2 id="layout-heading">{t('layoutHeading')}</h2>
         {!isGemini && (
           <>
@@ -406,12 +392,8 @@ export function PopupApp({ api }: { api: PopupApi }) {
           value={settings.backgroundOpacity}
           onChange={(value) => update('backgroundOpacity', value)}
         />
-      </section>
-
-      <p className="privacy">
-        {t(isGemini ? 'privacyGemini' : 'privacyDeepgram')}{' '}
-        {t('keyStorageNote')}
-      </p>
+        </section>
+      </details>
     </main>
   );
 }
@@ -433,7 +415,10 @@ function statusMessageKey(status: SessionStatus): MessageKey {
 const PROVIDER_SIGNUP: Record<string, { href: string; label: string }> = {
   deepgram: { href: 'https://console.deepgram.com/', label: 'console.deepgram.com' },
   deepl: { href: 'https://www.deepl.com/', label: 'www.deepl.com' },
-  gemini: { href: 'https://aistudio.google.com/', label: 'aistudio.google.com' },
+  gemini: {
+    href: 'https://aistudio.google.com/api-keys',
+    label: 'aistudio.google.com/api-keys',
+  },
 };
 
 function ProviderLink({ provider }: { provider: string }) {
@@ -452,39 +437,23 @@ function ProviderLink({ provider }: { provider: string }) {
 }
 
 function ConfigurableSecretField({
-  editing,
   id,
   label,
-  onChange,
-  onEdit,
+  onSave,
   onToggle,
   revealed,
   value,
 }: {
-  editing: boolean;
   id: string;
   label: string;
-  onChange(value: string): void;
-  onEdit(): void;
+  onSave(value: string): void;
   onToggle(): void;
   revealed: boolean;
   value: string;
 }) {
-  if (value.trim() && !editing) {
-    return (
-      <div className="configured-secret">
-        <span>{label}</span>
-        <button
-          aria-label={`${t('resetApiKey')} ${label}`}
-          className="link-button"
-          type="button"
-          onClick={onEdit}
-        >
-          {t('resetApiKey')}
-        </button>
-      </div>
-    );
-  }
+  const [draft, setDraft] = useState(value);
+  const configured = Boolean(draft.trim());
+
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
@@ -493,18 +462,52 @@ function ConfigurableSecretField({
           autoComplete="off"
           id={id}
           type={revealed ? 'text' : 'password'}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
         />
         <button
           aria-label={t(revealed ? 'hideSecret' : 'showSecret', label)}
+          className="secret-toggle"
           type="button"
           onClick={onToggle}
         >
-          {t(revealed ? 'hide' : 'show')}
+          {revealed ? <EyeOffIcon /> : <EyeIcon />}
+        </button>
+      </div>
+      <div className="secret-actions">
+        <p className={`provider-state ${configured ? 'configured' : ''}`}>
+          {t(configured ? 'keysConfigured' : 'keysMissing')}
+        </p>
+        <button
+          aria-label={`${t('setApiKey')} ${label}`}
+          className="secret-submit"
+          disabled={!draft.trim()}
+          type="button"
+          onClick={() => onSave(draft.trim())}
+        >
+          {t('setApiKey')}
         </button>
       </div>
     </div>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+      <circle cx="12" cy="12" r="2.75" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="m3 3 18 18" />
+      <path d="M10.6 6.1A10.7 10.7 0 0 1 12 6c6 0 9.5 6 9.5 6a18.7 18.7 0 0 1-2.1 2.8M6.2 6.2A17.2 17.2 0 0 0 2.5 12s3.5 6 9.5 6c1.5 0 2.8-.4 4-1" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </svg>
   );
 }
 

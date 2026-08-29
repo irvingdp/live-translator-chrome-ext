@@ -316,6 +316,7 @@ export default defineBackground(() => {
   ]);
   const contentMessageTypes = new Set([
     'BROWSER_FULLSCREEN_FALLBACK',
+    'CLEAR_CAPTIONS',
     'CONTENT_READY',
     'OPEN_SIDE_PANEL',
     'OVERLAY_APPEARANCE_CHANGED',
@@ -405,6 +406,12 @@ export default defineBackground(() => {
               await controller.handleContentReady(sender.tab.id);
             }
             return { ok: true };
+          case 'CLEAR_CAPTIONS': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            const cleared = await controller.clearCaptions(tabId);
+            return cleared ? { ok: true } : { error: 'inactive_tab', ok: false };
+          }
           case 'BROWSER_FULLSCREEN_FALLBACK': {
             const tabId = sender.tab?.id;
             const windowId = sender.tab?.windowId;

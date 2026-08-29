@@ -41,6 +41,7 @@ export type ExtensionMessage =
     }
   | { target: 'background'; type: 'CAPTURE_KEEPALIVE'; payload: { sessionId: string } }
   | { target: 'background'; type: 'CONTENT_READY' }
+  | { target: 'background'; type: 'CLEAR_CAPTIONS' }
   | {
       target: 'background';
       type: 'BROWSER_FULLSCREEN_FALLBACK';

@@ -150,6 +150,14 @@
     "message": "Caption layout",
     "description": "Heading of the layout section in the popup."
   },
+  "showMoreSettings": {
+    "message": "Show more settings",
+    "description": "Summary that reveals the caption style and layout settings in the popup."
+  },
+  "clearCaptions": {
+    "message": "Clear captions",
+    "description": "Accessible label for the button that clears the current caption window."
+  },
   "maxLineWidthLabel": {
     "message": "Max line length",
     "description": "Slider label for the widest a caption row may be cut."
@@ -229,7 +237,7 @@
     "description": "Popup error when stopping a session fails."
   },
   "needGeminiKey": {
-    "message": "Enter your Gemini API key first.",
+    "message": "Enter your Gemini API key first. Get an API Key:",
     "description": "Popup error when starting in Gemini mode without a key."
   },
   "needDeepgramAndDeeplKeys": {
@@ -296,6 +304,10 @@
   "hide": {
     "message": "Hide",
     "description": "Button that masks a revealed API key field."
+  },
+  "setApiKey": {
+    "message": "Set",
+    "description": "Button that confirms and saves an API key."
   },
   "showSecret": {
     "message": "Show $1",

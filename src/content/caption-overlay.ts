@@ -306,6 +306,7 @@ interface Interaction {
 
 export interface CaptionOverlayCallbacks {
   onAppearanceChanged?(appearance: CaptionAppearance): void;
+  onClear?(): Promise<void> | void;
   onLayoutChanged?(layout: OverlayLayout): void;
   onOpenSidePanel?(layout: OverlayLayout): Promise<void> | void;
 }
@@ -1037,11 +1038,29 @@ export class CaptionOverlay {
     sidePanelButton.addEventListener('pointerdown', (event) => event.stopPropagation());
     sidePanelButton.addEventListener('click', () => this.openSidePanel());
 
+    const clearButton = this.document.createElement('button');
+    clearButton.className = 'toolbar-button clear-button';
+    clearButton.type = 'button';
+    clearButton.append(createIcon(this.document, [
+      'M3 6h18',
+      'M8 6V4h8v2',
+      'M19 6l-1 15H6L5 6',
+      'M10 10v7M14 10v7',
+    ]));
+    clearButton.title = t('clearCaptions');
+    clearButton.setAttribute('aria-label', t('clearCaptions'));
+    clearButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+    clearButton.addEventListener('click', () => {
+      this.setWindow([]);
+      void this.callbacks.onClear?.();
+    });
+
     toolbarActions.append(
       fontIncreaseButton,
       fontDecreaseButton,
       backgroundIncreaseButton,
       backgroundDecreaseButton,
+      clearButton,
       sidePanelButton,
     );
     toolbar.append(dragRegion, toolbarActions);

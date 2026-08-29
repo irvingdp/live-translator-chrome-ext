@@ -165,6 +165,12 @@ export default defineUnlistedScript(() => {
     console.error(fullscreenDebugPrefix, 'fullscreenerror', debugState(event));
   };
   const overlay = new CaptionOverlay(document, {
+    onClear() {
+      return chrome.runtime.sendMessage({
+        target: 'background',
+        type: 'CLEAR_CAPTIONS',
+      } satisfies import('../src/core/messages').ExtensionMessage).then(() => undefined);
+    },
     onAppearanceChanged(appearance) {
       void chrome.runtime.sendMessage({
         target: 'background',

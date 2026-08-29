@@ -372,6 +372,15 @@ export class CaptureSessionController {
     return this.captionWindow.pairs();
   }
 
+  async clearCaptions(tabId: number): Promise<boolean> {
+    if (this.currentStatus.state !== 'running' || this.currentStatus.tabId !== tabId) {
+      return false;
+    }
+    this.captionWindow.clear();
+    await this.sendWindow(tabId);
+    return true;
+  }
+
   appearance(): CaptionAppearance | undefined {
     return this.settings ? captionAppearance(this.settings) : undefined;
   }

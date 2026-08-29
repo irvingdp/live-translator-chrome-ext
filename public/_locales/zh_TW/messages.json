@@ -150,6 +150,14 @@
     "message": "字幕版面",
     "description": "Heading of the layout section in the popup."
   },
+  "showMoreSettings": {
+    "message": "顯示更多設定",
+    "description": "Summary that reveals the caption style and layout settings in the popup."
+  },
+  "clearCaptions": {
+    "message": "清除字幕",
+    "description": "Accessible label for the button that clears the current caption window."
+  },
   "maxLineWidthLabel": {
     "message": "每行長度上限",
     "description": "Slider label for the widest a caption row may be cut."
@@ -229,7 +237,7 @@
     "description": "Popup error when stopping a session fails."
   },
   "needGeminiKey": {
-    "message": "請先輸入 Gemini API Key。",
+    "message": "請先輸入 Gemini API Key，前往申請: ",
     "description": "Popup error when starting in Gemini mode without a key."
   },
   "needDeepgramAndDeeplKeys": {
@@ -296,6 +304,10 @@
   "hide": {
     "message": "隱藏",
     "description": "Button that masks a revealed API key field."
+  },
+  "setApiKey": {
+    "message": "設定",
+    "description": "Button that confirms and saves an API key."
   },
   "showSecret": {
     "message": "顯示 $1",

@@ -79,44 +79,65 @@ describe('PopupApp', () => {
       />,
     );
 
-    expect(await screen.findByText('API Key 已設定')).toBeVisible();
-    expect(screen.queryByLabelText('Deepgram API Key')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('DeepL API Key')).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /重新設定/ })).toHaveLength(2);
+    expect(await screen.findAllByText('API Key 已設定')).toHaveLength(2);
+    expect(screen.getByLabelText('Deepgram API Key')).toHaveValue('dg');
+    expect(screen.getByLabelText('DeepL API Key')).toHaveValue('dl');
   });
 
-  it('reveals only the configured API Key selected for resetting', async () => {
+  it('keeps configured API Keys masked until individually revealed', async () => {
     render(
       <PopupApp
         api={createDeepgramApi({ deepgramApiKey: 'dg', deeplApiKey: 'dl' })}
       />,
     );
-    await screen.findByText('API Key 已設定');
+    await screen.findAllByText('API Key 已設定');
 
     fireEvent.click(screen.getByRole('button', {
-      name: '重新設定 Deepgram API Key',
+      name: '顯示 Deepgram API Key',
     }));
 
     expect(screen.getByLabelText('Deepgram API Key')).toHaveValue('dg');
     expect(screen.getByLabelText('Deepgram API Key')).toHaveAttribute(
       'type',
-      'password',
+      'text',
     );
-    expect(screen.queryByLabelText('DeepL API Key')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('DeepL API Key')).toHaveAttribute('type', 'password');
   });
 
-  it('saves API Keys inline and can reveal the selected field', async () => {
+  it('shows an API Key as missing as soon as its textbox is cleared', async () => {
+    render(<PopupApp api={createApi({
+      loadSettings: vi.fn().mockResolvedValue({
+        ...DEFAULT_SETTINGS,
+        geminiApiKey: 'gm',
+      }),
+    })} />);
+
+    const key = await screen.findByLabelText('Gemini API Key');
+    expect(screen.getByText('API Key 已設定')).toBeVisible();
+
+    fireEvent.change(key, { target: { value: '' } });
+
+    expect(screen.getByText('API Key 尚未設定')).toBeVisible();
+    expect(screen.queryByText('API Key 已設定')).not.toBeInTheDocument();
+  });
+
+  it('saves an API Key only after explicit confirmation and can reveal it', async () => {
     const api = createApi();
     render(<PopupApp api={api} />);
     const key = await screen.findByLabelText('Gemini API Key');
 
     fireEvent.change(key, { target: { value: 'gm-new' } });
-    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ geminiApiKey: 'gm-new' }),
-    ));
+    expect(api.saveSettings).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: '顯示 Gemini API Key' }));
     expect(key).toHaveAttribute('type', 'text');
+
+    fireEvent.click(screen.getByRole('button', { name: '設定 Gemini API Key' }));
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ geminiApiKey: 'gm-new' }),
+    ));
+    expect(screen.getByText('API Key 已設定')).toBeVisible();
+    expect(screen.getByLabelText('Gemini API Key')).toHaveValue('gm-new');
   });
 
   it('names the key the selected provider actually needs', async () => {
@@ -127,8 +148,12 @@ describe('PopupApp', () => {
     fireEvent.click(screen.getByRole('switch', { name: '開始即時字幕' }));
 
     expect(
-      await screen.findByText('請先輸入 Gemini API Key。'),
+      await screen.findByText(/請先輸入 Gemini API Key，前往申請:/),
     ).toBeVisible();
+    expect(screen.getByRole('link', { name: 'aistudio.google.com' })).toHaveAttribute(
+      'href',
+      'https://aistudio.google.com/api-keys',
+    );
     expect(api.start).not.toHaveBeenCalled();
   });
 
