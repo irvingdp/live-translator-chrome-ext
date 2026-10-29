@@ -1,5 +1,4 @@
 import { loadFont as loadInter } from '@remotion/google-fonts/Inter';
-import { loadFont as loadNotoJP } from '@remotion/google-fonts/NotoSansJP';
 import { loadFont as loadNotoTC } from '@remotion/google-fonts/NotoSansTC';
 import type { CSSProperties, ReactNode } from 'react';
 import {
@@ -17,8 +16,7 @@ import { COPY, type CaptionLine, type Copy, type Locale } from './copy';
 
 const inter = loadInter('normal', { weights: ['500', '600', '700', '800'], subsets: ['latin'] });
 const notoTC = loadNotoTC('normal', { weights: ['500', '700'], ignoreTooManyRequestsWarning: true });
-const notoJP = loadNotoJP('normal', { weights: ['500', '700'], ignoreTooManyRequestsWarning: true });
-const FONT = `${inter.fontFamily}, ${notoTC.fontFamily}, ${notoJP.fontFamily}, sans-serif`;
+const FONT = `${inter.fontFamily}, ${notoTC.fontFamily}, sans-serif`;
 
 // Palette from .superdesign/design-system.md so the video matches the extension.
 const C = {
@@ -62,7 +60,7 @@ const CONTENT_Y = B.y + TAB_H + BAR_H;
 const ICON = { x: B.x + B.w - 56, y: B.y + TAB_H + BAR_H / 2 };
 const TAB2 = { x: B.x + 24 + 300 + 150, y: B.y + TAB_H / 2 };
 const POPUP = { x: ICON.x - 360, y: CONTENT_Y + 8, w: 390 };
-const START_BTN = { x: POPUP.x + POPUP.w / 2, y: POPUP.y + 452 };
+const START_BTN = { x: POPUP.x + POPUP.w / 2, y: POPUP.y + 296 };
 const REST = { x: 1580, y: 640 };
 
 const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;

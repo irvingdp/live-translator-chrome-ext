@@ -20,8 +20,8 @@ export type Copy = {
   secondTab: CaptionLine[];
 };
 
-// The English cut demos Japanese -> English; the Chinese cut demos
-// English -> Traditional Chinese, so each audience reads its own language.
+// Both cuts demo Chinese <-> English. The English cut translates Chinese into
+// English and the Chinese cut the reverse, so each audience reads its own language.
 export const COPY: Record<Locale, Copy> = {
   en: {
     hook: "Watching something in a language you don't speak?",
@@ -39,18 +39,18 @@ export const COPY: Record<Locale, Copy> = {
     tabs: ['Tokyo Market Walk', 'How It Works — Lecture'],
     firstTab: [
       {
-        source: '今日は、東京の小さな市場を一緒に歩いてみましょう。',
+        source: '今天，我們一起逛逛東京的一個小市場。',
         translation: "Today, let's take a walk through a small market in Tokyo.",
       },
       {
-        source: '朝早くから、新鮮な魚がたくさん並んでいます。',
-        translation: 'From early morning, lots of fresh fish are lined up.',
+        source: '從一大早開始，攤位上就擺滿了新鮮的魚。',
+        translation: 'From early morning, the stalls are full of fresh fish.',
       },
     ],
     secondTab: [
       {
-        source: '次は、この技術がどのように動くのかを説明します。',
-        translation: "Next, I'll explain how this technology works.",
+        source: '接下來，我會說明這項技術實際上是怎麼運作的。',
+        translation: "Next, I'll explain how this technology actually works.",
       },
     ],
   },
