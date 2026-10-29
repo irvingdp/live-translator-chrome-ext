@@ -12,9 +12,16 @@ export type Copy = {
   realProduct: string;
   sourceLabel: string;
   targetLabel: string;
-  start: string;
-  running: string;
-  idle: string;
+  providerHeading: string;
+  transcriberLabel: string;
+  apiKeyLabel: string;
+  keysConfigured: string;
+  setApiKey: string;
+  languageHeading: string;
+  sourceTitle: string;
+  targetTitle: string;
+  moreSettings: string;
+  website: string;
   tab: string;
   captionLabel: string;
   panelTitle: string;
@@ -24,7 +31,7 @@ export type Copy = {
   lines: [CaptionLine, CaptionLine, CaptionLine];
 };
 
-// Demo lines follow a MacBook Pro launch film and its touch screen. Both cuts demo Chinese <-> English. The English cut translates Chinese into
+// Demo lines follow a MacBook Pro launch film and its new OLED display. Both cuts demo Chinese <-> English. The English cut translates Chinese into
 // English and the Chinese cut the reverse, so each audience reads its own language.
 export const COPY: Record<Locale, Copy> = {
   en: {
@@ -37,25 +44,32 @@ export const COPY: Record<Locale, Copy> = {
     realProduct: 'The real extension, on a real talk',
     sourceLabel: 'Auto-detect',
     targetLabel: 'English',
-    start: 'Start live captions',
-    running: 'Running',
-    idle: 'Idle',
-    tab: 'New MacBook Pro — PROLED XDR',
+    providerHeading: 'Providers',
+    transcriberLabel: 'Speech recognition',
+    apiKeyLabel: 'Gemini API Key',
+    keysConfigured: 'API key set',
+    setApiKey: 'Set',
+    languageHeading: 'Languages',
+    sourceTitle: 'Source language',
+    targetTitle: 'Target language',
+    moreSettings: 'Show more settings',
+    website: 'Website',
+    tab: 'New MacBook Pro — OLED display',
     captionLabel: 'LIVE CAPTIONS',
     panelTitle: 'Bilingual Live Captions',
     historyTitle: 'Caption history',
     lines: [
       {
-        source: '它看起來會真實到讓你想伸手摸一摸。',
-        translation: "It'll look so real, you'll wanna reach out and touch it.",
+        source: 'MacBook Pro 首次搭載 OLED 顯示器。',
+        translation: "For the first time, MacBook Pro has an OLED display.",
       },
       {
-        source: '既然能摸，就能在上面滑動、拖曳、縮放和捲動。',
-        translation: "And if you can touch it, you can swipe and drag and pinch and scroll.",
+        source: '每個像素都自己發光，黑色就是真正的黑。',
+        translation: "Every pixel makes its own light, so black is truly black.",
       },
       {
-        source: '這是有史以來第一台支援觸控的 Mac。',
-        translation: "It's the first-ever Mac with touch.",
+        source: '更亮的高光、無限的對比，色彩更鮮豔。',
+        translation: "Brighter highlights, infinite contrast, colors that pop.",
       },
     ],
   },
@@ -69,25 +83,32 @@ export const COPY: Record<Locale, Copy> = {
     realProduct: '真實擴充功能的實際畫面',
     sourceLabel: '自動偵測',
     targetLabel: '繁體中文',
-    start: '開始即時字幕',
-    running: '執行中',
-    idle: '閒置',
-    tab: 'New MacBook Pro — PROLED XDR',
+    providerHeading: '服務提供者',
+    transcriberLabel: '語音辨識',
+    apiKeyLabel: 'Gemini API Key',
+    keysConfigured: 'API Key 已設定',
+    setApiKey: '設定',
+    languageHeading: '語言',
+    sourceTitle: '來源語言',
+    targetTitle: '目標語言',
+    moreSettings: '顯示更多設定',
+    website: '官網',
+    tab: 'New MacBook Pro — OLED display',
     captionLabel: '即時字幕',
     panelTitle: '雙語即時字幕翻譯',
     historyTitle: '即時字幕紀錄',
     lines: [
       {
-        source: "It'll look so real, you'll wanna reach out and touch it.",
-        translation: '它看起來會真實到讓你想伸手摸一摸。',
+        source: "For the first time, MacBook Pro has an OLED display.",
+        translation: 'MacBook Pro 首次搭載 OLED 顯示器。',
       },
       {
-        source: "And if you can touch it, you can swipe and drag and pinch and scroll.",
-        translation: '既然能摸，就能在上面滑動、拖曳、縮放和捲動。',
+        source: "Every pixel makes its own light, so black is truly black.",
+        translation: '每個像素都自己發光，黑色就是真正的黑。',
       },
       {
-        source: "It's the first-ever Mac with touch.",
-        translation: '這是有史以來第一台支援觸控的 Mac。',
+        source: "Brighter highlights, infinite contrast, colors that pop.",
+        translation: '更亮的高光、無限的對比，色彩更鮮豔。',
       },
     ],
   },
