@@ -522,8 +522,8 @@
     "description": "Rating card button that hides the card for good."
   },
   "feedbackPrompt": {
-    "message": "有什麼想說的嗎？（選填）",
-    "description": "Label of the optional feedback text box shown after picking a star rating."
+    "message": "請說明",
+    "description": "Label of the free-text box shown when the feedback drop-down is set to Other."
   },
   "feedbackPrivacyNote": {
     "message": "只會送出你填寫的內容、星數、擴充功能版本、服務商與介面語言，不含分頁網址、API Key 或字幕內容。",
@@ -566,5 +566,29 @@
   "feedbackRetry": {
     "message": "重試",
     "description": "Feedback submit button after a failed send."
+  },
+  "feedbackIssueLabel": {
+    "message": "哪裡可以做得更好？（選填）",
+    "description": "Label of the optional drop-down in the feedback form."
+  },
+  "feedbackIssueNone": {
+    "message": "請選擇",
+    "description": "Empty first option of the feedback drop-down: nothing picked."
+  },
+  "feedbackIssueInaccurate": {
+    "message": "字幕翻譯不精準",
+    "description": "Feedback drop-down option: the translation is wrong."
+  },
+  "feedbackIssueDelay": {
+    "message": "字幕延遲",
+    "description": "Feedback drop-down option: captions appear too late."
+  },
+  "feedbackIssueUi": {
+    "message": "UI 介面不友善",
+    "description": "Feedback drop-down option: the UI is unfriendly."
+  },
+  "feedbackIssueOther": {
+    "message": "其他",
+    "description": "Feedback drop-down option that reveals a free-text box."
   }
 }

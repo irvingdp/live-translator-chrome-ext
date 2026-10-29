@@ -25,17 +25,37 @@ describe('feedback', () => {
   it('sends only the listed fields, never an email', () => {
     const payload = buildFeedbackPayload({
       ...base,
+      issue: 'other',
       // Anything else a caller passes along must not leak out.
       ...({ apiKey: 'secret', email: 'me@example.com', tabUrl: 'https://private.example' } as object),
     });
 
     expect(payload).toEqual({
+      issue: 'other',
       message: 'The captions lag on long videos.',
       provider: 'gemini',
       rating: 2,
       uiLanguage: 'zh-TW',
       version: '1.4.0',
     });
+  });
+
+  it.each(['inaccurate', 'delay', 'ui'] as const)('sends no free text with the "%s" choice', (issue) => {
+    expect(buildFeedbackPayload({ ...base, issue })).toEqual({
+      issue,
+      message: '',
+      provider: 'gemini',
+      rating: 2,
+      uiLanguage: 'zh-TW',
+      version: '1.4.0',
+    });
+  });
+
+  it('drops an unknown issue and any text without a choice', () => {
+    const payload = buildFeedbackPayload({ ...base, issue: 'bogus' as never });
+
+    expect(payload).not.toHaveProperty('issue');
+    expect(payload.message).toBe('');
   });
 
   it('posts a no-cors text/plain request, which needs no host permission', async () => {

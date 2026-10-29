@@ -13,7 +13,14 @@ const RECIPIENT = 'irvingdp@gmail.com';
 // Shared across all users; a burst beyond this is dropped, not queued.
 const MAX_PER_MINUTE = 10;
 const MAX_MESSAGE = 2000;
-const HEADERS = ['Received', 'Rating', 'Message', 'Email', 'Version', 'Provider', 'UI language'];
+// New columns go on the end so rows already in the Sheet stay aligned.
+const HEADERS = ['Received', 'Rating', 'Message', 'Email', 'Version', 'Provider', 'UI language', 'Issue'];
+const ISSUES = {
+  inaccurate: 'Inaccurate translation',
+  delay: 'Captions lag behind',
+  ui: 'Interface is hard to use',
+  other: 'Other',
+};
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -38,17 +45,19 @@ function doPost(e) {
     const version = clip(data.version, 20);
     const provider = clip(data.provider, 20);
     const uiLanguage = clip(data.uiLanguage, 20);
+    const issue = Object.prototype.hasOwnProperty.call(ISSUES, data.issue) ? data.issue : '';
 
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
-    if (sheet.getLastRow() === 0) sheet.appendRow(HEADERS);
+    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
     // Leading = + - @ would make Sheets treat user text as a formula.
-    sheet.appendRow([new Date(), rating, safeCell(message), safeCell(email), version, provider, uiLanguage]);
+    sheet.appendRow([new Date(), rating, safeCell(message), safeCell(email), version, provider, uiLanguage, issue]);
 
     const mail = {
       to: RECIPIENT,
       subject: `[Bilingual Live Captions] ${rating}★ feedback (v${version})`,
       body: [
         `Rating: ${rating}/5`,
+        `Issue: ${issue ? ISSUES[issue] : '(none)'}`,
         `Provider: ${provider}`,
         `UI language: ${uiLanguage}`,
         `Version: ${version}`,

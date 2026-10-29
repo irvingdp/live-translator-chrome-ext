@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 
 import {
+  FEEDBACK_ISSUES,
   MAX_FEEDBACK_LENGTH,
   validateFeedback,
+  type FeedbackIssue,
   type FeedbackError,
 } from '../core/feedback';
 import { t, type MessageKey } from '../core/i18n';
@@ -17,13 +19,20 @@ const ERROR_KEYS: Record<FeedbackError | 'failed', MessageKey> = {
   failed: 'feedbackFailed',
 };
 
+const ISSUE_KEYS: Record<FeedbackIssue, MessageKey> = {
+  inaccurate: 'feedbackIssueInaccurate',
+  delay: 'feedbackIssueDelay',
+  ui: 'feedbackIssueUi',
+  other: 'feedbackIssueOther',
+};
+
 export interface RatingCardProps {
   /** "Later" or ×: ask again at a later tab. */
   onLater(): void;
   /** "Don't ask again". */
   onNever(): void;
   /** Send the rating with the optional comment. Rejects when the request fails. */
-  onSendFeedback(rating: number, message: string): Promise<void>;
+  onSendFeedback(rating: number, issue: FeedbackIssue | undefined, message: string): Promise<void>;
   /** The card has finished thanking the user and can go. */
   onClose(): void;
 }
@@ -33,6 +42,7 @@ export function RatingCard(props: RatingCardProps) {
   const [rating, setRating] = useState(0);
   // The star under the pointer or keyboard focus: previews 1..n before a click.
   const [preview, setPreview] = useState(0);
+  const [issue, setIssue] = useState<FeedbackIssue>();
   const [message, setMessage] = useState('');
   const [error, setError] = useState<FeedbackError | 'failed'>();
 
@@ -50,7 +60,7 @@ export function RatingCard(props: RatingCardProps) {
   };
 
   const submit = async () => {
-    const invalid = validateFeedback(message);
+    const invalid = issue === 'other' ? validateFeedback(message) : undefined;
     if (invalid) {
       setError(invalid);
       return;
@@ -58,7 +68,7 @@ export function RatingCard(props: RatingCardProps) {
     setError(undefined);
     setPhase('sending');
     try {
-      await props.onSendFeedback(rating, message);
+      await props.onSendFeedback(rating, issue, issue === 'other' ? message : '');
       setPhase('sent');
     } catch {
       setError('failed');
@@ -131,15 +141,37 @@ export function RatingCard(props: RatingCardProps) {
             void submit();
           }}
         >
-          <label htmlFor="feedback-message">{t('feedbackPrompt')}</label>
-          <textarea
-            id="feedback-message"
-            maxLength={MAX_FEEDBACK_LENGTH}
-            readOnly={phase === 'sending'}
-            rows={4}
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-          />
+          <label htmlFor="feedback-issue">{t('feedbackIssueLabel')}</label>
+          <select
+            disabled={phase === 'sending'}
+            id="feedback-issue"
+            value={issue ?? ''}
+            onChange={(event) => {
+              setIssue((event.target.value || undefined) as FeedbackIssue | undefined);
+              setError(undefined);
+            }}
+          >
+            <option value="">{t('feedbackIssueNone')}</option>
+            {FEEDBACK_ISSUES.map((value) => (
+              <option key={value} value={value}>
+                {t(ISSUE_KEYS[value])}
+              </option>
+            ))}
+          </select>
+          {issue === 'other' && (
+            <>
+              <label htmlFor="feedback-message">{t('feedbackPrompt')}</label>
+              <textarea
+                autoFocus
+                id="feedback-message"
+                maxLength={MAX_FEEDBACK_LENGTH}
+                readOnly={phase === 'sending'}
+                rows={4}
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+              />
+            </>
+          )}
           {errorText && (
             <p className="rating-error" role="alert">
               {errorText}

@@ -104,15 +104,22 @@ test('hovering each star in the real popup lights the stars up to it', async () 
   await expect.poll(async () => (await popupState()).stars).toBe(5);
 
   for (const n of [1, 2, 3, 4, 5]) {
-    const lit = await extensionPage.evaluate((index) => {
-      const [popup] = chrome.extension.getViews({ type: 'popup' });
-      const stars = [...popup!.document.querySelectorAll('.rating-star')];
-      stars[index]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-      return new Promise<boolean[]>((done) =>
-        requestAnimationFrame(() => done(stars.map((star) => star.classList.contains('filled')))),
-      );
-    }, n - 1);
-    expect(lit, `hovering star ${n}`).toEqual([1, 2, 3, 4, 5].map((i) => i <= n));
+    // Re-dispatch on every poll: under load the first event can land before
+    // React has attached its listeners.
+    await expect
+      .poll(
+        () =>
+          extensionPage.evaluate((index) => {
+            const [popup] = chrome.extension.getViews({ type: 'popup' });
+            const stars = [...popup!.document.querySelectorAll('.rating-star')];
+            stars[index]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            return new Promise<boolean[]>((done) =>
+              requestAnimationFrame(() => done(stars.map((star) => star.classList.contains('filled')))),
+            );
+          }, n - 1),
+        { message: `hovering star ${n}` },
+      )
+      .toEqual([1, 2, 3, 4, 5].map((i) => i <= n));
   }
 });
 

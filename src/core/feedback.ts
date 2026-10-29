@@ -14,8 +14,14 @@ export const FEEDBACK_ENDPOINT =
 
 export const MAX_FEEDBACK_LENGTH = 2000;
 
+// What the user picked under "what could be better?". Only "other" comes with
+// free text.
+export const FEEDBACK_ISSUES = ['inaccurate', 'delay', 'ui', 'other'] as const;
+export type FeedbackIssue = (typeof FEEDBACK_ISSUES)[number];
+
 export interface FeedbackPayload {
   rating: number;
+  issue?: FeedbackIssue;
   message: string;
   version: string;
   provider: TranscriberId;
@@ -32,9 +38,13 @@ export function validateFeedback(message: string): FeedbackError | undefined {
 // Only the fields listed here ever leave the device: no email, no tab URL, no
 // API key, no caption text.
 export function buildFeedbackPayload(input: FeedbackPayload): FeedbackPayload {
+  const issue = FEEDBACK_ISSUES.find((value) => value === input.issue);
   return {
     rating: input.rating,
-    message: input.message.trim().slice(0, MAX_FEEDBACK_LENGTH),
+    ...(issue ? { issue } : {}),
+    // Free text only accompanies "other"; anything typed before switching
+    // away is dropped rather than sent.
+    message: issue === 'other' ? input.message.trim().slice(0, MAX_FEEDBACK_LENGTH) : '',
     version: input.version,
     provider: input.provider,
     uiLanguage: input.uiLanguage,

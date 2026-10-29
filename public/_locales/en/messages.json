@@ -522,8 +522,8 @@
     "description": "Rating card button that hides the card for good."
   },
   "feedbackPrompt": {
-    "message": "Anything you'd like to tell us? (optional)",
-    "description": "Label of the optional feedback text box shown after picking a star rating."
+    "message": "Tell us more",
+    "description": "Label of the free-text box shown when the feedback drop-down is set to Other."
   },
   "feedbackPrivacyNote": {
     "message": "Sends only what you type, your rating, the extension version, provider and UI language. Never your tab URL, API keys or captions.",
@@ -566,5 +566,29 @@
   "feedbackRetry": {
     "message": "Try again",
     "description": "Feedback submit button after a failed send."
+  },
+  "feedbackIssueLabel": {
+    "message": "What could be better? (optional)",
+    "description": "Label of the optional drop-down in the feedback form."
+  },
+  "feedbackIssueNone": {
+    "message": "Choose one",
+    "description": "Empty first option of the feedback drop-down: nothing picked."
+  },
+  "feedbackIssueInaccurate": {
+    "message": "Inaccurate translation",
+    "description": "Feedback drop-down option: the translation is wrong."
+  },
+  "feedbackIssueDelay": {
+    "message": "Captions lag behind",
+    "description": "Feedback drop-down option: captions appear too late."
+  },
+  "feedbackIssueUi": {
+    "message": "The interface is hard to use",
+    "description": "Feedback drop-down option: the UI is unfriendly."
+  },
+  "feedbackIssueOther": {
+    "message": "Other",
+    "description": "Feedback drop-down option that reveals a free-text box."
   }
 }

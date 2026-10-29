@@ -6,7 +6,8 @@ irvingdp@gmail.com. There is no other backend.
 
 ## What is sent
 
-`rating`, `message` (may be empty), `version`, `provider`, `uiLanguage` —
+`rating`, optional `issue` (`inaccurate` / `delay` / `ui` / `other`),
+`message` (only with `other`, may be empty), `version`, `provider`, `uiLanguage` —
 nothing else, and no email (see `buildFeedbackPayload` in `src/core/feedback.ts`). No tab URL,
 API key or caption text.
 

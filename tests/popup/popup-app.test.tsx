@@ -600,7 +600,9 @@ describe('PopupApp rating card', () => {
     // The pointer has left the stars to type in the form.
     fireEvent.mouseLeave(stars[n - 1]!.parentElement!);
 
-    expect(screen.getByLabelText('有什麼想說的嗎？（選填）')).toBeVisible();
+    expect(screen.getByLabelText('哪裡可以做得更好？（選填）')).toBeVisible();
+    // The text box only appears once "other" is chosen.
+    expect(document.querySelector('.rating-card textarea')).toBeNull();
     expect(screen.getByRole('button', { name: '送出' })).toBeEnabled();
     expect(litStars(stars)).toBe(n);
     expect(stars[n - 1]).toHaveAttribute('aria-pressed', 'true');
@@ -629,26 +631,86 @@ describe('PopupApp rating card', () => {
     );
   });
 
-  it('sends the comment when given, and the form never asks for an email', async () => {
+  it('offers the four choices under "what could be better?"', async () => {
+    render(<PopupApp api={ratingApi()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '2 顆星' }));
+
+    const select = screen.getByLabelText('哪裡可以做得更好？（選填）');
+    expect([...select.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
+      '請選擇',
+      '字幕翻譯不精準',
+      '字幕延遲',
+      'UI 介面不友善',
+      '其他',
+    ]);
+    expect(select).toHaveValue('');
+  });
+
+  it.each([
+    ['字幕翻譯不精準', 'inaccurate'],
+    ['字幕延遲', 'delay'],
+    ['UI 介面不友善', 'ui'],
+  ])('choosing "%s" sends that choice with no text box', async (label, issue) => {
     const api = ratingApi();
     render(<PopupApp api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: '3 顆星' }));
 
-    fireEvent.click(await screen.findByRole('button', { name: '2 顆星' }));
-    expect(screen.queryByLabelText(/Email/i)).not.toBeInTheDocument();
-    expect(document.querySelector('.rating-card input')).toBeNull();
-    fireEvent.change(screen.getByLabelText('有什麼想說的嗎？（選填）'), {
-      target: { value: '字幕延遲太久' },
-    });
+    const select = screen.getByLabelText('哪裡可以做得更好？（選填）');
+    fireEvent.change(select, { target: { value: issue } });
+    expect(select).toHaveDisplayValue(label);
+    expect(document.querySelector('.rating-card textarea')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '送出' }));
 
-    expect(await screen.findByText('謝謝你的回饋！')).toBeVisible();
+    await screen.findByText('謝謝你的回饋！');
     expect(api.sendFeedback).toHaveBeenCalledWith({
-      message: '字幕延遲太久',
+      issue,
+      message: '',
+      provider: 'gemini',
+      rating: 3,
+      uiLanguage: 'zh-Hant-TW',
+      version: '1.4.0',
+    });
+  });
+
+  it('choosing "other" reveals a text box and sends what is typed', async () => {
+    const api = ratingApi();
+    render(<PopupApp api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: '2 顆星' }));
+
+    fireEvent.change(screen.getByLabelText('哪裡可以做得更好？（選填）'), {
+      target: { value: 'other' },
+    });
+    fireEvent.change(screen.getByLabelText('請說明'), { target: { value: '想要更大的字' } });
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+
+    await screen.findByText('謝謝你的回饋！');
+    expect(api.sendFeedback).toHaveBeenCalledWith({
+      issue: 'other',
+      message: '想要更大的字',
       provider: 'gemini',
       rating: 2,
       uiLanguage: 'zh-Hant-TW',
       version: '1.4.0',
     });
+    expect(document.querySelector('.rating-card input')).toBeNull();
+  });
+
+  it('hides the text box again and drops its text when switching away from "other"', async () => {
+    const api = ratingApi();
+    render(<PopupApp api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: '1 顆星' }));
+    const select = screen.getByLabelText('哪裡可以做得更好？（選填）');
+
+    fireEvent.change(select, { target: { value: 'other' } });
+    fireEvent.change(screen.getByLabelText('請說明'), { target: { value: '不要送出這段' } });
+    fireEvent.change(select, { target: { value: 'delay' } });
+
+    expect(screen.queryByLabelText('請說明')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+    await screen.findByText('謝謝你的回饋！');
+    expect(api.sendFeedback).toHaveBeenCalledWith(
+      expect.objectContaining({ issue: 'delay', message: '' }),
+    );
   });
 
   it('keeps the text and offers a retry when sending fails', async () => {
@@ -656,13 +718,17 @@ describe('PopupApp rating card', () => {
     render(<PopupApp api={api} />);
 
     fireEvent.click(await screen.findByRole('button', { name: '1 顆星' }));
-    fireEvent.change(screen.getByLabelText('有什麼想說的嗎？（選填）'), {
+    fireEvent.change(screen.getByLabelText('哪裡可以做得更好？（選填）'), {
+      target: { value: 'other' },
+    });
+    fireEvent.change(screen.getByLabelText('請說明'), {
       target: { value: '無法啟動' },
     });
     fireEvent.click(screen.getByRole('button', { name: '送出' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('送出失敗');
-    expect(screen.getByLabelText('有什麼想說的嗎？（選填）')).toHaveValue('無法啟動');
+    expect(screen.getByLabelText('哪裡可以做得更好？（選填）')).toHaveValue('other');
+    expect(screen.getByLabelText('請說明')).toHaveValue('無法啟動');
     expect(screen.getByRole('button', { name: '重試' })).toBeEnabled();
     expect(api.saveRatingPrompt).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'done' }));
   });
