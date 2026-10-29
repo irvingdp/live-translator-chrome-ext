@@ -1,0 +1,87 @@
+---
+import { url } from '../i18n';
+
+interface Props {
+  lang: string;
+  title: string;
+  description: string;
+  alternates?: { hreflang: string; href: string }[];
+}
+
+const { lang, title, description, alternates = [] } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {alternates.map((a) => <link rel="alternate" hreflang={a.hreflang} href={new URL(a.href, Astro.site)} />)}
+    <link rel="icon" type="image/png" href={url('favicon.png')} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={new URL(url('video/intro-en.jpg'), Astro.site)} />
+    <meta name="theme-color" content="#0b1120" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap"
+    />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    --bg: #0b1120;
+    --surface: #111827;
+    --surface-2: #182235;
+    --border: #334155;
+    --text: #f8fafc;
+    --muted: #a8b3c5;
+    --teal: #14b8a6;
+    --teal-dark: #0d9488;
+    --teal-light: #5eead4;
+    --amber: #fde68a;
+    color-scheme: dark;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, 'Noto Sans TC', system-ui, sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a {
+    color: var(--teal-light);
+  }
+  a:focus-visible,
+  button:focus-visible {
+    outline: 3px solid var(--teal-light);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+  .wrap {
+    width: min(1120px, 100% - 32px);
+    margin-inline: auto;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+</style>

@@ -1,0 +1,80 @@
+name: Website
+
+# Renders the Remotion intro, builds the Astro site and deploys it to GitHub
+# Pages. Pull requests only build, so a broken render or site is caught before
+# it reaches main.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'site/**'
+      - 'video/**'
+      - 'PRIVACY.md'
+      - '.github/workflows/pages.yml'
+  pull_request:
+    paths:
+      - 'site/**'
+      - 'video/**'
+      - 'PRIVACY.md'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          cache: npm
+          cache-dependency-path: |
+            video/package-lock.json
+            site/package-lock.json
+          node-version-file: .nvmrc
+
+      - name: Install video dependencies
+        working-directory: video
+        run: npm ci
+
+      - name: Type-check the video
+        working-directory: video
+        run: npm run compile
+
+      - name: Render the intro video (en, zh-TW)
+        working-directory: video
+        run: npm run render -- ../site/public/video
+
+      - name: Install site dependencies
+        working-directory: site
+        run: npm ci
+
+      - name: Build the site
+        working-directory: site
+        run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

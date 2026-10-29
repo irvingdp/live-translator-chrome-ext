@@ -1,0 +1,36 @@
+---
+// The policy lives at the repo root so the store listing and the site share one source.
+import { Content } from '../../../PRIVACY.md';
+import Base from '../layouts/Base.astro';
+import { url } from '../i18n';
+---
+
+<Base lang="en" title="Privacy Policy — Bilingual Live Captions" description="Privacy policy for the Bilingual Live Captions Chrome extension.">
+  <main class="wrap prose">
+    <p><a href={url('')}>← Bilingual Live Captions</a></p>
+    <Content />
+  </main>
+</Base>
+
+<style>
+  .prose {
+    max-width: 760px;
+    padding-block: 40px 80px;
+  }
+  .prose :global(table) {
+    border-collapse: collapse;
+    display: block;
+    overflow-x: auto;
+  }
+  .prose :global(th),
+  .prose :global(td) {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+  }
+  .prose :global(code) {
+    background: var(--surface-2);
+    padding: 1px 6px;
+    border-radius: 6px;
+  }
+</style>

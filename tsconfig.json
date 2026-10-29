@@ -5,6 +5,7 @@
     "noUncheckedIndexedAccess": true,
     "strict": true,
     "types": ["vitest/globals", "chrome"]
-  }
+  },
+  // site/ and video/ are separate packages with their own tsconfig.
+  "exclude": ["**/node_modules", "output", "site", "video"]
 }
-
