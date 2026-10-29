@@ -191,10 +191,12 @@ const TabStrip = ({ copy }: { copy: Copy }) => (
     <div style={{ width: 70 }} />
     <div
       style={{
-        width: 290,
+        width: 400,
         height: 40,
         borderRadius: '12px 12px 0 0',
         background: C.surface,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
         fontSize: 19,
         fontWeight: 500,
         display: 'flex',
@@ -247,29 +249,76 @@ const AddressBar = () => {
   );
 };
 
-// A brand-free stand-in for a video player.
+// A brand-free stand-in for a laptop launch film: an open laptop on a dark
+// stage, its display cycling through vivid OLED colours.
 const FakeVideo = () => {
   const frame = useCurrentFrame();
   const progress = 0.28 + (frame / DURATION) * 0.6;
-  const drift = Math.sin(frame / 40) * 12;
+  const hue = (frame * 0.6) % 360;
+  const zoom = 1 + (frame / DURATION) * 0.06;
   return (
-    <AbsoluteFill style={{ background: 'linear-gradient(160deg, #1e3a5f 0%, #0f2742 45%, #3b1d3f 100%)' }}>
-      {[0, 1, 2, 3, 4].map((i) => (
+    <AbsoluteFill
+      style={{ background: 'radial-gradient(900px 520px at 50% 30%, #1c2333 0%, #0a0c12 60%, #050608 100%)' }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: 34,
+          width: 640,
+          transform: `translateX(-50%) scale(${zoom})`,
+          transformOrigin: '50% 0%',
+        }}
+      >
+        {/* Display */}
         <div
-          key={i}
           style={{
-            position: 'absolute',
-            left: 80 + i * 280 + drift,
-            top: 130 + (i % 2) * 40,
-            width: 220,
-            height: 200,
-            borderRadius: '110px 110px 16px 16px',
-            background: ['#f59e0b', '#ef4444', '#14b8a6', '#f97316', '#60a5fa'][i],
-            opacity: 0.35,
+            margin: '0 auto',
+            width: 520,
+            height: 326,
+            borderRadius: '18px 18px 6px 6px',
+            background: '#0b0b0e',
+            border: '2px solid #3a3d45',
+            padding: 12,
+            boxShadow: `0 0 120px hsla(${hue}, 90%, 55%, .28)`,
+            position: 'relative',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: 8,
+              background: `radial-gradient(circle at 30% 35%, hsl(${hue}, 95%, 60%) 0%, transparent 45%),
+                radial-gradient(circle at 72% 60%, hsl(${(hue + 120) % 360}, 95%, 55%) 0%, transparent 50%),
+                radial-gradient(circle at 50% 100%, hsl(${(hue + 240) % 360}, 90%, 45%) 0%, transparent 55%),
+                #000`,
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              top: 12,
+              left: '50%',
+              width: 70,
+              height: 12,
+              transform: 'translateX(-50%)',
+              borderRadius: '0 0 7px 7px',
+              background: '#0b0b0e',
+            }}
+          />
+        </div>
+        {/* Base */}
+        <div
+          style={{
+            width: 640,
+            height: 16,
+            borderRadius: '2px 2px 14px 14px',
+            background: 'linear-gradient(#9ca3af, #4b5563)',
           }}
         />
-      ))}
-      <div style={{ position: 'absolute', left: 0, right: 0, top: 360, height: 60, background: 'rgba(0,0,0,.25)' }} />
+        <div style={{ width: 120, height: 5, margin: '-16px auto 0', borderRadius: '0 0 6px 6px', background: '#374151' }} />
+      </div>
       <div style={{ position: 'absolute', left: 28, right: 28, bottom: 22, height: 6, borderRadius: 3, background: 'rgba(255,255,255,.2)' }}>
         <div style={{ width: `${progress * 100}%`, height: '100%', borderRadius: 3, background: '#ef4444' }} />
       </div>
@@ -542,10 +591,13 @@ const SidePanel = ({ copy, width, offset }: { copy: Copy; width: number; offset:
             </div>
           ))}
         </div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 22px 18px' }}>
-          {lines.map((line, i) => (
-            <PanelPair key={line.source} line={line} first={i === 0} />
-          ))}
+        {/* Pinned to the newest caption; older ones scroll off the top. */}
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', left: 22, right: 22, bottom: 18 }}>
+            {lines.map((line, i) => (
+              <PanelPair key={line.source} line={line} first={i === 0} />
+            ))}
+          </div>
         </div>
       </div>
     </div>

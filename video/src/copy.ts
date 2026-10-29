@@ -24,7 +24,7 @@ export type Copy = {
   lines: [CaptionLine, CaptionLine, CaptionLine];
 };
 
-// Both cuts demo Chinese <-> English. The English cut translates Chinese into
+// Demo lines follow a MacBook Pro launch film. Both cuts demo Chinese <-> English. The English cut translates Chinese into
 // English and the Chinese cut the reverse, so each audience reads its own language.
 export const COPY: Record<Locale, Copy> = {
   en: {
@@ -40,22 +40,22 @@ export const COPY: Record<Locale, Copy> = {
     start: 'Start live captions',
     running: 'Running',
     idle: 'Idle',
-    tab: 'Tokyo Market Walk',
+    tab: 'New MacBook Pro — PROLED XDR',
     captionLabel: 'LIVE CAPTIONS',
     panelTitle: 'Bilingual Live Captions',
     historyTitle: 'Caption history',
     lines: [
       {
-        source: '今天，我們一起逛逛東京的一個小市場。',
-        translation: "Today, let's take a walk through a small market in Tokyo.",
+        source: '如果你給 Mac 一塊 OLED，那它得是不一樣的 OLED。',
+        translation: "If you give a Mac an OLED, it'll have to be a different kind of OLED.",
       },
       {
-        source: '從一大早開始，攤位上就擺滿了新鮮的魚。',
-        translation: 'From early morning, the stalls are full of fresh fish.',
+        source: '所以它的色彩會更鮮豔、亮度更亮、黑色更黑。',
+        translation: "So it'll have more vivid colors, brighter brightness, blacker blacks.",
       },
       {
-        source: '這家店的壽司，每天早上都是現做的。',
-        translation: 'The sushi at this shop is made fresh every morning.',
+        source: '它看起來會真實到讓你想伸手去摸一摸。',
+        translation: "It'll look so real, you'll wanna reach out and touch it.",
       },
     ],
   },
@@ -72,22 +72,22 @@ export const COPY: Record<Locale, Copy> = {
     start: '開始即時字幕',
     running: '執行中',
     idle: '閒置',
-    tab: 'Tokyo Market Walk',
+    tab: 'New MacBook Pro — PROLED XDR',
     captionLabel: '即時字幕',
     panelTitle: '雙語即時字幕翻譯',
     historyTitle: '即時字幕紀錄',
     lines: [
       {
-        source: "Today, let's take a walk through a small market in Tokyo.",
-        translation: '今天，我們一起逛逛東京的一個小市場。',
+        source: "If you give a Mac an OLED, it'll have to be a different kind of OLED.",
+        translation: '如果你給 Mac 一塊 OLED，那它得是不一樣的 OLED。',
       },
       {
-        source: 'From early morning, the stalls are full of fresh fish.',
-        translation: '從一大早開始，攤位上就擺滿了新鮮的魚。',
+        source: "So it'll have more vivid colors, brighter brightness, blacker blacks.",
+        translation: '所以它的色彩會更鮮豔、亮度更亮、黑色更黑。',
       },
       {
-        source: 'The sushi at this shop is made fresh every morning.',
-        translation: '這家店的壽司，每天早上都是現做的。',
+        source: "It'll look so real, you'll wanna reach out and touch it.",
+        translation: '它看起來會真實到讓你想伸手去摸一摸。',
       },
     ],
   },
