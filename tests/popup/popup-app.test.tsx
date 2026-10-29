@@ -561,6 +561,23 @@ describe('PopupApp rating card', () => {
     expect(screen.queryByText('雙語即時字幕翻譯好用嗎？')).not.toBeInTheDocument();
   });
 
+  it('previews every star up to the one under the pointer', async () => {
+    render(<PopupApp api={ratingApi()} />);
+    const stars = await Promise.all(
+      [1, 2, 3, 4, 5].map((n) => screen.findByRole('button', { name: `${n} 顆星` })),
+    );
+    const filled = () => stars.map((star) => star.classList.contains('filled'));
+
+    fireEvent.mouseEnter(stars[3]!);
+    expect(filled()).toEqual([true, true, true, true, false]);
+
+    fireEvent.mouseLeave(stars[3]!.parentElement!);
+    expect(filled()).toEqual([false, false, false, false, false]);
+
+    fireEvent.focus(stars[1]!);
+    expect(filled()).toEqual([true, true, false, false, false]);
+  });
+
   it('sends 4 and 5 star ratings to the store review page', async () => {
     const api = ratingApi();
     render(<PopupApp api={api} />);

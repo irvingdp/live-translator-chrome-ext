@@ -36,6 +36,8 @@ export interface RatingCardProps {
 export function RatingCard(props: RatingCardProps) {
   const [phase, setPhase] = useState<Phase>('ask');
   const [rating, setRating] = useState(0);
+  // The star under the pointer or keyboard focus: previews 1..n before a click.
+  const [preview, setPreview] = useState(0);
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
   const [error, setError] = useState<FeedbackError | 'failed'>();
@@ -95,16 +97,24 @@ export function RatingCard(props: RatingCardProps) {
       {phase === 'sent' && <p className="rating-thanks" role="status">{t('feedbackThanks')}</p>}
 
       {(phase === 'ask' || phase === 'form' || phase === 'sending') && (
-        <div className="rating-stars" role="group" aria-labelledby="rating-heading">
+        <div
+          className="rating-stars"
+          role="group"
+          aria-labelledby="rating-heading"
+          onMouseLeave={() => setPreview(0)}
+        >
           {[1, 2, 3, 4, 5].map((stars) => (
             <button
               key={stars}
               aria-label={t('ratingStarLabel', String(stars))}
               aria-pressed={stars === rating}
-              className={`rating-star ${stars <= rating ? 'filled' : ''}`}
+              className={`rating-star ${stars <= (preview || rating) ? 'filled' : ''}`}
               disabled={phase === 'sending'}
               type="button"
+              onBlur={() => setPreview(0)}
               onClick={() => rate(stars)}
+              onFocus={() => setPreview(stars)}
+              onMouseEnter={() => setPreview(stars)}
             >
               ★
             </button>
