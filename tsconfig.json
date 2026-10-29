@@ -6,6 +6,6 @@
     "strict": true,
     "types": ["vitest/globals", "chrome"]
   },
-  // site/ and video/ are separate packages with their own tsconfig.
-  "exclude": ["**/node_modules", "output", "site", "video"]
+  // site/ and video/ are separate packages, and Playwright compiles e2e/ itself.
+  "exclude": ["**/node_modules", "output", "site", "video", "e2e", "playwright.config.ts"]
 }
