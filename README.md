@@ -94,6 +94,21 @@ CRX；需要可點擊安裝的封裝版本時，必須發布到 Chrome Web Store
 
 在 Chrome 的擴充功能選單中右鍵點擊本擴充功能，選擇「選項」，輸入並儲存所選服務的 API Key：Deepgram + DeepL 兩把要一起填，Gemini 則只需要一把（<https://aistudio.google.com/>）。接著開啟 HTTPS 影片分頁，從 Popup 選擇服務與語言並按「開始即時字幕」。
 
+## 官網與介紹影片
+
+官網位於 <https://irvingdp.github.io/live-translator-chrome-ext/>，原始碼在 `site/`（Astro，英文與繁中）。首頁的 25 秒介紹影片由 `video/`（Remotion）產生。兩者都是獨立的 npm 套件，不影響擴充功能本身的依賴。
+
+```bash
+cd video && npm install
+npm run studio                       # 在 Remotion Studio 預覽、調整影片
+npm run render -- ../site/public/video   # 渲染 en / zh-TW 影片與封面圖
+
+cd ../site && npm install
+npm run dev                          # 本機預覽官網
+```
+
+`.github/workflows/pages.yml` 會在 `site/`、`video/` 或 `PRIVACY.md` 有變更時重新渲染影片、建置官網；PR 只驗證，合併到 `main` 才部署到 GitHub Pages。影片檔不進版控。
+
 ## 隱私與費用
 
 Deepgram 模式下，分頁音訊會傳送至 Deepgram，穩定的辨識文字會傳送至 DeepL；Gemini 模式下，分頁音訊只會傳送至 Google Gemini，原文與譯文都由它產生。使用者需自行提供並負擔所選服務的 API 額度：Deepgram/DeepL 按用量計費，Gemini Live 則按每分鐘 token 計費，語音約 25 tokens/秒，也就是一條連線持續消耗約 1500 input tokens/分鐘，即使沒人說話也一樣。API Key 不會同步到其他裝置，但能存取這個 Chrome profile 的人或程式仍可能讀取本機擴充功能資料。

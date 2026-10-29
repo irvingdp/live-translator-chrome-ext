@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.astro/
+# Rendered by video/render.mjs in CI.
+public/video/

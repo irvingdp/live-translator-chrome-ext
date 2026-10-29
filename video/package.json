@@ -1,0 +1,21 @@
+{
+  "name": "bilingual-live-captions-intro-video",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "node render.mjs",
+    "compile": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.535",
+    "@remotion/google-fonts": "4.0.535",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "remotion": "4.0.535"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "typescript": "5.9.3"
+  }
+}
