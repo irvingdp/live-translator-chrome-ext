@@ -64,6 +64,15 @@ function doPost(e) {
   }
 }
 
+/**
+ * Run this once from the editor (select "authorize", press Run) and accept the
+ * prompt. A web app executing as you can only use services you have granted.
+ */
+function authorize() {
+  SpreadsheetApp.getActiveSpreadsheet().getName();
+  MailApp.getRemainingDailyQuota();
+}
+
 function overLimit() {
   const cache = CacheService.getScriptCache();
   const key = `count:${Math.floor(Date.now() / 60000)}`;

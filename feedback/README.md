@@ -18,7 +18,9 @@ API key or caption text.
 3. **Deploy → New deployment → Web app**
    - Execute as: **Me**
    - Who has access: **Anyone**
-4. Authorize the script when asked (it needs Sheets and Gmail send access).
+4. In the editor, pick the `authorize` function and press **Run**, then accept
+   the prompt (Sheets and Gmail send access). Skipping this makes every request
+   fail with "你沒有呼叫 SpreadsheetApp.getActiveSpreadsheet 的權限".
 5. Copy the web app URL (ends in `/exec`) into `FEEDBACK_ENDPOINT` in
    `src/core/feedback.ts`.
 

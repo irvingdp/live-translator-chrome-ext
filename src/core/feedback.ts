@@ -9,7 +9,8 @@
 import type { TranscriberId } from './settings';
 
 // Web app URL of the deployed Apps Script (feedback/apps-script.gs).
-export const FEEDBACK_ENDPOINT = '';
+export const FEEDBACK_ENDPOINT =
+  'https://script.google.com/macros/s/AKfycbzY17CDPPYzsXACmpaXBd3feOqofQ32STcMPJKAVMXaGBLP84Qp4X3OH7p_3gQw0UON/exec';
 
 export const MAX_FEEDBACK_LENGTH = 2000;
 // Ratings at or above this go to the store; below it, to the feedback form.
