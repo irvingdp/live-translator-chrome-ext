@@ -289,12 +289,16 @@ const FakeVideo = () => {
               width: '100%',
               height: '100%',
               borderRadius: 8,
+              position: 'relative',
+              overflow: 'hidden',
               background: `radial-gradient(circle at 30% 35%, hsl(${hue}, 95%, 60%) 0%, transparent 45%),
                 radial-gradient(circle at 72% 60%, hsl(${(hue + 120) % 360}, 95%, 55%) 0%, transparent 50%),
                 radial-gradient(circle at 50% 100%, hsl(${(hue + 240) % 360}, 90%, 45%) 0%, transparent 55%),
                 #000`,
             }}
-          />
+          >
+            <TouchDemo />
+          </div>
           <div
             style={{
               position: 'absolute',
@@ -322,6 +326,97 @@ const FakeVideo = () => {
       <div style={{ position: 'absolute', left: 28, right: 28, bottom: 22, height: 6, borderRadius: 3, background: 'rgba(255,255,255,.2)' }}>
         <div style={{ width: `${progress * 100}%`, height: '100%', borderRadius: 3, background: '#ef4444' }} />
       </div>
+    </AbsoluteFill>
+  );
+};
+
+// Finger gestures on the laptop display, timed to the touch-screen captions:
+// a tap, a swipe that drags a photo, a pinch that zooms it, then another tap.
+const TOUCH = {
+  tap1: 255,
+  swipe: [372, 410],
+  pinch: [440, 476],
+  tap2: 565,
+} as const;
+const SCREEN = { w: 492, h: 298 };
+
+const TouchDemo = () => {
+  const frame = useCurrentFrame();
+  const swipe = interpolate(frame, [TOUCH.swipe[0], TOUCH.swipe[1]], [0, 1], { ...clamp, easing: ease });
+  const pinch = interpolate(frame, [TOUCH.pinch[0], TOUCH.pinch[1]], [0, 1], { ...clamp, easing: ease });
+  const cardX = -110 * swipe;
+  const cardScale = 1 + 0.4 * pinch;
+  const cx = SCREEN.w / 2 + cardX;
+  const cy = SCREEN.h / 2;
+
+  const fingers: { x: number; y: number; from: number; to: number }[] = [
+    { x: SCREEN.w / 2, y: cy, from: TOUCH.tap1 - 6, to: TOUCH.tap1 + 10 },
+    { x: SCREEN.w / 2 + 40 - 150 * swipe, y: cy + 10, from: TOUCH.swipe[0] - 6, to: TOUCH.swipe[1] + 6 },
+    { x: cx - 18 - 70 * pinch, y: cy + 12 + 30 * pinch, from: TOUCH.pinch[0] - 6, to: TOUCH.pinch[1] + 6 },
+    { x: cx + 18 + 70 * pinch, y: cy - 12 - 30 * pinch, from: TOUCH.pinch[0] - 6, to: TOUCH.pinch[1] + 6 },
+    { x: cx, y: cy, from: TOUCH.tap2 - 6, to: TOUCH.tap2 + 10 },
+  ];
+
+  return (
+    <AbsoluteFill>
+      <div
+        style={{
+          position: 'absolute',
+          left: cx - 100,
+          top: cy - 64,
+          width: 200,
+          height: 128,
+          borderRadius: 12,
+          background: 'linear-gradient(135deg, #fde68a 0%, #f97316 45%, #7c3aed 100%)',
+          border: '2px solid rgba(255,255,255,.7)',
+          boxShadow: '0 12px 30px rgba(0,0,0,.45)',
+          transform: `scale(${cardScale})`,
+        }}
+      />
+      {fingers.map((f, i) => {
+        if (frame < f.from || frame > f.to) return null;
+        const o = Math.min(
+          interpolate(frame, [f.from, f.from + 6], [0, 1], clamp),
+          interpolate(frame, [f.to - 6, f.to], [1, 0], clamp),
+        );
+        return (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: f.x - 20,
+              top: f.y - 20,
+              width: 40,
+              height: 40,
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,.75)',
+              border: '3px solid rgba(255,255,255,.95)',
+              boxShadow: '0 0 0 8px rgba(255,255,255,.18), 0 4px 14px rgba(0,0,0,.4)',
+              opacity: o,
+            }}
+          />
+        );
+      })}
+      {[TOUCH.tap1, TOUCH.tap2].map((at) => {
+        if (frame < at || frame > at + 20) return null;
+        const p = (frame - at) / 20;
+        const x = at === TOUCH.tap1 ? SCREEN.w / 2 : cx;
+        return (
+          <div
+            key={at}
+            style={{
+              position: 'absolute',
+              left: x - 20 - 50 * p,
+              top: cy - 20 - 50 * p,
+              width: 40 + 100 * p,
+              height: 40 + 100 * p,
+              borderRadius: '50%',
+              border: '3px solid rgba(255,255,255,.9)',
+              opacity: 1 - p,
+            }}
+          />
+        );
+      })}
     </AbsoluteFill>
   );
 };

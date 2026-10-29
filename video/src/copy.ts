@@ -24,7 +24,7 @@ export type Copy = {
   lines: [CaptionLine, CaptionLine, CaptionLine];
 };
 
-// Demo lines follow a MacBook Pro launch film. Both cuts demo Chinese <-> English. The English cut translates Chinese into
+// Demo lines follow a MacBook Pro launch film and its touch screen. Both cuts demo Chinese <-> English. The English cut translates Chinese into
 // English and the Chinese cut the reverse, so each audience reads its own language.
 export const COPY: Record<Locale, Copy> = {
   en: {
@@ -46,16 +46,16 @@ export const COPY: Record<Locale, Copy> = {
     historyTitle: 'Caption history',
     lines: [
       {
-        source: '如果你給 Mac 一塊 OLED，那它得是不一樣的 OLED。',
-        translation: "If you give a Mac an OLED, it'll have to be a different kind of OLED.",
-      },
-      {
-        source: '所以它的色彩會更鮮豔、亮度更亮、黑色更黑。',
-        translation: "So it'll have more vivid colors, brighter brightness, blacker blacks.",
-      },
-      {
-        source: '它看起來會真實到讓你想伸手去摸一摸。',
+        source: '它看起來會真實到讓你想伸手摸一摸。',
         translation: "It'll look so real, you'll wanna reach out and touch it.",
+      },
+      {
+        source: '既然能摸，就能在上面滑動、拖曳、縮放和捲動。',
+        translation: "And if you can touch it, you can swipe and drag and pinch and scroll.",
+      },
+      {
+        source: '這是有史以來第一台支援觸控的 Mac。',
+        translation: "It's the first-ever Mac with touch.",
       },
     ],
   },
@@ -78,16 +78,16 @@ export const COPY: Record<Locale, Copy> = {
     historyTitle: '即時字幕紀錄',
     lines: [
       {
-        source: "If you give a Mac an OLED, it'll have to be a different kind of OLED.",
-        translation: '如果你給 Mac 一塊 OLED，那它得是不一樣的 OLED。',
-      },
-      {
-        source: "So it'll have more vivid colors, brighter brightness, blacker blacks.",
-        translation: '所以它的色彩會更鮮豔、亮度更亮、黑色更黑。',
-      },
-      {
         source: "It'll look so real, you'll wanna reach out and touch it.",
-        translation: '它看起來會真實到讓你想伸手去摸一摸。',
+        translation: '它看起來會真實到讓你想伸手摸一摸。',
+      },
+      {
+        source: "And if you can touch it, you can swipe and drag and pinch and scroll.",
+        translation: '既然能摸，就能在上面滑動、拖曳、縮放和捲動。',
+      },
+      {
+        source: "It's the first-ever Mac with touch.",
+        translation: '這是有史以來第一台支援觸控的 Mac。',
       },
     ],
   },
