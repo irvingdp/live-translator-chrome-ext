@@ -16,8 +16,8 @@ const base = {
 };
 
 describe('feedback', () => {
-  it('requires a message and checks the optional email', () => {
-    expect(validateFeedback('   ', '')).toBe('messageRequired');
+  it('accepts a rating with no comment and checks the optional email', () => {
+    expect(validateFeedback('   ', '')).toBeUndefined();
     expect(validateFeedback('x'.repeat(MAX_FEEDBACK_LENGTH + 1), '')).toBe('messageTooLong');
     expect(validateFeedback('ok', 'not-an-email')).toBe('emailInvalid');
     expect(validateFeedback('ok', '')).toBeUndefined();

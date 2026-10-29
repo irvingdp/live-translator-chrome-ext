@@ -10,7 +10,6 @@ function createApi(overrides: Partial<PopupApi> = {}): PopupApi {
     authorizeCurrentTab: vi.fn().mockResolvedValue(undefined),
     extensionVersion: vi.fn().mockReturnValue('1.4.0'),
     loadRatingPrompt: vi.fn().mockResolvedValue(INITIAL_RATING_PROMPT),
-    openStoreReviews: vi.fn().mockResolvedValue(undefined),
     saveRatingPrompt: vi.fn().mockResolvedValue(undefined),
     sendFeedback: vi.fn().mockResolvedValue(undefined),
     loadSettings: vi.fn().mockResolvedValue(DEFAULT_SETTINGS),
@@ -592,7 +591,7 @@ describe('PopupApp rating card', () => {
     expect(litStars(stars)).toBe(0);
   });
 
-  it.each([1, 2, 3])('clicking star %i asks for feedback and keeps that many stars lit', async (n) => {
+  it.each([1, 2, 3, 4, 5])('clicking star %i shows the feedback form and keeps that many stars lit', async (n) => {
     const api = ratingApi();
     render(<PopupApp api={api} />);
     const stars = await findStars();
@@ -601,60 +600,41 @@ describe('PopupApp rating card', () => {
     // The pointer has left the stars to type in the form.
     fireEvent.mouseLeave(stars[n - 1]!.parentElement!);
 
-    expect(screen.getByLabelText('哪裡可以做得更好？')).toBeVisible();
+    expect(screen.getByLabelText('有什麼想說的嗎？（選填）')).toBeVisible();
+    expect(screen.getByRole('button', { name: '送出' })).toBeEnabled();
     expect(litStars(stars)).toBe(n);
     expect(stars[n - 1]).toHaveAttribute('aria-pressed', 'true');
-    expect(api.openStoreReviews).not.toHaveBeenCalled();
+    // Nothing navigates away from the popup.
+    expect(screen.queryByText(/線上應用程式商店/)).not.toBeInTheDocument();
   });
 
-  it.each([4, 5])('clicking star %i opens the store review page', async (n) => {
+  it.each([1, 2, 3, 4, 5])('star %i can be sent on its own, without a comment', async (n) => {
     const api = ratingApi();
     render(<PopupApp api={api} />);
     const stars = await findStars();
 
     fireEvent.click(stars[n - 1]!);
-
-    expect(api.openStoreReviews).toHaveBeenCalledOnce();
-    expect(screen.queryByLabelText('哪裡可以做得更好？')).not.toBeInTheDocument();
-    expect(await screen.findByText(/已在新分頁開啟 Chrome 線上應用程式商店/)).toBeVisible();
-  });
-
-  it('sends the clicked star count with the feedback', async () => {
-    const api = ratingApi();
-    render(<PopupApp api={api} />);
-    const stars = await findStars();
-
-    fireEvent.click(stars[2]!);
-    fireEvent.change(screen.getByLabelText('哪裡可以做得更好？'), { target: { value: '還不錯' } });
     fireEvent.click(screen.getByRole('button', { name: '送出' }));
 
-    await screen.findByText('謝謝你的回饋！');
-    expect(api.sendFeedback).toHaveBeenCalledWith(expect.objectContaining({ rating: 3 }));
-  });
-
-  it('sends 4 and 5 star ratings to the store review page', async () => {
-    const api = ratingApi();
-    render(<PopupApp api={api} />);
-
-    fireEvent.click(await screen.findByRole('button', { name: '5 顆星' }));
-
-    expect(api.openStoreReviews).toHaveBeenCalledOnce();
-    expect(await screen.findByText(/已在新分頁開啟 Chrome 線上應用程式商店/)).toBeVisible();
+    expect(await screen.findByText('謝謝你的回饋！')).toBeVisible();
+    expect(api.sendFeedback).toHaveBeenCalledWith({
+      message: '',
+      provider: 'gemini',
+      rating: n,
+      uiLanguage: 'zh-Hant-TW',
+      version: '1.4.0',
+    });
     await waitFor(() =>
       expect(api.saveRatingPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'done' })),
     );
   });
 
-  it('collects feedback for 1 to 3 stars and sends only the agreed fields', async () => {
+  it('sends the comment and email when given', async () => {
     const api = ratingApi();
     render(<PopupApp api={api} />);
 
     fireEvent.click(await screen.findByRole('button', { name: '2 顆星' }));
-    fireEvent.click(screen.getByRole('button', { name: '送出' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('請寫下遇到的問題或建議。');
-    expect(api.sendFeedback).not.toHaveBeenCalled();
-
-    fireEvent.change(screen.getByLabelText('哪裡可以做得更好？'), {
+    fireEvent.change(screen.getByLabelText('有什麼想說的嗎？（選填）'), {
       target: { value: '字幕延遲太久' },
     });
     fireEvent.change(screen.getByLabelText('Email（選填，想收到回覆再填）'), {
@@ -671,9 +651,20 @@ describe('PopupApp rating card', () => {
       uiLanguage: 'zh-Hant-TW',
       version: '1.4.0',
     });
-    await waitFor(() =>
-      expect(api.saveRatingPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'done' })),
-    );
+  });
+
+  it('rejects a malformed email before sending', async () => {
+    const api = ratingApi();
+    render(<PopupApp api={api} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '5 顆星' }));
+    fireEvent.change(screen.getByLabelText('Email（選填，想收到回覆再填）'), {
+      target: { value: 'not-an-email' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Email 格式看起來不正確。');
+    expect(api.sendFeedback).not.toHaveBeenCalled();
   });
 
   it('keeps the text and offers a retry when sending fails', async () => {
@@ -681,13 +672,13 @@ describe('PopupApp rating card', () => {
     render(<PopupApp api={api} />);
 
     fireEvent.click(await screen.findByRole('button', { name: '1 顆星' }));
-    fireEvent.change(screen.getByLabelText('哪裡可以做得更好？'), {
+    fireEvent.change(screen.getByLabelText('有什麼想說的嗎？（選填）'), {
       target: { value: '無法啟動' },
     });
     fireEvent.click(screen.getByRole('button', { name: '送出' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('送出失敗');
-    expect(screen.getByLabelText('哪裡可以做得更好？')).toHaveValue('無法啟動');
+    expect(screen.getByLabelText('有什麼想說的嗎？（選填）')).toHaveValue('無法啟動');
     expect(screen.getByRole('button', { name: '重試' })).toBeEnabled();
     expect(api.saveRatingPrompt).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'done' }));
   });

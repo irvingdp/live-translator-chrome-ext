@@ -521,13 +521,9 @@
     "message": "不要再問",
     "description": "Rating card button that hides the card for good."
   },
-  "ratingStoreThanks": {
-    "message": "謝謝！已在新分頁開啟 Chrome 線上應用程式商店，歡迎留下評論。",
-    "description": "Shown after a 4 or 5 star rating, which opens the store's review page."
-  },
   "feedbackPrompt": {
-    "message": "哪裡可以做得更好？",
-    "description": "Label of the feedback text box shown after a 1 to 3 star rating."
+    "message": "有什麼想說的嗎？（選填）",
+    "description": "Label of the optional feedback text box shown after picking a star rating."
   },
   "feedbackEmailLabel": {
     "message": "Email（選填，想收到回覆再填）",
@@ -552,10 +548,6 @@
   "feedbackFailed": {
     "message": "送出失敗，請確認網路連線後再試一次。",
     "description": "Shown when sending feedback fails. The typed text is kept."
-  },
-  "feedbackMessageRequired": {
-    "message": "請寫下遇到的問題或建議。",
-    "description": "Validation error: the feedback text is empty."
   },
   "feedbackMessageTooLong": {
     "message": "請控制在 $1 字以內。",

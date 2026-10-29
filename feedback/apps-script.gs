@@ -30,7 +30,8 @@ function doPost(e) {
 
     const rating = Number(data.rating);
     const message = String(data.message || '').trim().slice(0, MAX_MESSAGE);
-    if (!(rating >= 1 && rating <= 5) || !message) return reply('bad_request');
+    // The comment is optional; a bare rating is still worth recording.
+    if (!(rating >= 1 && rating <= 5)) return reply('bad_request');
     const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data.email || ''))
       ? String(data.email).slice(0, 254)
       : '';
@@ -53,7 +54,7 @@ function doPost(e) {
         `Version: ${version}`,
         `Reply-to: ${email || '(none)'}`,
         '',
-        message,
+        message || '(no comment)',
       ].join('\n'),
     };
     if (email) mail.replyTo = email;

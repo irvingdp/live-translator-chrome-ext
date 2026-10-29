@@ -14,11 +14,10 @@ choose, using **your own API key**, and draws the returned text on screen.
 developer cannot tell that you installed it, what you watched, or what was said.
 
 After you have used captions on a couple of tabs, the popup may ask you for a star
-rating, at most twice. Choosing 4 or 5 stars only opens the Chrome Web Store review
-page; nothing is sent. Choosing 1 to 3 stars shows an optional feedback form. **Only
-if you press Send** does the extension transmit:
+rating, at most twice. Picking a star shows a short form where a comment and an
+email are both optional. **Only if you press Send** does the extension transmit:
 
-- your star rating and the text you typed,
+- your star rating and the comment you typed, if any,
 - the email address you typed, if any (so the developer can reply),
 - the extension version, the provider you use (Gemini or Deepgram + DeepL), and the
   extension's interface language.

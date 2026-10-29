@@ -521,13 +521,9 @@
     "message": "Don't ask again",
     "description": "Rating card button that hides the card for good."
   },
-  "ratingStoreThanks": {
-    "message": "Thanks! The Chrome Web Store is open in a new tab if you'd like to leave a review.",
-    "description": "Shown after a 4 or 5 star rating, which opens the store's review page."
-  },
   "feedbackPrompt": {
-    "message": "What could be better?",
-    "description": "Label of the feedback text box shown after a 1 to 3 star rating."
+    "message": "Anything you'd like to tell us? (optional)",
+    "description": "Label of the optional feedback text box shown after picking a star rating."
   },
   "feedbackEmailLabel": {
     "message": "Email (optional, if you'd like a reply)",
@@ -552,10 +548,6 @@
   "feedbackFailed": {
     "message": "Couldn't send. Check your connection and try again.",
     "description": "Shown when sending feedback fails. The typed text is kept."
-  },
-  "feedbackMessageRequired": {
-    "message": "Please tell us what went wrong.",
-    "description": "Validation error: the feedback text is empty."
   },
   "feedbackMessageTooLong": {
     "message": "Please keep it under $1 characters.",

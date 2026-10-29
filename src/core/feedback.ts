@@ -13,8 +13,6 @@ export const FEEDBACK_ENDPOINT =
   'https://script.google.com/macros/s/AKfycbzY17CDPPYzsXACmpaXBd3feOqofQ32STcMPJKAVMXaGBLP84Qp4X3OH7p_3gQw0UON/exec';
 
 export const MAX_FEEDBACK_LENGTH = 2000;
-// Ratings at or above this go to the store; below it, to the feedback form.
-export const STORE_RATING_MIN = 4;
 
 export interface FeedbackPayload {
   rating: number;
@@ -25,13 +23,13 @@ export interface FeedbackPayload {
   uiLanguage: string;
 }
 
-export type FeedbackError = 'messageRequired' | 'messageTooLong' | 'emailInvalid';
+export type FeedbackError = 'messageTooLong' | 'emailInvalid';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// The comment is optional: a rating on its own is worth sending.
 export function validateFeedback(message: string, email: string): FeedbackError | undefined {
   const text = message.trim();
-  if (!text) return 'messageRequired';
   if (text.length > MAX_FEEDBACK_LENGTH) return 'messageTooLong';
   const address = email.trim();
   if (address && (address.length > 254 || !EMAIL.test(address))) return 'emailInvalid';

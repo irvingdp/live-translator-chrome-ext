@@ -38,7 +38,6 @@ export interface PopupApi {
   extensionVersion(): string;
   loadRatingPrompt(): Promise<RatingPromptState>;
   saveRatingPrompt(state: RatingPromptState): Promise<void>;
-  openStoreReviews(): Promise<void>;
   sendFeedback(payload: FeedbackPayload): Promise<void>;
   loadSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<void>;
@@ -206,10 +205,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
               }),
             );
             void updateRatingPrompt(finish);
-          }}
-          onStoreRating={() => {
-            void updateRatingPrompt(finish);
-            void api.openStoreReviews().catch(() => undefined);
           }}
         />
       )}

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 
 import {
   MAX_FEEDBACK_LENGTH,
-  STORE_RATING_MIN,
   validateFeedback,
   type FeedbackError,
 } from '../core/feedback';
@@ -11,10 +10,9 @@ import { t, type MessageKey } from '../core/i18n';
 // How long a thank-you stays up before the card folds away.
 export const THANKS_MS = 2000;
 
-type Phase = 'ask' | 'store' | 'form' | 'sending' | 'sent';
+type Phase = 'ask' | 'form' | 'sending' | 'sent';
 
 const ERROR_KEYS: Record<FeedbackError | 'failed', MessageKey> = {
-  messageRequired: 'feedbackMessageRequired',
   messageTooLong: 'feedbackMessageTooLong',
   emailInvalid: 'feedbackEmailInvalid',
   failed: 'feedbackFailed',
@@ -25,9 +23,7 @@ export interface RatingCardProps {
   onLater(): void;
   /** "Don't ask again". */
   onNever(): void;
-  /** 4–5 stars: open the store review page. The rating counts as done. */
-  onStoreRating(rating: number): void;
-  /** 1–3 stars: send the form. Rejects when the request fails. */
+  /** Send the rating with the optional comment. Rejects when the request fails. */
   onSendFeedback(rating: number, message: string, email: string): Promise<void>;
   /** The card has finished thanking the user and can go. */
   onClose(): void;
@@ -44,19 +40,15 @@ export function RatingCard(props: RatingCardProps) {
 
   const { onClose } = props;
   useEffect(() => {
-    if (phase !== 'store' && phase !== 'sent') return;
+    if (phase !== 'sent') return;
     const timer = setTimeout(onClose, THANKS_MS);
     return () => clearTimeout(timer);
   }, [phase, onClose]);
 
+  // Every rating opens the same form; nothing navigates away.
   const rate = (stars: number) => {
     setRating(stars);
-    if (stars >= STORE_RATING_MIN) {
-      setPhase('store');
-      props.onStoreRating(stars);
-    } else {
-      setPhase('form');
-    }
+    setPhase('form');
   };
 
   const submit = async () => {
@@ -93,7 +85,6 @@ export function RatingCard(props: RatingCardProps) {
         )}
       </div>
 
-      {phase === 'store' && <p className="rating-thanks" role="status">{t('ratingStoreThanks')}</p>}
       {phase === 'sent' && <p className="rating-thanks" role="status">{t('feedbackThanks')}</p>}
 
       {(phase === 'ask' || phase === 'form' || phase === 'sending') && (

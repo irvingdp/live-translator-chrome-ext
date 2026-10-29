@@ -70,15 +70,4 @@ describe('browserPopupApi', () => {
     await browserPopupApi.saveRatingPrompt(state);
     expect(set).toHaveBeenCalledWith({ ratingPrompt: state });
   });
-
-  it('opens the store review page in a new tab', async () => {
-    const create = vi.fn().mockResolvedValue({});
-    vi.stubGlobal('chrome', { tabs: { create } });
-
-    await browserPopupApi.openStoreReviews();
-
-    expect(create).toHaveBeenCalledWith({
-      url: 'https://chromewebstore.google.com/detail/ehgfnhdncllgdojcgchaehioknjloikn/reviews',
-    });
-  });
 });
