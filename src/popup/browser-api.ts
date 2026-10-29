@@ -1,5 +1,8 @@
 import type { SessionStatus } from '../core/capture-session-controller';
+import { sendFeedback } from '../core/feedback';
 import { t } from '../core/i18n';
+import { STORE_REVIEWS_URL } from '../core/links';
+import { normalizeRatingPrompt, RATING_PROMPT_KEY } from '../core/rating-prompt';
 import type { ExtensionMessage } from '../core/messages';
 import {
   DEFAULT_SETTINGS,
@@ -9,6 +12,7 @@ import {
 import type { PopupApi } from './PopupApp';
 
 interface SessionResponse {
+  authorized?: boolean;
   error?: string;
   ok: boolean;
   status?: SessionStatus;
@@ -25,7 +29,7 @@ async function control(message: ExtensionMessage): Promise<SessionStatus> {
 export const browserPopupApi: PopupApi = {
   async authorizeCurrentTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id === undefined) return;
+    if (tab?.id === undefined) return undefined;
     const response = await chrome.runtime.sendMessage({
       target: 'background',
       type: 'SESSION_AUTHORIZE_TAB',
@@ -34,7 +38,20 @@ export const browserPopupApi: PopupApi = {
     if (!response?.ok) {
       throw new Error(response?.error ?? t('backgroundNoResponse'));
     }
+    return { authorized: response.authorized === true, tabId: tab.id };
   },
+  extensionVersion: () => chrome.runtime.getManifest().version,
+  async loadRatingPrompt() {
+    const stored = await chrome.storage.local.get(RATING_PROMPT_KEY);
+    return normalizeRatingPrompt(stored[RATING_PROMPT_KEY]);
+  },
+  async saveRatingPrompt(state) {
+    await chrome.storage.local.set({ [RATING_PROMPT_KEY]: state });
+  },
+  async openStoreReviews() {
+    await chrome.tabs.create({ url: STORE_REVIEWS_URL });
+  },
+  sendFeedback: (payload) => sendFeedback(payload),
   async loadSettings() {
     const stored = await chrome.storage.local.get('settings');
     return normalizeSettings(

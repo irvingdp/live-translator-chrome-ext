@@ -1,0 +1,66 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import {
+  MAX_FEEDBACK_LENGTH,
+  buildFeedbackPayload,
+  sendFeedback,
+  validateFeedback,
+} from '../../src/core/feedback';
+
+const base = {
+  message: '  The captions lag on long videos.  ',
+  provider: 'gemini' as const,
+  rating: 2,
+  uiLanguage: 'zh-TW',
+  version: '1.4.0',
+};
+
+describe('feedback', () => {
+  it('requires a message and checks the optional email', () => {
+    expect(validateFeedback('   ', '')).toBe('messageRequired');
+    expect(validateFeedback('x'.repeat(MAX_FEEDBACK_LENGTH + 1), '')).toBe('messageTooLong');
+    expect(validateFeedback('ok', 'not-an-email')).toBe('emailInvalid');
+    expect(validateFeedback('ok', '')).toBeUndefined();
+    expect(validateFeedback('ok', 'me@example.com')).toBeUndefined();
+  });
+
+  it('sends only the listed fields and drops a blank email', () => {
+    const payload = buildFeedbackPayload({
+      ...base,
+      email: '  ',
+      // Anything else a caller passes along must not leak out.
+      ...({ apiKey: 'secret', tabUrl: 'https://private.example' } as object),
+    });
+
+    expect(payload).toEqual({
+      message: 'The captions lag on long videos.',
+      provider: 'gemini',
+      rating: 2,
+      uiLanguage: 'zh-TW',
+      version: '1.4.0',
+    });
+  });
+
+  it('posts a no-cors text/plain request, which needs no host permission', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null));
+    const payload = buildFeedbackPayload({ ...base, email: 'me@example.com' });
+
+    await sendFeedback(payload, 'https://script.example/exec', fetchImpl);
+
+    expect(fetchImpl).toHaveBeenCalledWith('https://script.example/exec', {
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      method: 'POST',
+      mode: 'no-cors',
+    });
+  });
+
+  it('fails loudly when no endpoint is configured or the network is down', async () => {
+    const payload = buildFeedbackPayload(base);
+
+    await expect(sendFeedback(payload, '', vi.fn())).rejects.toThrow('not configured');
+    await expect(
+      sendFeedback(payload, 'https://script.example/exec', vi.fn().mockRejectedValue(new TypeError('offline'))),
+    ).rejects.toThrow('offline');
+  });
+});

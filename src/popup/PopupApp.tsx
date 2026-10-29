@@ -1,6 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { SessionStatus } from '../core/capture-session-controller';
+import { buildFeedbackPayload, type FeedbackPayload } from '../core/feedback';
+import { websiteUrl } from '../core/links';
+import {
+  INITIAL_RATING_PROMPT,
+  finish,
+  recordAuthorizedTab,
+  recordSessionStart,
+  shouldPrompt,
+  snooze,
+  type RatingPromptState,
+} from '../core/rating-prompt';
 import { t, type MessageKey } from '../core/i18n';
 import {
   GEMINI_AUTO_SOURCE,
@@ -15,9 +26,20 @@ import {
   type TranscriberId,
   validateSettingsForStart,
 } from '../core/settings';
+import { RatingCard } from './RatingCard';
+
+export interface AuthorizedTab {
+  tabId: number;
+  authorized: boolean;
+}
 
 export interface PopupApi {
-  authorizeCurrentTab(): Promise<void>;
+  authorizeCurrentTab(): Promise<AuthorizedTab | undefined>;
+  extensionVersion(): string;
+  loadRatingPrompt(): Promise<RatingPromptState>;
+  saveRatingPrompt(state: RatingPromptState): Promise<void>;
+  openStoreReviews(): Promise<void>;
+  sendFeedback(payload: FeedbackPayload): Promise<void>;
   loadSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<void>;
   start(settings: AppSettings): Promise<SessionStatus>;
@@ -32,14 +54,41 @@ export function PopupApp({ api }: { api: PopupApi }) {
   const [message, setMessage] = useState('');
   const [translator, setTranslator] = useState('deepl');
   const [revealedSecret, setRevealedSecret] = useState<string>();
+  const [ratingVisible, setRatingVisible] = useState(false);
   const saveTail = useRef<Promise<void>>(Promise.resolve());
   const sessionAttempt = useRef(0);
+  const ratingPrompt = useRef<Promise<RatingPromptState>>(undefined);
+
+  // Every change to the rating state runs through here, in order, so a quick
+  // "later" cannot race the authorization that showed the card.
+  const updateRatingPrompt = useCallback(
+    (change: (state: RatingPromptState) => RatingPromptState) => {
+      const previous =
+        ratingPrompt.current ??
+        api.loadRatingPrompt().catch(() => INITIAL_RATING_PROMPT);
+      const next = previous.then(change);
+      ratingPrompt.current = next;
+      return next.then(async (state) => {
+        await api.saveRatingPrompt(state).catch(() => undefined);
+        return state;
+      });
+    },
+    [api],
+  );
 
   useEffect(() => {
+    const authorization = api.authorizeCurrentTab().catch(() => undefined);
+    void authorization.then(async (tab) => {
+      if (!tab?.authorized) return;
+      const state = await updateRatingPrompt((current) =>
+        recordAuthorizedTab(current, tab.tabId),
+      );
+      if (shouldPrompt(state)) setRatingVisible(true);
+    });
     void Promise.all([
       api.loadSettings(),
       api.status(),
-      api.authorizeCurrentTab().catch(() => undefined),
+      authorization,
     ]).then(
       ([loadedSettings, loadedStatus]) => {
         setSettings(normalizeSettings(loadedSettings));
@@ -50,7 +99,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
         setMessage(t('settingsLoadFailed'));
       },
     );
-  }, [api]);
+  }, [api, updateRatingPrompt]);
 
   const updateSettings = (patch: Partial<AppSettings>) => {
     setSettings((current) => {
@@ -104,6 +153,12 @@ export function PopupApp({ api }: { api: PopupApi }) {
       if (attempt !== sessionAttempt.current) return;
       const started = await api.start(settings);
       if (attempt === sessionAttempt.current) setStatus(started);
+      if ('tabId' in started && started.tabId >= 0) {
+        const state = await updateRatingPrompt((current) =>
+          recordSessionStart(current, started.tabId),
+        );
+        if (shouldPrompt(state)) setRatingVisible(true);
+      }
     } catch (error) {
       if (attempt === sessionAttempt.current) {
         setStatus({ state: 'idle' });
@@ -125,8 +180,39 @@ export function PopupApp({ api }: { api: PopupApi }) {
   const running = status.state === 'running' || status.state === 'starting';
   const transcriber = settings.transcriber;
   const isGemini = transcriber === 'gemini';
+  const closeRating = () => setRatingVisible(false);
   return (
     <main className="popup">
+      {ratingVisible && (
+        <RatingCard
+          onClose={closeRating}
+          onLater={() => {
+            void updateRatingPrompt(snooze);
+            closeRating();
+          }}
+          onNever={() => {
+            void updateRatingPrompt(finish);
+            closeRating();
+          }}
+          onSendFeedback={async (rating, message, email) => {
+            await api.sendFeedback(
+              buildFeedbackPayload({
+                email,
+                message,
+                provider: settings.transcriber,
+                rating,
+                uiLanguage: t('uiLanguage'),
+                version: api.extensionVersion(),
+              }),
+            );
+            void updateRatingPrompt(finish);
+          }}
+          onStoreRating={() => {
+            void updateRatingPrompt(finish);
+            void api.openStoreReviews().catch(() => undefined);
+          }}
+        />
+      )}
       <header className="header">
         <div>
           <p className="eyebrow">LIVE CAPTIONS</p>
@@ -397,6 +483,11 @@ export function PopupApp({ api }: { api: PopupApi }) {
         />
         </section>
       </details>
+      <footer className="popup-footer">
+        <a href={websiteUrl(t('uiLanguage'))} rel="noreferrer" target="_blank">
+          {t('websiteLink')}
+        </a>
+      </footer>
     </main>
   );
 }

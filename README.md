@@ -94,6 +94,17 @@ CRX；需要可點擊安裝的封裝版本時，必須發布到 Chrome Web Store
 
 在 Chrome 的擴充功能選單中右鍵點擊本擴充功能，選擇「選項」，輸入並儲存所選服務的 API Key：Deepgram + DeepL 兩把要一起填，Gemini 則只需要一把（<https://aistudio.google.com/>）。接著開啟 HTTPS 影片分頁，從 Popup 選擇服務與語言並按「開始即時字幕」。
 
+## 評分與回饋
+
+使用者開始過一次字幕、再到第二個分頁授權時，Popup 頂端會出現評分卡片（按「稍後再說」則到第 5 個分頁再問一次，之後不再出現）。4–5 星開啟 Chrome 線上應用程式商店的評論頁；1–3 星顯示回饋表單，送到 Google Apps Script，寫入 Google Sheet 並寄信給開發者。部署步驟見 [`feedback/README.md`](feedback/README.md)，部署後把網址填入 `src/core/feedback.ts` 的 `FEEDBACK_ENDPOINT`（打 tag 發佈時 CI 會檢查）。
+
+真實瀏覽器的 e2e 測試：
+
+```bash
+npx playwright install chromium   # 第一次
+npm run build && npm run e2e
+```
+
 ## 官網與介紹影片
 
 官網位於 <https://irvingdp.github.io/live-translator-chrome-ext/>，原始碼在 `site/`（Astro，英文與繁中）。首頁的 25 秒介紹影片由 `video/`（Remotion）產生。兩者都是獨立的 npm 套件，不影響擴充功能本身的依賴。

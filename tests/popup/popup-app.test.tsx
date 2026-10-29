@@ -2,11 +2,17 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { describe, expect, it, vi } from 'vitest';
 
 import { PopupApp, type PopupApi } from '../../src/popup/PopupApp';
+import { INITIAL_RATING_PROMPT } from '../../src/core/rating-prompt';
 import { DEFAULT_SETTINGS } from '../../src/core/settings';
 
 function createApi(overrides: Partial<PopupApi> = {}): PopupApi {
   return {
     authorizeCurrentTab: vi.fn().mockResolvedValue(undefined),
+    extensionVersion: vi.fn().mockReturnValue('1.4.0'),
+    loadRatingPrompt: vi.fn().mockResolvedValue(INITIAL_RATING_PROMPT),
+    openStoreReviews: vi.fn().mockResolvedValue(undefined),
+    saveRatingPrompt: vi.fn().mockResolvedValue(undefined),
+    sendFeedback: vi.fn().mockResolvedValue(undefined),
     loadSettings: vi.fn().mockResolvedValue(DEFAULT_SETTINGS),
     saveSettings: vi.fn().mockResolvedValue(undefined),
     start: vi.fn().mockResolvedValue({ state: 'running', tabId: 42 }),
@@ -506,5 +512,133 @@ describe('PopupApp', () => {
 
     releaseStart({ state: 'running', tabId: 42 });
     expect(await screen.findByRole('switch', { name: '開始即時字幕' })).not.toBeChecked();
+  });
+});
+
+describe('PopupApp rating card', () => {
+  const afterFirstTab = {
+    ...INITIAL_RATING_PROMPT,
+    recentTabIds: [1],
+    started: true,
+    tabCount: 1,
+  };
+
+  function ratingApi(overrides: Partial<PopupApi> = {}) {
+    return createApi({
+      authorizeCurrentTab: vi.fn().mockResolvedValue({ authorized: true, tabId: 2 }),
+      loadRatingPrompt: vi.fn().mockResolvedValue(afterFirstTab),
+      ...overrides,
+    });
+  }
+
+  it('asks for a rating when a second tab is authorized after the first session', async () => {
+    const api = ratingApi();
+    render(<PopupApp api={api} />);
+
+    expect(await screen.findByRole('heading', { name: '雙語即時字幕翻譯好用嗎？' })).toBeVisible();
+    expect(api.saveRatingPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ recentTabIds: [1, 2], tabCount: 2 }),
+    );
+  });
+
+  it('stays quiet on the first tab and on tabs it could not authorize', async () => {
+    const first = createApi({
+      authorizeCurrentTab: vi.fn().mockResolvedValue({ authorized: true, tabId: 1 }),
+    });
+    const { unmount } = render(<PopupApp api={first} />);
+    await screen.findByLabelText('Gemini API Key');
+    expect(screen.queryByText('雙語即時字幕翻譯好用嗎？')).not.toBeInTheDocument();
+    unmount();
+
+    render(
+      <PopupApp
+        api={ratingApi({
+          authorizeCurrentTab: vi.fn().mockResolvedValue({ authorized: false, tabId: 2 }),
+        })}
+      />,
+    );
+    await screen.findByLabelText('Gemini API Key');
+    expect(screen.queryByText('雙語即時字幕翻譯好用嗎？')).not.toBeInTheDocument();
+  });
+
+  it('sends 4 and 5 star ratings to the store review page', async () => {
+    const api = ratingApi();
+    render(<PopupApp api={api} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '5 顆星' }));
+
+    expect(api.openStoreReviews).toHaveBeenCalledOnce();
+    expect(await screen.findByText(/已在新分頁開啟 Chrome 線上應用程式商店/)).toBeVisible();
+    await waitFor(() =>
+      expect(api.saveRatingPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'done' })),
+    );
+  });
+
+  it('collects feedback for 1 to 3 stars and sends only the agreed fields', async () => {
+    const api = ratingApi();
+    render(<PopupApp api={api} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '2 顆星' }));
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('請寫下遇到的問題或建議。');
+    expect(api.sendFeedback).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('哪裡可以做得更好？'), {
+      target: { value: '字幕延遲太久' },
+    });
+    fireEvent.change(screen.getByLabelText('Email（選填，想收到回覆再填）'), {
+      target: { value: 'me@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+
+    expect(await screen.findByText('謝謝你的回饋！')).toBeVisible();
+    expect(api.sendFeedback).toHaveBeenCalledWith({
+      email: 'me@example.com',
+      message: '字幕延遲太久',
+      provider: 'gemini',
+      rating: 2,
+      uiLanguage: 'zh-Hant-TW',
+      version: '1.4.0',
+    });
+    await waitFor(() =>
+      expect(api.saveRatingPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'done' })),
+    );
+  });
+
+  it('keeps the text and offers a retry when sending fails', async () => {
+    const api = ratingApi({ sendFeedback: vi.fn().mockRejectedValue(new TypeError('offline')) });
+    render(<PopupApp api={api} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '1 顆星' }));
+    fireEvent.change(screen.getByLabelText('哪裡可以做得更好？'), {
+      target: { value: '無法啟動' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('送出失敗');
+    expect(screen.getByLabelText('哪裡可以做得更好？')).toHaveValue('無法啟動');
+    expect(screen.getByRole('button', { name: '重試' })).toBeEnabled();
+    expect(api.saveRatingPrompt).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'done' }));
+  });
+
+  it('snoozes on "later" and hides the card', async () => {
+    const api = ratingApi();
+    render(<PopupApp api={api} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '稍後再說' }));
+
+    expect(screen.queryByText('雙語即時字幕翻譯好用嗎？')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.saveRatingPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'snoozed' })),
+    );
+  });
+
+  it('links to the Chinese website from the footer', async () => {
+    render(<PopupApp api={createApi()} />);
+
+    expect(await screen.findByRole('link', { name: '官網' })).toHaveAttribute(
+      'href',
+      'https://irvingdp.github.io/live-translator-chrome-ext/zh-tw/',
+    );
   });
 });

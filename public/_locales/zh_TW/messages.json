@@ -491,5 +491,96 @@
     "placeholders": {
       "code": { "content": "$1", "example": "1006" }
     }
+  },
+
+  "ratingTitle": {
+    "message": "$1好用嗎？",
+    "description": "Rating card title in the popup. $1 is the extension name.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Bilingual Live Captions"
+      }
+    }
+  },
+  "ratingStarLabel": {
+    "message": "$1 顆星",
+    "description": "Accessible label for one star button in the rating card. $1 is a number from 1 to 5.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "4"
+      }
+    }
+  },
+  "ratingLater": {
+    "message": "稍後再說",
+    "description": "Rating card button that hides the card and asks again later."
+  },
+  "ratingNever": {
+    "message": "不要再問",
+    "description": "Rating card button that hides the card for good."
+  },
+  "ratingStoreThanks": {
+    "message": "謝謝！已在新分頁開啟 Chrome 線上應用程式商店，歡迎留下評論。",
+    "description": "Shown after a 4 or 5 star rating, which opens the store's review page."
+  },
+  "feedbackPrompt": {
+    "message": "哪裡可以做得更好？",
+    "description": "Label of the feedback text box shown after a 1 to 3 star rating."
+  },
+  "feedbackEmailLabel": {
+    "message": "Email（選填，想收到回覆再填）",
+    "description": "Label of the optional email field in the feedback form."
+  },
+  "feedbackPrivacyNote": {
+    "message": "只會送出你填寫的內容、星數、擴充功能版本、服務商與介面語言，不含分頁網址、API Key 或字幕內容。",
+    "description": "Small print under the feedback form explaining exactly what is sent."
+  },
+  "feedbackSubmit": {
+    "message": "送出",
+    "description": "Feedback form submit button."
+  },
+  "feedbackSending": {
+    "message": "傳送中…",
+    "description": "Feedback submit button while the request is in flight."
+  },
+  "feedbackThanks": {
+    "message": "謝謝你的回饋！",
+    "description": "Shown after feedback is sent, before the card closes."
+  },
+  "feedbackFailed": {
+    "message": "送出失敗，請確認網路連線後再試一次。",
+    "description": "Shown when sending feedback fails. The typed text is kept."
+  },
+  "feedbackMessageRequired": {
+    "message": "請寫下遇到的問題或建議。",
+    "description": "Validation error: the feedback text is empty."
+  },
+  "feedbackMessageTooLong": {
+    "message": "請控制在 $1 字以內。",
+    "description": "Validation error: the feedback text is too long. $1 is the limit.",
+    "placeholders": {
+      "limit": {
+        "content": "$1",
+        "example": "2000"
+      }
+    }
+  },
+  "feedbackEmailInvalid": {
+    "message": "Email 格式看起來不正確。",
+    "description": "Validation error: the optional email is malformed."
+  },
+  "closeLabel": {
+    "message": "關閉",
+    "description": "Accessible label for a close (×) button."
+  },
+  "websiteLink": {
+    "message": "官網",
+    "description": "Popup footer link to the extension's website."
+  },
+  "feedbackRetry": {
+    "message": "重試",
+    "description": "Feedback submit button after a failed send."
   }
 }

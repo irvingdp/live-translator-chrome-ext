@@ -1,18 +1,33 @@
 # Privacy Policy — Bilingual Live Captions
 
-**Last updated: 2026-08-20**
+**Last updated: 2026-10-29**
 
 ## Summary
 
-This extension has no server and the developer receives none of your data. What it
-does: it sends the audio of a tab you pick to a speech/translation service you
+This extension has no server, and the developer receives nothing from you unless
+you choose to send feedback. What it does: it sends the audio of a tab you pick to a speech/translation service you
 choose, using **your own API key**, and draws the returned text on screen.
 
 ## Data collected by the developer
 
-**None.** There is no analytics, no telemetry, and no backend. Nothing is ever sent
-to the developer. The developer cannot tell that you installed it, what you watched,
-or what was said.
+**Nothing, unless you send feedback.** There is no analytics and no telemetry. The
+developer cannot tell that you installed it, what you watched, or what was said.
+
+After you have used captions on a couple of tabs, the popup may ask you for a star
+rating, at most twice. Choosing 4 or 5 stars only opens the Chrome Web Store review
+page; nothing is sent. Choosing 1 to 3 stars shows an optional feedback form. **Only
+if you press Send** does the extension transmit:
+
+- your star rating and the text you typed,
+- the email address you typed, if any (so the developer can reply),
+- the extension version, the provider you use (Gemini or Deepgram + DeepL), and the
+  extension's interface language.
+
+It never includes your tab URL, API keys, audio, or caption text. The form is
+posted to a Google Apps Script owned by the developer, which stores it in a private
+Google Sheet and forwards it to the developer's email. It is used only to improve
+the extension and is never sold or shared. To have feedback deleted, contact the
+developer (see below).
 
 ## Data that leaves your device
 
@@ -38,6 +53,9 @@ text is only rendered on screen; it is never written to a file or a log.
 - **Caption appearance and language settings**: also in `chrome.storage.local`.
 - **Session state**: held in `chrome.storage.session` (cleared when Chrome closes)
   and **contains no API keys** — they are stripped before it is written.
+- **Rating prompt state**: whether you have rated, and how many tabs you have used
+  captions on (a counter plus recent tab ids), in `chrome.storage.local`. It only
+  decides when to show the rating card and never leaves the device.
 
 You can clear the key fields on the options page and save at any time. Removing the
 extension deletes all of the above local data.
@@ -71,13 +89,13 @@ tier:
 | `tabCapture` | Capture the audio of the tab you selected — the only source of caption text |
 | `offscreen` | A Manifest V3 service worker cannot use AudioContext, so audio processing and the provider connection run in an offscreen document |
 | `activeTab`, `scripting` | Inject the caption overlay only into the tab where you pressed start; no script is registered across all websites |
-| `storage` | Save your API keys and caption settings |
+| `storage` | Save your API keys, caption settings and whether you have rated the extension |
 | `host_permissions` | Limited to the four provider API domains used for the connections above |
 
 ## Children
 
 This extension is not directed at children under 13 and does not knowingly collect
-their data — it collects no one's data.
+their data. The optional feedback form asks for nothing beyond what you choose to type.
 
 ## Changes
 
@@ -87,4 +105,5 @@ ships with a new version.
 ## Contact
 
 Please open an issue at
-<https://github.com/irvingdp/live-translator-chrome-ext/issues>.
+<https://github.com/irvingdp/live-translator-chrome-ext/issues>, or email
+irvingdp@gmail.com (for example, to have feedback you sent deleted).
