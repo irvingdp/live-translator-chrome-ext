@@ -92,7 +92,7 @@ npm run build
 `output/chrome-mv3`。macOS 與 Windows 的正式版 Chrome 不允許直接安裝本機自行簽署的
 CRX；需要可點擊安裝的封裝版本時，必須發布到 Chrome Web Store，或由組織透過企業政策部署。
 
-在 Chrome 的擴充功能選單中右鍵點擊本擴充功能，選擇「選項」，輸入並儲存所選服務的 API Key：Deepgram + DeepL 兩把要一起填，Gemini 則只需要一把（<https://aistudio.google.com/>）。接著開啟 HTTPS 影片分頁，從 Popup 選擇服務與語言並按「開始即時字幕」。
+在 Chrome 的擴充功能選單中右鍵點擊本擴充功能，選擇「選項」，輸入並儲存所選服務的 API Key：Deepgram + DeepL 兩把要一起填，Gemini 則只需要一把（<https://aistudio.google.com/>）。接著開啟 HTTPS 影片分頁，從 Popup 選擇服務與語言，再打開 Popup 右上角的開關。
 
 ## 評分與回饋
 

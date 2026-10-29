@@ -68,7 +68,7 @@ export const STRINGS: Record<Lang, Strings> = {
         title: 'Get a Gemini API key',
         body: 'The welcome page walks you through creating a key in Google AI Studio and pasting it in.',
       },
-      { title: 'Press start', body: 'Open a video, click the extension icon, and press “Start live captions”.' },
+      { title: 'Switch it on', body: 'Open a video, click the extension icon, and flip the switch at the top right.' },
     ],
     providersTitle: 'Providers and languages',
     providerHeaders: ['', 'Gemini live translate 3.5', 'Deepgram Nova-3 + DeepL'],
@@ -130,7 +130,7 @@ export const STRINGS: Record<Lang, Strings> = {
     steps: [
       { title: '安裝', body: '從 Chrome 線上應用程式商店安裝（需要 Chrome 116 以上）。' },
       { title: '取得 Gemini API Key', body: '歡迎頁會一步步帶你在 Google AI Studio 建立金鑰並貼上。' },
-      { title: '按下開始', body: '打開影片，點擴充功能圖示，按「開始即時字幕」。' },
+      { title: '打開開關', body: '打開影片，點擴充功能圖示，打開右上角的開關。' },
     ],
     providersTitle: '服務與語言',
     providerHeaders: ['', 'Gemini live translate 3.5', 'Deepgram Nova-3 + DeepL'],

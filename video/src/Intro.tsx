@@ -56,7 +56,10 @@ const BAR_H = 54;
 const CONTENT_Y = B.y + TAB_H + BAR_H;
 const ICON = { x: B.x + B.w - 56, y: B.y + TAB_H + BAR_H / 2 };
 const POPUP = { x: ICON.x - 360, y: CONTENT_Y + 8, w: 390 };
-const START_BTN = { x: POPUP.x + POPUP.w / 2, y: POPUP.y + 296 };
+// The popup header is 52px tall inside 18px padding; the 64px toggle sits at its right.
+const POPUP_PAD = 18;
+const POPUP_HEAD = 52;
+const TOGGLE = { x: POPUP.x + POPUP.w - POPUP_PAD - 32, y: POPUP.y + POPUP_PAD + POPUP_HEAD / 2 };
 // Floating caption surface, relative to the page content area.
 const CAP = { x: 225, y: 380, w: 1050, h: 270, header: 46 };
 const SIDEBAR_BTN = { x: B.x + CAP.x + CAP.w - 34, y: CONTENT_Y + CAP.y + CAP.header / 2 };
@@ -250,7 +253,7 @@ const AddressBar = () => {
 };
 
 // A brand-free stand-in for a laptop launch film: an open laptop on a dark
-// stage, its display cycling through vivid OLED colours.
+// stage, showing off its OLED display.
 const FakeVideo = () => {
   const frame = useCurrentFrame();
   const progress = 0.28 + (frame / DURATION) * 0.6;
@@ -297,7 +300,7 @@ const FakeVideo = () => {
                 #000`,
             }}
           >
-            <TouchDemo />
+            <OledDemo />
           </div>
           <div
             style={{
@@ -330,93 +333,136 @@ const FakeVideo = () => {
   );
 };
 
-// Finger gestures on the laptop display, timed to the touch-screen captions:
-// a tap, a swipe that drags a photo, a pinch that zooms it, then another tap.
-const TOUCH = {
-  tap1: 255,
-  swipe: [372, 410],
-  pinch: [440, 476],
-  tap2: 565,
+
+// What the display shows, timed to the OLED captions: pixels switching on
+// one by one, an LCD vs OLED black-level split, then HDR highlights.
+const OLED = {
+  pixels: [T.line1, T.line1 + 70],
+  split: [T.line2 + 10, T.line3 - 20],
+  highlight: T.line3,
 } as const;
 const SCREEN = { w: 492, h: 298 };
+const GRID = { cols: 12, rows: 7 };
 
-const TouchDemo = () => {
+// Fixed pseudo-random stars so every render matches.
+const STARS = Array.from({ length: 46 }, (_, i) => ({
+  x: ((i * 97) % 100) / 100,
+  y: ((i * 61 + 13) % 100) / 100,
+  r: 1 + (i % 3) * 0.7,
+  phase: i * 0.9,
+}));
+
+const OledDemo = () => {
   const frame = useCurrentFrame();
-  const swipe = interpolate(frame, [TOUCH.swipe[0], TOUCH.swipe[1]], [0, 1], { ...clamp, easing: ease });
-  const pinch = interpolate(frame, [TOUCH.pinch[0], TOUCH.pinch[1]], [0, 1], { ...clamp, easing: ease });
-  const cardX = -110 * swipe;
-  const cardScale = 1 + 0.4 * pinch;
-  const cx = SCREEN.w / 2 + cardX;
-  const cy = SCREEN.h / 2;
-
-  const fingers: { x: number; y: number; from: number; to: number }[] = [
-    { x: SCREEN.w / 2, y: cy, from: TOUCH.tap1 - 6, to: TOUCH.tap1 + 10 },
-    { x: SCREEN.w / 2 + 40 - 150 * swipe, y: cy + 10, from: TOUCH.swipe[0] - 6, to: TOUCH.swipe[1] + 6 },
-    { x: cx - 18 - 70 * pinch, y: cy + 12 + 30 * pinch, from: TOUCH.pinch[0] - 6, to: TOUCH.pinch[1] + 6 },
-    { x: cx + 18 + 70 * pinch, y: cy - 12 - 30 * pinch, from: TOUCH.pinch[0] - 6, to: TOUCH.pinch[1] + 6 },
-    { x: cx, y: cy, from: TOUCH.tap2 - 6, to: TOUCH.tap2 + 10 },
-  ];
+  const hue = (frame * 0.5) % 360;
+  const split = Math.min(
+    interpolate(frame, [OLED.split[0], OLED.split[0] + 18], [0, 1], { ...clamp, easing: ease }),
+    interpolate(frame, [OLED.split[1] - 14, OLED.split[1]], [1, 0], clamp),
+  );
+  const splitX = interpolate(frame, [OLED.split[0], OLED.split[0] + 24], [0, 0.5], { ...clamp, easing: ease });
+  const hdr = interpolate(frame, [OLED.highlight, OLED.highlight + 40], [0, 1], { ...clamp, easing: ease });
+  const label: CSSProperties = {
+    position: 'absolute',
+    top: 10,
+    fontSize: 15,
+    fontWeight: 800,
+    letterSpacing: '0.12em',
+    color: '#fff',
+    opacity: split,
+    textShadow: '0 1px 6px rgba(0,0,0,.8)',
+  };
 
   return (
-    <AbsoluteFill>
+    <AbsoluteFill style={{ background: '#000', filter: `saturate(${1 + hdr * 0.5})` }}>
+      {/* Aurora over true black */}
+      <AbsoluteFill
+        style={{
+          background: `radial-gradient(60% 45% at 30% 70%, hsla(${hue}, 95%, 55%, .9) 0%, transparent 70%),
+            radial-gradient(50% 40% at 72% 62%, hsla(${(hue + 110) % 360}, 95%, 55%, .85) 0%, transparent 70%),
+            radial-gradient(40% 30% at 55% 95%, hsla(${(hue + 220) % 360}, 90%, 50%, .8) 0%, transparent 70%)`,
+        }}
+      />
+      {STARS.map((star, i) => (
+        <div
+          key={i}
+          style={{
+            position: 'absolute',
+            left: star.x * SCREEN.w,
+            top: star.y * SCREEN.h * 0.55,
+            width: star.r * 2,
+            height: star.r * 2,
+            borderRadius: '50%',
+            background: '#fff',
+            opacity: 0.45 + 0.55 * Math.abs(Math.sin(frame / 14 + star.phase)),
+          }}
+        />
+      ))}
+      {/* HDR highlight: a bright moon that blooms in */}
       <div
         style={{
           position: 'absolute',
-          left: cx - 100,
-          top: cy - 64,
-          width: 200,
-          height: 128,
-          borderRadius: 12,
-          background: 'linear-gradient(135deg, #fde68a 0%, #f97316 45%, #7c3aed 100%)',
-          border: '2px solid rgba(255,255,255,.7)',
-          boxShadow: '0 12px 30px rgba(0,0,0,.45)',
-          transform: `scale(${cardScale})`,
+          left: SCREEN.w * 0.72 - 26,
+          top: 34,
+          width: 52,
+          height: 52,
+          borderRadius: '50%',
+          background: '#fff',
+          boxShadow: `0 0 ${20 + hdr * 70}px ${6 + hdr * 26}px rgba(255,255,255,${0.35 + hdr * 0.55})`,
+          transform: `scale(${0.8 + hdr * 0.35})`,
         }}
       />
-      {fingers.map((f, i) => {
-        if (frame < f.from || frame > f.to) return null;
-        const o = Math.min(
-          interpolate(frame, [f.from, f.from + 6], [0, 1], clamp),
-          interpolate(frame, [f.to - 6, f.to], [1, 0], clamp),
-        );
-        return (
-          <div
-            key={i}
-            style={{
-              position: 'absolute',
-              left: f.x - 20,
-              top: f.y - 20,
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,.75)',
-              border: '3px solid rgba(255,255,255,.95)',
-              boxShadow: '0 0 0 8px rgba(255,255,255,.18), 0 4px 14px rgba(0,0,0,.4)',
-              opacity: o,
-            }}
-          />
-        );
-      })}
-      {[TOUCH.tap1, TOUCH.tap2].map((at) => {
-        if (frame < at || frame > at + 20) return null;
-        const p = (frame - at) / 20;
-        const x = at === TOUCH.tap1 ? SCREEN.w / 2 : cx;
-        return (
-          <div
-            key={at}
-            style={{
-              position: 'absolute',
-              left: x - 20 - 50 * p,
-              top: cy - 20 - 50 * p,
-              width: 40 + 100 * p,
-              height: 40 + 100 * p,
-              borderRadius: '50%',
-              border: '3px solid rgba(255,255,255,.9)',
-              opacity: 1 - p,
-            }}
-          />
-        );
-      })}
+      {/* LCD half: a backlight lifts the blacks to grey */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: `${splitX * 100}%`,
+          background: 'rgba(78,84,104,.55)',
+          opacity: split,
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: `${splitX * 100}%`,
+          width: 2,
+          background: '#fff',
+          opacity: split,
+        }}
+      />
+      <div style={{ ...label, left: 14 }}>LCD</div>
+      <div style={{ ...label, right: 14, color: C.tealLight }}>OLED</div>
+      {/* Pixels switch on one by one, in a diagonal wave */}
+      {frame < OLED.pixels[1] + 2 &&
+        Array.from({ length: GRID.cols * GRID.rows }, (_, i) => {
+          const col = i % GRID.cols;
+          const row = Math.floor(i / GRID.cols);
+          const at = OLED.pixels[0] + (col + row) * 3;
+          const off =
+            frame < at
+              ? interpolate(frame, [OLED.pixels[0] - 8, OLED.pixels[0]], [0, 1], clamp)
+              : interpolate(frame, [at, at + 6], [1, 0], clamp);
+          if (off <= 0) return null;
+          return (
+            <div
+              key={i}
+              style={{
+                position: 'absolute',
+                left: (col * SCREEN.w) / GRID.cols,
+                top: (row * SCREEN.h) / GRID.rows,
+                width: SCREEN.w / GRID.cols + 1,
+                height: SCREEN.h / GRID.rows + 1,
+                background: '#000',
+                outline: '1px solid rgba(255,255,255,.06)',
+                opacity: off,
+              }}
+            />
+          );
+        })}
     </AbsoluteFill>
   );
 };
@@ -712,38 +758,47 @@ const PanelPair = ({ line, first }: { line: TimedLine; first: boolean }) => {
   );
 };
 
+// Mirrors the real popup: the on/off toggle sits in the header, then the
+// provider and language cards, "show more settings" and the website link.
 const Popup = ({ copy }: { copy: Copy }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   if (frame < T.iconClick || frame > T.popupClose[1]) return null;
   const open = spring({ frame: frame - T.iconClick, fps, config: { damping: 18, stiffness: 180 } });
   const close = interpolate(frame, [T.popupClose[0], T.popupClose[1]], [1, 0], clamp);
-  const running = frame >= T.startClick;
-  const press = frame >= T.startClick && frame < T.startClick + 6 ? 0.97 : 1;
+  const on = interpolate(frame, [T.startClick, T.startClick + 6], [0, 1], { ...clamp, easing: ease });
 
   const card: CSSProperties = {
-    background: C.surface,
     border: `1px solid ${C.border}`,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
   };
-  const field = (text: ReactNode) => (
+  const heading: CSSProperties = { fontSize: 17, fontWeight: 700, color: '#dbe3ee' };
+  const label: CSSProperties = { fontSize: 15, fontWeight: 700, color: '#dbe3ee' };
+  const field = (text: ReactNode, chevron = true, muted = false) => (
     <div
       style={{
         height: 44,
-        borderRadius: 8,
+        borderRadius: 10,
         border: `1px solid ${C.border}`,
         background: C.field,
         display: 'flex',
         alignItems: 'center',
+        justifyContent: 'space-between',
         padding: '0 14px',
         fontSize: 16,
+        color: muted ? C.muted : C.text,
       }}
     >
       {text}
+      {chevron && (
+        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth={2.5}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      )}
     </div>
   );
 
@@ -757,7 +812,7 @@ const Popup = ({ copy }: { copy: Copy }) => {
         background: C.bg,
         border: `1px solid ${C.border}`,
         borderRadius: 14,
-        padding: 18,
+        padding: POPUP_PAD,
         display: 'flex',
         flexDirection: 'column',
         gap: 14,
@@ -767,47 +822,74 @@ const Popup = ({ copy }: { copy: Copy }) => {
         opacity: Math.min(open, close),
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{ height: POPUP_HEAD, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ color: C.tealLight, fontSize: 13, fontWeight: 800, letterSpacing: '0.14em' }}>LIVE CAPTIONS</div>
-          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>Bilingual Live Captions</div>
+          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{copy.panelTitle}</div>
         </div>
+        {/* The toggle that starts captions */}
         <div
           style={{
-            fontSize: 14,
-            padding: '5px 12px',
-            borderRadius: 999,
-            border: `1px solid ${running ? C.teal : C.border}`,
-            color: running ? C.tealLight : C.muted,
+            width: 64,
+            height: 34,
+            borderRadius: 17,
+            position: 'relative',
+            background: `rgba(13,148,136,${on})`,
+            border: `1.5px solid ${on > 0.5 ? C.teal : C.border}`,
+            boxShadow: on > 0 ? `0 0 ${on * 16}px rgba(20,184,166,.5)` : 'none',
           }}
         >
-          {running ? copy.running : copy.idle}
+          <div
+            style={{
+              position: 'absolute',
+              top: 3,
+              left: 3 + on * 30,
+              width: 26,
+              height: 26,
+              borderRadius: '50%',
+              background: '#fff',
+              boxShadow: '0 1px 4px rgba(0,0,0,.4)',
+            }}
+          />
         </div>
       </div>
       <div style={card}>
-        <div style={{ fontSize: 15, fontWeight: 700 }}>Gemini live translate 3.5</div>
-        <div style={{ fontSize: 14, color: C.tealLight }}>API key ✓</div>
+        <div style={heading}>{copy.providerHeading}</div>
+        <div style={label}>{copy.transcriberLabel}</div>
+        {field('Gemini live translate 3.5')}
+        <div style={label}>{copy.apiKeyLabel}</div>
+        {field(<span style={{ letterSpacing: '0.1em', color: C.muted }}>••••••••••••••••••••••</span>, false)}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 15, color: C.tealLight }}>{copy.keysConfigured}</div>
+          <div
+            style={{
+              padding: '8px 18px',
+              borderRadius: 10,
+              background: 'rgba(20,184,166,.55)',
+              border: `1px solid ${C.tealLight}`,
+              fontSize: 15,
+              fontWeight: 700,
+            }}
+          >
+            {copy.setApiKey}
+          </div>
+        </div>
       </div>
-      <div style={{ ...card, flexDirection: 'row' }}>
-        <div style={{ flex: 1 }}>{field(copy.sourceLabel)}</div>
-        <div style={{ flex: 1 }}>{field(copy.targetLabel)}</div>
+      <div style={card}>
+        <div style={heading}>{copy.languageHeading}</div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={label}>{copy.sourceTitle}</div>
+            {field(copy.sourceLabel, true, true)}
+          </div>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={label}>{copy.targetTitle}</div>
+            {field(copy.targetLabel)}
+          </div>
+        </div>
       </div>
-      <div
-        style={{
-          height: 56,
-          borderRadius: 10,
-          background: running ? C.surface2 : C.tealDark,
-          border: `1px solid ${running ? C.border : C.teal}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 17,
-          fontWeight: 700,
-          transform: `scale(${press})`,
-        }}
-      >
-        {copy.start}
-      </div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.tealLight }}>▸ {copy.moreSettings}</div>
+      <div style={{ textAlign: 'center', fontSize: 14, color: C.muted, textDecoration: 'underline' }}>{copy.website}</div>
     </div>
   );
 };
@@ -818,8 +900,8 @@ const Cursor = () => {
   const frame = useCurrentFrame();
   const path: [readonly [number, number], Point, Point][] = [
     [T.cursorToIcon, REST, ICON],
-    [T.cursorToStart, ICON, START_BTN],
-    [[T.popupClose[0], T.popupClose[1] + 20], START_BTN, REST],
+    [T.cursorToStart, ICON, TOGGLE],
+    [[T.popupClose[0], T.popupClose[1] + 20], TOGGLE, REST],
     [T.cursorToSidebar, REST, SIDEBAR_BTN],
     [[T.sidebarClick + 10, T.sidebarClick + 40], SIDEBAR_BTN, REST_LEFT],
   ];
@@ -833,7 +915,7 @@ const Cursor = () => {
   const visible = interpolate(frame, [80, 92], [0, 1], clamp);
   const clicks: [number, Point][] = [
     [T.iconClick, ICON],
-    [T.startClick, START_BTN],
+    [T.startClick, TOGGLE],
     [T.sidebarClick, SIDEBAR_BTN],
   ];
 
