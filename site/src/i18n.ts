@@ -53,10 +53,6 @@ export const STRINGS: Record<Lang, Strings> = {
         body: 'The original speech in white, the translation in amber, updating as people talk. Works on YouTube, Netflix, Disney+ and any HTML5 video.',
       },
       {
-        title: 'Follows you across tabs',
-        body: 'Switch to another video tab and a badge appears on the icon. One click and the captions move with you.',
-      },
-      {
         title: 'Captions where you want them',
         body: 'Drag and resize the caption box, or move the full history into Chrome’s side panel. Each site remembers its own layout.',
       },
@@ -120,10 +116,6 @@ export const STRINGS: Record<Lang, Strings> = {
       {
         title: '兩行字幕，即時更新',
         body: '白色是原文、琥珀色是譯文，邊說邊出現。支援 YouTube、Netflix、Disney+ 與一般 HTML5 影片。',
-      },
-      {
-        title: '換分頁，字幕跟著走',
-        body: '切到另一個有影片的分頁時，圖示上會出現提示，點一下字幕就跟過去。',
       },
       {
         title: '字幕放哪裡由你決定',
