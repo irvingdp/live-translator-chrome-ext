@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { RatingPromptState } from '../../src/core/rating-prompt';
 import { browserPopupApi } from '../../src/popup/browser-api';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -35,7 +36,10 @@ describe('browserPopupApi', () => {
       },
     });
 
-    await browserPopupApi.authorizeCurrentTab();
+    await expect(browserPopupApi.authorizeCurrentTab()).resolves.toEqual({
+      authorized: false,
+      tabId: 44,
+    });
 
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
       payload: { tabId: 44 },
@@ -50,5 +54,31 @@ describe('browserPopupApi', () => {
     await browserPopupApi.saveSettings({ deepgramApiKey: 'dg' } as never);
 
     expect(set).toHaveBeenCalledWith({ settings: { deepgramApiKey: 'dg' } });
+  });
+
+  it('keeps the rating prompt state in local storage', async () => {
+    const get = vi.fn().mockResolvedValue({ ratingPrompt: { started: true, tabCount: 2 } });
+    const set = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('chrome', { storage: { local: { get, set } } });
+
+    await expect(browserPopupApi.loadRatingPrompt()).resolves.toMatchObject({
+      started: true,
+      status: 'pending',
+      tabCount: 2,
+    });
+    const state: RatingPromptState = { recentTabIds: [], started: true, status: 'done', tabCount: 2 };
+    await browserPopupApi.saveRatingPrompt(state);
+    expect(set).toHaveBeenCalledWith({ ratingPrompt: state });
+  });
+
+  it('opens the store review page in a new tab', async () => {
+    const create = vi.fn().mockResolvedValue({});
+    vi.stubGlobal('chrome', { tabs: { create } });
+
+    await browserPopupApi.openStoreReviews();
+
+    expect(create).toHaveBeenCalledWith({
+      url: 'https://chromewebstore.google.com/detail/ehgfnhdncllgdojcgchaehioknjloikn/reviews',
+    });
   });
 });

@@ -90,7 +90,7 @@ export const STRINGS: Record<Lang, Strings> = {
       },
       {
         title: 'Can the developer hear what I watch?',
-        body: 'No. The extension has no backend: tab audio goes straight to your provider.',
+        body: 'No. The extension has no backend: tab audio goes straight to your provider. Only the text you choose to send through the optional feedback form ever reaches the developer.',
       },
       {
         title: 'Does it caption system audio or other apps?',
@@ -152,7 +152,7 @@ export const STRINGS: Record<Lang, Strings> = {
       },
       {
         title: '開發者聽得到我在看什麼嗎？',
-        body: '聽不到。擴充功能沒有後端，分頁音訊直接送到你選的服務。',
+        body: '聽不到。擴充功能沒有後端，分頁音訊直接送到你選的服務。只有你主動在選填的回饋表單送出的內容，才會傳給開發者。',
       },
       {
         title: '可以翻譯系統音訊或其他 App 嗎？',

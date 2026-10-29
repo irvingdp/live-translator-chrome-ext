@@ -12,6 +12,8 @@ export default defineConfig({
     name: '__MSG_extName__',
     description: '__MSG_extDescription__',
     minimum_chrome_version: '116',
+    // Shown as the "Website" link on the store listing and chrome://extensions.
+    homepage_url: 'https://irvingdp.github.io/live-translator-chrome-ext/',
     permissions: [
       'activeTab',
       'offscreen',

@@ -93,3 +93,26 @@ input[type="range"] { accent-color: var(--primary); min-height: 28px; padding: 0
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; transition: none !important; }
 }
+
+.rating-card { background: linear-gradient(180deg, rgba(20,184,166,.12), rgba(20,184,166,.04)); border: 1px solid #2dd4bf; border-radius: 12px; display: grid; gap: 10px; padding: 12px; }
+.rating-header { align-items: center; display: flex; justify-content: space-between; gap: 8px; }
+.rating-header h2 { color: var(--text); font-size: 14px; margin: 0; }
+.rating-close { background: transparent; border: 0; border-radius: 6px; color: var(--muted); font-size: 20px; height: 32px; line-height: 1; width: 32px; }
+.rating-close:hover { color: var(--text); }
+.rating-stars { display: flex; gap: 4px; }
+.rating-star { background: transparent; border: 0; border-radius: 8px; color: #475569; font-size: 28px; height: 40px; line-height: 1; padding: 0; width: 40px; }
+.rating-star.filled, .rating-star:hover:not(:disabled) { color: #fbbf24; }
+.rating-actions { display: flex; gap: 14px; }
+.rating-link { background: transparent; border: 0; color: var(--muted); font-size: 12px; padding: 4px 0; text-decoration: underline; }
+.rating-link:hover { color: var(--text); }
+.rating-form { display: grid; gap: 6px; }
+.rating-form label { margin: 4px 0 0; }
+.rating-form textarea { background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: var(--text); font: inherit; font-size: 13px; outline: none; padding: 9px 10px; resize: vertical; width: 100%; }
+.rating-form textarea:focus-visible { border-color: var(--focus); box-shadow: 0 0 0 3px rgba(94,234,212,.28); }
+.rating-submit { justify-self: start; margin-top: 4px; }
+.rating-error { color: var(--danger); font-size: 12px; margin: 0; }
+.rating-note { color: var(--muted); font-size: 11px; line-height: 1.45; margin: 2px 0 0; }
+.rating-thanks { color: #99f6e4; font-size: 13px; margin: 0; }
+.popup-footer { display: flex; justify-content: center; }
+.popup-footer a { color: var(--muted); font-size: 12px; }
+.popup-footer a:hover { color: var(--text); }
