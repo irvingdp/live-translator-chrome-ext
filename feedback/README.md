@@ -1,13 +1,14 @@
 # Feedback endpoint
 
-The popup's rating card sends 1–3 star feedback to a Google Apps Script web
-app. The script writes each submission to a Google Sheet and emails it to
+The popup's rating card sends every rating, with an optional comment, to a
+Google Apps Script web app. The script writes each submission to a Google Sheet and emails it to
 irvingdp@gmail.com. There is no other backend.
 
 ## What is sent
 
-`rating`, `message`, optional `email`, `version`, `provider`, `uiLanguage` —
-nothing else (see `buildFeedbackPayload` in `src/core/feedback.ts`). No tab URL,
+`rating`, optional `issue` (`inaccurate` / `delay` / `ui` / `other`),
+`message` (only with `other`, may be empty), `version`, `provider`, `uiLanguage` —
+nothing else, and no email (see `buildFeedbackPayload` in `src/core/feedback.ts`). No tab URL,
 API key or caption text.
 
 ## Set up (once)

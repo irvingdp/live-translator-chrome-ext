@@ -14,16 +14,19 @@ choose, using **your own API key**, and draws the returned text on screen.
 developer cannot tell that you installed it, what you watched, or what was said.
 
 After you have used captions on a couple of tabs, the popup may ask you for a star
-rating, at most twice. Choosing 4 or 5 stars only opens the Chrome Web Store review
-page; nothing is sent. Choosing 1 to 3 stars shows an optional feedback form. **Only
-if you press Send** does the extension transmit:
+rating, at most twice. **Clicking 4 or 5 stars sends that rating straight away**
+(with the version, provider and language below, and nothing else). Clicking 1 to 3
+stars shows a short form instead: an optional "what could be better?" choice
+(inaccurate translation, captions lag, hard-to-use interface, or other), and a
+comment box only if you choose "other"; that is sent **only when you press Send**.
+In either case the extension transmits at most:
 
-- your star rating and the text you typed,
-- the email address you typed, if any (so the developer can reply),
+- your star rating, the choice you made and the comment you typed, if any,
 - the extension version, the provider you use (Gemini or Deepgram + DeepL), and the
   extension's interface language.
 
-It never includes your tab URL, API keys, audio, or caption text. The form is
+It never includes your email address, tab URL, API keys, audio, or caption text,
+and the form does not ask who you are. The form is
 posted to a Google Apps Script owned by the developer, which stores it in a private
 Google Sheet and forwards it to the developer's email. It is used only to improve
 the extension and is never sold or shared. To have feedback deleted, contact the

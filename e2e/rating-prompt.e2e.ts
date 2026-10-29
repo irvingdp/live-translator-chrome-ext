@@ -94,6 +94,35 @@ test('asks for a rating in the popup of the second authorized tab', async () => 
   expect(stored.ratingPrompt).toMatchObject({ tabCount: 2 });
 });
 
+test('hovering each star in the real popup lights the stars up to it', async () => {
+  await worker.evaluate(() =>
+    chrome.storage.local.set({
+      ratingPrompt: { recentTabIds: [987654], started: true, status: 'pending', tabCount: 1 },
+    }),
+  );
+  await openPopupOn('https://video.example/second');
+  await expect.poll(async () => (await popupState()).stars).toBe(5);
+
+  for (const n of [1, 2, 3, 4, 5]) {
+    // Re-dispatch on every poll: under load the first event can land before
+    // React has attached its listeners.
+    await expect
+      .poll(
+        () =>
+          extensionPage.evaluate((index) => {
+            const [popup] = chrome.extension.getViews({ type: 'popup' });
+            const stars = [...popup!.document.querySelectorAll('.rating-star')];
+            stars[index]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            return new Promise<boolean[]>((done) =>
+              requestAnimationFrame(() => done(stars.map((star) => star.classList.contains('filled')))),
+            );
+          }, n - 1),
+        { message: `hovering star ${n}` },
+      )
+      .toEqual([1, 2, 3, 4, 5].map((i) => i <= n));
+  }
+});
+
 test('does not ask before captions have ever started', async () => {
   await openPopupOn('https://video.example/first');
 

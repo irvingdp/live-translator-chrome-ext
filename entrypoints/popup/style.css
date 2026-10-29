@@ -101,7 +101,7 @@ input[type="range"] { accent-color: var(--primary); min-height: 28px; padding: 0
 .rating-close:hover { color: var(--text); }
 .rating-stars { display: flex; gap: 4px; }
 .rating-star { background: transparent; border: 0; border-radius: 8px; color: #475569; font-size: 28px; height: 40px; line-height: 1; padding: 0; width: 40px; }
-.rating-star.filled, .rating-star:hover:not(:disabled) { color: #fbbf24; }
+.rating-star.filled { color: #fbbf24; }
 .rating-actions { display: flex; gap: 14px; }
 .rating-link { background: transparent; border: 0; color: var(--muted); font-size: 12px; padding: 4px 0; text-decoration: underline; }
 .rating-link:hover { color: var(--text); }

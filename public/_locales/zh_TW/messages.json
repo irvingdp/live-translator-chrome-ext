@@ -521,17 +521,9 @@
     "message": "不要再問",
     "description": "Rating card button that hides the card for good."
   },
-  "ratingStoreThanks": {
-    "message": "謝謝！已在新分頁開啟 Chrome 線上應用程式商店，歡迎留下評論。",
-    "description": "Shown after a 4 or 5 star rating, which opens the store's review page."
-  },
   "feedbackPrompt": {
-    "message": "哪裡可以做得更好？",
-    "description": "Label of the feedback text box shown after a 1 to 3 star rating."
-  },
-  "feedbackEmailLabel": {
-    "message": "Email（選填，想收到回覆再填）",
-    "description": "Label of the optional email field in the feedback form."
+    "message": "請說明",
+    "description": "Label of the free-text box shown when the feedback drop-down is set to Other."
   },
   "feedbackPrivacyNote": {
     "message": "只會送出你填寫的內容、星數、擴充功能版本、服務商與介面語言，不含分頁網址、API Key 或字幕內容。",
@@ -553,10 +545,6 @@
     "message": "送出失敗，請確認網路連線後再試一次。",
     "description": "Shown when sending feedback fails. The typed text is kept."
   },
-  "feedbackMessageRequired": {
-    "message": "請寫下遇到的問題或建議。",
-    "description": "Validation error: the feedback text is empty."
-  },
   "feedbackMessageTooLong": {
     "message": "請控制在 $1 字以內。",
     "description": "Validation error: the feedback text is too long. $1 is the limit.",
@@ -566,10 +554,6 @@
         "example": "2000"
       }
     }
-  },
-  "feedbackEmailInvalid": {
-    "message": "Email 格式看起來不正確。",
-    "description": "Validation error: the optional email is malformed."
   },
   "closeLabel": {
     "message": "關閉",
@@ -582,5 +566,29 @@
   "feedbackRetry": {
     "message": "重試",
     "description": "Feedback submit button after a failed send."
+  },
+  "feedbackIssueLabel": {
+    "message": "哪裡可以做得更好？（選填）",
+    "description": "Label of the optional drop-down in the feedback form."
+  },
+  "feedbackIssueNone": {
+    "message": "請選擇",
+    "description": "Empty first option of the feedback drop-down: nothing picked."
+  },
+  "feedbackIssueInaccurate": {
+    "message": "字幕翻譯不精準",
+    "description": "Feedback drop-down option: the translation is wrong."
+  },
+  "feedbackIssueDelay": {
+    "message": "字幕延遲",
+    "description": "Feedback drop-down option: captions appear too late."
+  },
+  "feedbackIssueUi": {
+    "message": "UI 介面不友善",
+    "description": "Feedback drop-down option: the UI is unfriendly."
+  },
+  "feedbackIssueOther": {
+    "message": "其他",
+    "description": "Feedback drop-down option that reveals a free-text box."
   }
 }

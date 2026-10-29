@@ -96,7 +96,7 @@ CRX；需要可點擊安裝的封裝版本時，必須發布到 Chrome Web Store
 
 ## 評分與回饋
 
-使用者開始過一次字幕、再到第二個分頁授權時，Popup 頂端會出現評分卡片（按「稍後再說」則到第 5 個分頁再問一次，之後不再出現）。4–5 星開啟 Chrome 線上應用程式商店的評論頁；1–3 星顯示回饋表單，送到 Google Apps Script，寫入 Google Sheet 並寄信給開發者。部署步驟見 [`feedback/README.md`](feedback/README.md)，部署後把網址填入 `src/core/feedback.ts` 的 `FEEDBACK_ENDPOINT`（打 tag 發佈時 CI 會檢查）。
+使用者開始過一次字幕、再到第二個分頁授權時，Popup 頂端會出現評分卡片（按「稍後再說」則到第 5 個分頁再問一次，之後不再出現）。點 4–5 顆星會直接送出評分；點 1–3 顆星則顯示回饋表單（「哪裡可以做得更好？」為選填下拉選單：字幕翻譯不精準／字幕延遲／UI 介面不友善／其他，選「其他」才出現文字框；不收集 Email，也不會導到其他頁面），送出後由 Google Apps Script 寫入 Google Sheet 並寄信給開發者。部署步驟見 [`feedback/README.md`](feedback/README.md)，部署後把網址填入 `src/core/feedback.ts` 的 `FEEDBACK_ENDPOINT`（打 tag 發佈時 CI 會檢查）。
 
 真實瀏覽器的 e2e 測試：
 

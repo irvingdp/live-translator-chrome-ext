@@ -1,23 +1,34 @@
 import { useEffect, useState } from 'react';
 
 import {
+  FEEDBACK_ISSUES,
   MAX_FEEDBACK_LENGTH,
-  STORE_RATING_MIN,
   validateFeedback,
+  type FeedbackIssue,
   type FeedbackError,
 } from '../core/feedback';
 import { t, type MessageKey } from '../core/i18n';
 
 // How long a thank-you stays up before the card folds away.
 export const THANKS_MS = 2000;
+// Ratings at or above this are sent the moment the star is clicked; below it,
+// the form asks what could be better first.
+export const QUICK_SEND_MIN = 4;
 
-type Phase = 'ask' | 'store' | 'form' | 'sending' | 'sent';
+// quickFailed: a one-click rating did not go through; offer a retry without
+// turning it into a form.
+type Phase = 'ask' | 'form' | 'sending' | 'sent' | 'quickFailed';
 
 const ERROR_KEYS: Record<FeedbackError | 'failed', MessageKey> = {
-  messageRequired: 'feedbackMessageRequired',
   messageTooLong: 'feedbackMessageTooLong',
-  emailInvalid: 'feedbackEmailInvalid',
   failed: 'feedbackFailed',
+};
+
+const ISSUE_KEYS: Record<FeedbackIssue, MessageKey> = {
+  inaccurate: 'feedbackIssueInaccurate',
+  delay: 'feedbackIssueDelay',
+  ui: 'feedbackIssueUi',
+  other: 'feedbackIssueOther',
 };
 
 export interface RatingCardProps {
@@ -25,10 +36,8 @@ export interface RatingCardProps {
   onLater(): void;
   /** "Don't ask again". */
   onNever(): void;
-  /** 4–5 stars: open the store review page. The rating counts as done. */
-  onStoreRating(rating: number): void;
-  /** 1–3 stars: send the form. Rejects when the request fails. */
-  onSendFeedback(rating: number, message: string, email: string): Promise<void>;
+  /** Send the rating with the optional comment. Rejects when the request fails. */
+  onSendFeedback(rating: number, issue: FeedbackIssue | undefined, message: string): Promise<void>;
   /** The card has finished thanking the user and can go. */
   onClose(): void;
 }
@@ -36,42 +45,52 @@ export interface RatingCardProps {
 export function RatingCard(props: RatingCardProps) {
   const [phase, setPhase] = useState<Phase>('ask');
   const [rating, setRating] = useState(0);
+  // The star under the pointer or keyboard focus: previews 1..n before a click.
+  const [preview, setPreview] = useState(0);
+  const [issue, setIssue] = useState<FeedbackIssue>();
   const [message, setMessage] = useState('');
-  const [email, setEmail] = useState('');
   const [error, setError] = useState<FeedbackError | 'failed'>();
 
   const { onClose } = props;
   useEffect(() => {
-    if (phase !== 'store' && phase !== 'sent') return;
+    if (phase !== 'sent') return;
     const timer = setTimeout(onClose, THANKS_MS);
     return () => clearTimeout(timer);
   }, [phase, onClose]);
 
+  const quick = rating >= QUICK_SEND_MIN;
+
+  const send = async (stars: number, choice: FeedbackIssue | undefined, text: string) => {
+    setError(undefined);
+    setPhase('sending');
+    try {
+      await props.onSendFeedback(stars, choice, text);
+      setPhase('sent');
+    } catch {
+      setError('failed');
+      setPhase(stars >= QUICK_SEND_MIN ? 'quickFailed' : 'form');
+    }
+  };
+
+  // Nothing navigates away. 4–5 stars are sent straight away as a bare rating;
+  // 1–3 open the form.
   const rate = (stars: number) => {
     setRating(stars);
-    if (stars >= STORE_RATING_MIN) {
-      setPhase('store');
-      props.onStoreRating(stars);
+    if (stars >= QUICK_SEND_MIN) {
+      void send(stars, undefined, '');
     } else {
+      setError(undefined);
       setPhase('form');
     }
   };
 
   const submit = async () => {
-    const invalid = validateFeedback(message, email);
+    const invalid = issue === 'other' ? validateFeedback(message) : undefined;
     if (invalid) {
       setError(invalid);
       return;
     }
-    setError(undefined);
-    setPhase('sending');
-    try {
-      await props.onSendFeedback(rating, message, email);
-      setPhase('sent');
-    } catch {
-      setError('failed');
-      setPhase('form');
-    }
+    await send(rating, issue, issue === 'other' ? message : '');
   };
 
   const errorText = error
@@ -84,27 +103,34 @@ export function RatingCard(props: RatingCardProps) {
     <section className="rating-card" aria-labelledby="rating-heading">
       <div className="rating-header">
         <h2 id="rating-heading">{t('ratingTitle', t('extName'))}</h2>
-        {(phase === 'ask' || phase === 'form') && (
+        {(phase === 'ask' || phase === 'form' || phase === 'quickFailed') && (
           <button aria-label={t('closeLabel')} className="rating-close" type="button" onClick={props.onLater}>
             ×
           </button>
         )}
       </div>
 
-      {phase === 'store' && <p className="rating-thanks" role="status">{t('ratingStoreThanks')}</p>}
       {phase === 'sent' && <p className="rating-thanks" role="status">{t('feedbackThanks')}</p>}
 
-      {(phase === 'ask' || phase === 'form' || phase === 'sending') && (
-        <div className="rating-stars" role="group" aria-labelledby="rating-heading">
+      {phase !== 'sent' && (
+        <div
+          className="rating-stars"
+          role="group"
+          aria-labelledby="rating-heading"
+          onMouseLeave={() => setPreview(0)}
+        >
           {[1, 2, 3, 4, 5].map((stars) => (
             <button
               key={stars}
               aria-label={t('ratingStarLabel', String(stars))}
               aria-pressed={stars === rating}
-              className={`rating-star ${stars <= rating ? 'filled' : ''}`}
+              className={`rating-star ${stars <= (preview || rating) ? 'filled' : ''}`}
               disabled={phase === 'sending'}
               type="button"
+              onBlur={() => setPreview(0)}
               onClick={() => rate(stars)}
+              onFocus={() => setPreview(stars)}
+              onMouseEnter={() => setPreview(stars)}
             >
               ★
             </button>
@@ -123,7 +149,28 @@ export function RatingCard(props: RatingCardProps) {
         </div>
       )}
 
-      {(phase === 'form' || phase === 'sending') && (
+      {phase === 'sending' && quick && (
+        <p className="rating-note" role="status">
+          {t('feedbackSending')}
+        </p>
+      )}
+
+      {phase === 'quickFailed' && (
+        <div className="rating-form">
+          <p className="rating-error" role="alert">
+            {t('feedbackFailed')}
+          </p>
+          <button
+            className="secret-submit rating-submit"
+            type="button"
+            onClick={() => void send(rating, undefined, '')}
+          >
+            {t('feedbackRetry')}
+          </button>
+        </div>
+      )}
+
+      {(phase === 'form' || (phase === 'sending' && !quick)) && (
         <form
           className="rating-form"
           noValidate
@@ -132,24 +179,37 @@ export function RatingCard(props: RatingCardProps) {
             void submit();
           }}
         >
-          <label htmlFor="feedback-message">{t('feedbackPrompt')}</label>
-          <textarea
-            id="feedback-message"
-            maxLength={MAX_FEEDBACK_LENGTH}
-            readOnly={phase === 'sending'}
-            rows={4}
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-          />
-          <label htmlFor="feedback-email">{t('feedbackEmailLabel')}</label>
-          <input
-            autoComplete="email"
-            id="feedback-email"
-            readOnly={phase === 'sending'}
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
+          <label htmlFor="feedback-issue">{t('feedbackIssueLabel')}</label>
+          <select
+            disabled={phase === 'sending'}
+            id="feedback-issue"
+            value={issue ?? ''}
+            onChange={(event) => {
+              setIssue((event.target.value || undefined) as FeedbackIssue | undefined);
+              setError(undefined);
+            }}
+          >
+            <option value="">{t('feedbackIssueNone')}</option>
+            {FEEDBACK_ISSUES.map((value) => (
+              <option key={value} value={value}>
+                {t(ISSUE_KEYS[value])}
+              </option>
+            ))}
+          </select>
+          {issue === 'other' && (
+            <>
+              <label htmlFor="feedback-message">{t('feedbackPrompt')}</label>
+              <textarea
+                autoFocus
+                id="feedback-message"
+                maxLength={MAX_FEEDBACK_LENGTH}
+                readOnly={phase === 'sending'}
+                rows={4}
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+              />
+            </>
+          )}
           {errorText && (
             <p className="rating-error" role="alert">
               {errorText}

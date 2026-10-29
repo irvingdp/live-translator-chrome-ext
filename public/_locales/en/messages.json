@@ -521,17 +521,9 @@
     "message": "Don't ask again",
     "description": "Rating card button that hides the card for good."
   },
-  "ratingStoreThanks": {
-    "message": "Thanks! The Chrome Web Store is open in a new tab if you'd like to leave a review.",
-    "description": "Shown after a 4 or 5 star rating, which opens the store's review page."
-  },
   "feedbackPrompt": {
-    "message": "What could be better?",
-    "description": "Label of the feedback text box shown after a 1 to 3 star rating."
-  },
-  "feedbackEmailLabel": {
-    "message": "Email (optional, if you'd like a reply)",
-    "description": "Label of the optional email field in the feedback form."
+    "message": "Tell us more",
+    "description": "Label of the free-text box shown when the feedback drop-down is set to Other."
   },
   "feedbackPrivacyNote": {
     "message": "Sends only what you type, your rating, the extension version, provider and UI language. Never your tab URL, API keys or captions.",
@@ -553,10 +545,6 @@
     "message": "Couldn't send. Check your connection and try again.",
     "description": "Shown when sending feedback fails. The typed text is kept."
   },
-  "feedbackMessageRequired": {
-    "message": "Please tell us what went wrong.",
-    "description": "Validation error: the feedback text is empty."
-  },
   "feedbackMessageTooLong": {
     "message": "Please keep it under $1 characters.",
     "description": "Validation error: the feedback text is too long. $1 is the limit.",
@@ -566,10 +554,6 @@
         "example": "2000"
       }
     }
-  },
-  "feedbackEmailInvalid": {
-    "message": "That email address doesn't look right.",
-    "description": "Validation error: the optional email is malformed."
   },
   "closeLabel": {
     "message": "Close",
@@ -582,5 +566,29 @@
   "feedbackRetry": {
     "message": "Try again",
     "description": "Feedback submit button after a failed send."
+  },
+  "feedbackIssueLabel": {
+    "message": "What could be better? (optional)",
+    "description": "Label of the optional drop-down in the feedback form."
+  },
+  "feedbackIssueNone": {
+    "message": "Choose one",
+    "description": "Empty first option of the feedback drop-down: nothing picked."
+  },
+  "feedbackIssueInaccurate": {
+    "message": "Inaccurate translation",
+    "description": "Feedback drop-down option: the translation is wrong."
+  },
+  "feedbackIssueDelay": {
+    "message": "Captions lag behind",
+    "description": "Feedback drop-down option: captions appear too late."
+  },
+  "feedbackIssueUi": {
+    "message": "The interface is hard to use",
+    "description": "Feedback drop-down option: the UI is unfriendly."
+  },
+  "feedbackIssueOther": {
+    "message": "Other",
+    "description": "Feedback drop-down option that reveals a free-text box."
   }
 }

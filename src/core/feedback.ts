@@ -13,39 +13,38 @@ export const FEEDBACK_ENDPOINT =
   'https://script.google.com/macros/s/AKfycbzY17CDPPYzsXACmpaXBd3feOqofQ32STcMPJKAVMXaGBLP84Qp4X3OH7p_3gQw0UON/exec';
 
 export const MAX_FEEDBACK_LENGTH = 2000;
-// Ratings at or above this go to the store; below it, to the feedback form.
-export const STORE_RATING_MIN = 4;
+
+// What the user picked under "what could be better?". Only "other" comes with
+// free text.
+export const FEEDBACK_ISSUES = ['inaccurate', 'delay', 'ui', 'other'] as const;
+export type FeedbackIssue = (typeof FEEDBACK_ISSUES)[number];
 
 export interface FeedbackPayload {
   rating: number;
+  issue?: FeedbackIssue;
   message: string;
-  email?: string;
   version: string;
   provider: TranscriberId;
   uiLanguage: string;
 }
 
-export type FeedbackError = 'messageRequired' | 'messageTooLong' | 'emailInvalid';
+export type FeedbackError = 'messageTooLong';
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-export function validateFeedback(message: string, email: string): FeedbackError | undefined {
-  const text = message.trim();
-  if (!text) return 'messageRequired';
-  if (text.length > MAX_FEEDBACK_LENGTH) return 'messageTooLong';
-  const address = email.trim();
-  if (address && (address.length > 254 || !EMAIL.test(address))) return 'emailInvalid';
-  return undefined;
+// The comment is optional: a rating on its own is worth sending.
+export function validateFeedback(message: string): FeedbackError | undefined {
+  return message.trim().length > MAX_FEEDBACK_LENGTH ? 'messageTooLong' : undefined;
 }
 
-// Only the fields listed here ever leave the device: no tab URL, no API key,
-// no caption text.
+// Only the fields listed here ever leave the device: no email, no tab URL, no
+// API key, no caption text.
 export function buildFeedbackPayload(input: FeedbackPayload): FeedbackPayload {
-  const email = input.email?.trim();
+  const issue = FEEDBACK_ISSUES.find((value) => value === input.issue);
   return {
     rating: input.rating,
-    message: input.message.trim().slice(0, MAX_FEEDBACK_LENGTH),
-    ...(email ? { email } : {}),
+    ...(issue ? { issue } : {}),
+    // Free text only accompanies "other"; anything typed before switching
+    // away is dropped rather than sent.
+    message: issue === 'other' ? input.message.trim().slice(0, MAX_FEEDBACK_LENGTH) : '',
     version: input.version,
     provider: input.provider,
     uiLanguage: input.uiLanguage,

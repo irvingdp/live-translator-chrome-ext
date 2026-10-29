@@ -16,23 +16,22 @@ const base = {
 };
 
 describe('feedback', () => {
-  it('requires a message and checks the optional email', () => {
-    expect(validateFeedback('   ', '')).toBe('messageRequired');
-    expect(validateFeedback('x'.repeat(MAX_FEEDBACK_LENGTH + 1), '')).toBe('messageTooLong');
-    expect(validateFeedback('ok', 'not-an-email')).toBe('emailInvalid');
-    expect(validateFeedback('ok', '')).toBeUndefined();
-    expect(validateFeedback('ok', 'me@example.com')).toBeUndefined();
+  it('accepts a rating with no comment and caps the comment length', () => {
+    expect(validateFeedback('   ')).toBeUndefined();
+    expect(validateFeedback('ok')).toBeUndefined();
+    expect(validateFeedback('x'.repeat(MAX_FEEDBACK_LENGTH + 1))).toBe('messageTooLong');
   });
 
-  it('sends only the listed fields and drops a blank email', () => {
+  it('sends only the listed fields, never an email', () => {
     const payload = buildFeedbackPayload({
       ...base,
-      email: '  ',
+      issue: 'other',
       // Anything else a caller passes along must not leak out.
-      ...({ apiKey: 'secret', tabUrl: 'https://private.example' } as object),
+      ...({ apiKey: 'secret', email: 'me@example.com', tabUrl: 'https://private.example' } as object),
     });
 
     expect(payload).toEqual({
+      issue: 'other',
       message: 'The captions lag on long videos.',
       provider: 'gemini',
       rating: 2,
@@ -41,9 +40,27 @@ describe('feedback', () => {
     });
   });
 
+  it.each(['inaccurate', 'delay', 'ui'] as const)('sends no free text with the "%s" choice', (issue) => {
+    expect(buildFeedbackPayload({ ...base, issue })).toEqual({
+      issue,
+      message: '',
+      provider: 'gemini',
+      rating: 2,
+      uiLanguage: 'zh-TW',
+      version: '1.4.0',
+    });
+  });
+
+  it('drops an unknown issue and any text without a choice', () => {
+    const payload = buildFeedbackPayload({ ...base, issue: 'bogus' as never });
+
+    expect(payload).not.toHaveProperty('issue');
+    expect(payload.message).toBe('');
+  });
+
   it('posts a no-cors text/plain request, which needs no host permission', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(null));
-    const payload = buildFeedbackPayload({ ...base, email: 'me@example.com' });
+    const payload = buildFeedbackPayload(base);
 
     await sendFeedback(payload, 'https://script.example/exec', fetchImpl);
 
