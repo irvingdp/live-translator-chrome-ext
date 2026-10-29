@@ -561,21 +561,75 @@ describe('PopupApp rating card', () => {
     expect(screen.queryByText('雙語即時字幕翻譯好用嗎？')).not.toBeInTheDocument();
   });
 
-  it('previews every star up to the one under the pointer', async () => {
-    render(<PopupApp api={ratingApi()} />);
-    const stars = await Promise.all(
+  async function findStars() {
+    return Promise.all(
       [1, 2, 3, 4, 5].map((n) => screen.findByRole('button', { name: `${n} 顆星` })),
     );
-    const filled = () => stars.map((star) => star.classList.contains('filled'));
+  }
+  const litStars = (stars: HTMLElement[]) =>
+    stars.filter((star) => star.classList.contains('filled')).length;
 
-    fireEvent.mouseEnter(stars[3]!);
-    expect(filled()).toEqual([true, true, true, true, false]);
+  it.each([1, 2, 3, 4, 5])('hovering star %i lights exactly the stars up to it', async (n) => {
+    render(<PopupApp api={ratingApi()} />);
+    const stars = await findStars();
 
-    fireEvent.mouseLeave(stars[3]!.parentElement!);
-    expect(filled()).toEqual([false, false, false, false, false]);
+    fireEvent.mouseEnter(stars[n - 1]!);
 
-    fireEvent.focus(stars[1]!);
-    expect(filled()).toEqual([true, true, false, false, false]);
+    expect(stars.map((star) => star.classList.contains('filled'))).toEqual(
+      [1, 2, 3, 4, 5].map((i) => i <= n),
+    );
+    fireEvent.mouseLeave(stars[n - 1]!.parentElement!);
+    expect(litStars(stars)).toBe(0);
+  });
+
+  it.each([1, 2, 3, 4, 5])('keyboard focus on star %i previews the same as hover', async (n) => {
+    render(<PopupApp api={ratingApi()} />);
+    const stars = await findStars();
+
+    fireEvent.focus(stars[n - 1]!);
+    expect(litStars(stars)).toBe(n);
+    fireEvent.blur(stars[n - 1]!);
+    expect(litStars(stars)).toBe(0);
+  });
+
+  it.each([1, 2, 3])('clicking star %i asks for feedback and keeps that many stars lit', async (n) => {
+    const api = ratingApi();
+    render(<PopupApp api={api} />);
+    const stars = await findStars();
+
+    fireEvent.click(stars[n - 1]!);
+    // The pointer has left the stars to type in the form.
+    fireEvent.mouseLeave(stars[n - 1]!.parentElement!);
+
+    expect(screen.getByLabelText('哪裡可以做得更好？')).toBeVisible();
+    expect(litStars(stars)).toBe(n);
+    expect(stars[n - 1]).toHaveAttribute('aria-pressed', 'true');
+    expect(api.openStoreReviews).not.toHaveBeenCalled();
+  });
+
+  it.each([4, 5])('clicking star %i opens the store review page', async (n) => {
+    const api = ratingApi();
+    render(<PopupApp api={api} />);
+    const stars = await findStars();
+
+    fireEvent.click(stars[n - 1]!);
+
+    expect(api.openStoreReviews).toHaveBeenCalledOnce();
+    expect(screen.queryByLabelText('哪裡可以做得更好？')).not.toBeInTheDocument();
+    expect(await screen.findByText(/已在新分頁開啟 Chrome 線上應用程式商店/)).toBeVisible();
+  });
+
+  it('sends the clicked star count with the feedback', async () => {
+    const api = ratingApi();
+    render(<PopupApp api={api} />);
+    const stars = await findStars();
+
+    fireEvent.click(stars[2]!);
+    fireEvent.change(screen.getByLabelText('哪裡可以做得更好？'), { target: { value: '還不錯' } });
+    fireEvent.click(screen.getByRole('button', { name: '送出' }));
+
+    await screen.findByText('謝謝你的回饋！');
+    expect(api.sendFeedback).toHaveBeenCalledWith(expect.objectContaining({ rating: 3 }));
   });
 
   it('sends 4 and 5 star ratings to the store review page', async () => {
