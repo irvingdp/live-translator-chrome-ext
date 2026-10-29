@@ -14,10 +14,12 @@ choose, using **your own API key**, and draws the returned text on screen.
 developer cannot tell that you installed it, what you watched, or what was said.
 
 After you have used captions on a couple of tabs, the popup may ask you for a star
-rating, at most twice. Picking a star shows a short form: an optional "what could be
-better?" choice (inaccurate translation, captions lag, hard-to-use interface, or
-other), and a comment box only if you choose "other". **Only if you press Send**
-does the extension transmit:
+rating, at most twice. **Clicking 4 or 5 stars sends that rating straight away**
+(with the version, provider and language below, and nothing else). Clicking 1 to 3
+stars shows a short form instead: an optional "what could be better?" choice
+(inaccurate translation, captions lag, hard-to-use interface, or other), and a
+comment box only if you choose "other"; that is sent **only when you press Send**.
+In either case the extension transmits at most:
 
 - your star rating, the choice you made and the comment you typed, if any,
 - the extension version, the provider you use (Gemini or Deepgram + DeepL), and the

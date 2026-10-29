@@ -591,7 +591,7 @@ describe('PopupApp rating card', () => {
     expect(litStars(stars)).toBe(0);
   });
 
-  it.each([1, 2, 3, 4, 5])('clicking star %i shows the feedback form and keeps that many stars lit', async (n) => {
+  it.each([1, 2, 3])('clicking star %i shows the feedback form and keeps that many stars lit', async (n) => {
     const api = ratingApi();
     render(<PopupApp api={api} />);
     const stars = await findStars();
@@ -606,11 +606,55 @@ describe('PopupApp rating card', () => {
     expect(screen.getByRole('button', { name: '送出' })).toBeEnabled();
     expect(litStars(stars)).toBe(n);
     expect(stars[n - 1]).toHaveAttribute('aria-pressed', 'true');
-    // Nothing navigates away from the popup.
+    // Nothing navigates away from the popup, and nothing is sent yet.
     expect(screen.queryByText(/線上應用程式商店/)).not.toBeInTheDocument();
+    expect(api.sendFeedback).not.toHaveBeenCalled();
   });
 
-  it.each([1, 2, 3, 4, 5])('star %i can be sent on its own, without a comment', async (n) => {
+  it.each([4, 5])('clicking star %i sends the rating at once, with no form and no Send button', async (n) => {
+    const api = ratingApi();
+    render(<PopupApp api={api} />);
+    const stars = await findStars();
+
+    fireEvent.click(stars[n - 1]!);
+
+    expect(api.sendFeedback).toHaveBeenCalledOnce();
+    expect(api.sendFeedback).toHaveBeenCalledWith({
+      message: '',
+      provider: 'gemini',
+      rating: n,
+      uiLanguage: 'zh-Hant-TW',
+      version: '1.4.0',
+    });
+    expect(screen.queryByLabelText('哪裡可以做得更好？（選填）')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '送出' })).not.toBeInTheDocument();
+    expect(await screen.findByText('謝謝你的回饋！')).toBeVisible();
+    await waitFor(() =>
+      expect(api.saveRatingPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'done' })),
+    );
+  });
+
+  it.each([4, 5])('a failed one-click %i-star rating offers a retry, not a form', async (n) => {
+    const sendFeedback = vi.fn()
+      .mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce(undefined);
+    const api = ratingApi({ sendFeedback });
+    render(<PopupApp api={api} />);
+    const stars = await findStars();
+
+    fireEvent.click(stars[n - 1]!);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('送出失敗');
+    expect(screen.queryByLabelText('哪裡可以做得更好？（選填）')).not.toBeInTheDocument();
+    expect(api.saveRatingPrompt).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'done' }));
+
+    fireEvent.click(screen.getByRole('button', { name: '重試' }));
+    expect(await screen.findByText('謝謝你的回饋！')).toBeVisible();
+    expect(sendFeedback).toHaveBeenCalledTimes(2);
+    expect(sendFeedback).toHaveBeenLastCalledWith(expect.objectContaining({ rating: n }));
+  });
+
+  it.each([1, 2, 3])('star %i can be sent on its own with the Send button', async (n) => {
     const api = ratingApi();
     render(<PopupApp api={api} />);
     const stars = await findStars();

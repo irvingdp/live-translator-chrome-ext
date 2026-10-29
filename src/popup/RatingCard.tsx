@@ -11,8 +11,13 @@ import { t, type MessageKey } from '../core/i18n';
 
 // How long a thank-you stays up before the card folds away.
 export const THANKS_MS = 2000;
+// Ratings at or above this are sent the moment the star is clicked; below it,
+// the form asks what could be better first.
+export const QUICK_SEND_MIN = 4;
 
-type Phase = 'ask' | 'form' | 'sending' | 'sent';
+// quickFailed: a one-click rating did not go through; offer a retry without
+// turning it into a form.
+type Phase = 'ask' | 'form' | 'sending' | 'sent' | 'quickFailed';
 
 const ERROR_KEYS: Record<FeedbackError | 'failed', MessageKey> = {
   messageTooLong: 'feedbackMessageTooLong',
@@ -53,10 +58,30 @@ export function RatingCard(props: RatingCardProps) {
     return () => clearTimeout(timer);
   }, [phase, onClose]);
 
-  // Every rating opens the same form; nothing navigates away.
+  const quick = rating >= QUICK_SEND_MIN;
+
+  const send = async (stars: number, choice: FeedbackIssue | undefined, text: string) => {
+    setError(undefined);
+    setPhase('sending');
+    try {
+      await props.onSendFeedback(stars, choice, text);
+      setPhase('sent');
+    } catch {
+      setError('failed');
+      setPhase(stars >= QUICK_SEND_MIN ? 'quickFailed' : 'form');
+    }
+  };
+
+  // Nothing navigates away. 4–5 stars are sent straight away as a bare rating;
+  // 1–3 open the form.
   const rate = (stars: number) => {
     setRating(stars);
-    setPhase('form');
+    if (stars >= QUICK_SEND_MIN) {
+      void send(stars, undefined, '');
+    } else {
+      setError(undefined);
+      setPhase('form');
+    }
   };
 
   const submit = async () => {
@@ -65,15 +90,7 @@ export function RatingCard(props: RatingCardProps) {
       setError(invalid);
       return;
     }
-    setError(undefined);
-    setPhase('sending');
-    try {
-      await props.onSendFeedback(rating, issue, issue === 'other' ? message : '');
-      setPhase('sent');
-    } catch {
-      setError('failed');
-      setPhase('form');
-    }
+    await send(rating, issue, issue === 'other' ? message : '');
   };
 
   const errorText = error
@@ -86,7 +103,7 @@ export function RatingCard(props: RatingCardProps) {
     <section className="rating-card" aria-labelledby="rating-heading">
       <div className="rating-header">
         <h2 id="rating-heading">{t('ratingTitle', t('extName'))}</h2>
-        {(phase === 'ask' || phase === 'form') && (
+        {(phase === 'ask' || phase === 'form' || phase === 'quickFailed') && (
           <button aria-label={t('closeLabel')} className="rating-close" type="button" onClick={props.onLater}>
             ×
           </button>
@@ -95,7 +112,7 @@ export function RatingCard(props: RatingCardProps) {
 
       {phase === 'sent' && <p className="rating-thanks" role="status">{t('feedbackThanks')}</p>}
 
-      {(phase === 'ask' || phase === 'form' || phase === 'sending') && (
+      {phase !== 'sent' && (
         <div
           className="rating-stars"
           role="group"
@@ -132,7 +149,28 @@ export function RatingCard(props: RatingCardProps) {
         </div>
       )}
 
-      {(phase === 'form' || phase === 'sending') && (
+      {phase === 'sending' && quick && (
+        <p className="rating-note" role="status">
+          {t('feedbackSending')}
+        </p>
+      )}
+
+      {phase === 'quickFailed' && (
+        <div className="rating-form">
+          <p className="rating-error" role="alert">
+            {t('feedbackFailed')}
+          </p>
+          <button
+            className="secret-submit rating-submit"
+            type="button"
+            onClick={() => void send(rating, undefined, '')}
+          >
+            {t('feedbackRetry')}
+          </button>
+        </div>
+      )}
+
+      {(phase === 'form' || (phase === 'sending' && !quick)) && (
         <form
           className="rating-form"
           noValidate
