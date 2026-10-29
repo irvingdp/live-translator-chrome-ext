@@ -193,10 +193,9 @@ export function PopupApp({ api }: { api: PopupApi }) {
             void updateRatingPrompt(finish);
             closeRating();
           }}
-          onSendFeedback={async (rating, message, email) => {
+          onSendFeedback={async (rating, message) => {
             await api.sendFeedback(
               buildFeedbackPayload({
-                email,
                 message,
                 provider: settings.transcriber,
                 rating,

@@ -17,33 +17,24 @@ export const MAX_FEEDBACK_LENGTH = 2000;
 export interface FeedbackPayload {
   rating: number;
   message: string;
-  email?: string;
   version: string;
   provider: TranscriberId;
   uiLanguage: string;
 }
 
-export type FeedbackError = 'messageTooLong' | 'emailInvalid';
-
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export type FeedbackError = 'messageTooLong';
 
 // The comment is optional: a rating on its own is worth sending.
-export function validateFeedback(message: string, email: string): FeedbackError | undefined {
-  const text = message.trim();
-  if (text.length > MAX_FEEDBACK_LENGTH) return 'messageTooLong';
-  const address = email.trim();
-  if (address && (address.length > 254 || !EMAIL.test(address))) return 'emailInvalid';
-  return undefined;
+export function validateFeedback(message: string): FeedbackError | undefined {
+  return message.trim().length > MAX_FEEDBACK_LENGTH ? 'messageTooLong' : undefined;
 }
 
-// Only the fields listed here ever leave the device: no tab URL, no API key,
-// no caption text.
+// Only the fields listed here ever leave the device: no email, no tab URL, no
+// API key, no caption text.
 export function buildFeedbackPayload(input: FeedbackPayload): FeedbackPayload {
-  const email = input.email?.trim();
   return {
     rating: input.rating,
     message: input.message.trim().slice(0, MAX_FEEDBACK_LENGTH),
-    ...(email ? { email } : {}),
     version: input.version,
     provider: input.provider,
     uiLanguage: input.uiLanguage,

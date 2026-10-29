@@ -14,7 +14,6 @@ type Phase = 'ask' | 'form' | 'sending' | 'sent';
 
 const ERROR_KEYS: Record<FeedbackError | 'failed', MessageKey> = {
   messageTooLong: 'feedbackMessageTooLong',
-  emailInvalid: 'feedbackEmailInvalid',
   failed: 'feedbackFailed',
 };
 
@@ -24,7 +23,7 @@ export interface RatingCardProps {
   /** "Don't ask again". */
   onNever(): void;
   /** Send the rating with the optional comment. Rejects when the request fails. */
-  onSendFeedback(rating: number, message: string, email: string): Promise<void>;
+  onSendFeedback(rating: number, message: string): Promise<void>;
   /** The card has finished thanking the user and can go. */
   onClose(): void;
 }
@@ -35,7 +34,6 @@ export function RatingCard(props: RatingCardProps) {
   // The star under the pointer or keyboard focus: previews 1..n before a click.
   const [preview, setPreview] = useState(0);
   const [message, setMessage] = useState('');
-  const [email, setEmail] = useState('');
   const [error, setError] = useState<FeedbackError | 'failed'>();
 
   const { onClose } = props;
@@ -52,7 +50,7 @@ export function RatingCard(props: RatingCardProps) {
   };
 
   const submit = async () => {
-    const invalid = validateFeedback(message, email);
+    const invalid = validateFeedback(message);
     if (invalid) {
       setError(invalid);
       return;
@@ -60,7 +58,7 @@ export function RatingCard(props: RatingCardProps) {
     setError(undefined);
     setPhase('sending');
     try {
-      await props.onSendFeedback(rating, message, email);
+      await props.onSendFeedback(rating, message);
       setPhase('sent');
     } catch {
       setError('failed');
@@ -141,15 +139,6 @@ export function RatingCard(props: RatingCardProps) {
             rows={4}
             value={message}
             onChange={(event) => setMessage(event.target.value)}
-          />
-          <label htmlFor="feedback-email">{t('feedbackEmailLabel')}</label>
-          <input
-            autoComplete="email"
-            id="feedback-email"
-            readOnly={phase === 'sending'}
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
           />
           {errorText && (
             <p className="rating-error" role="alert">

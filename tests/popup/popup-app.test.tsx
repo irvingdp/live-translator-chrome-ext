@@ -629,42 +629,26 @@ describe('PopupApp rating card', () => {
     );
   });
 
-  it('sends the comment and email when given', async () => {
+  it('sends the comment when given, and the form never asks for an email', async () => {
     const api = ratingApi();
     render(<PopupApp api={api} />);
 
     fireEvent.click(await screen.findByRole('button', { name: '2 顆星' }));
+    expect(screen.queryByLabelText(/Email/i)).not.toBeInTheDocument();
+    expect(document.querySelector('.rating-card input')).toBeNull();
     fireEvent.change(screen.getByLabelText('有什麼想說的嗎？（選填）'), {
       target: { value: '字幕延遲太久' },
-    });
-    fireEvent.change(screen.getByLabelText('Email（選填，想收到回覆再填）'), {
-      target: { value: 'me@example.com' },
     });
     fireEvent.click(screen.getByRole('button', { name: '送出' }));
 
     expect(await screen.findByText('謝謝你的回饋！')).toBeVisible();
     expect(api.sendFeedback).toHaveBeenCalledWith({
-      email: 'me@example.com',
       message: '字幕延遲太久',
       provider: 'gemini',
       rating: 2,
       uiLanguage: 'zh-Hant-TW',
       version: '1.4.0',
     });
-  });
-
-  it('rejects a malformed email before sending', async () => {
-    const api = ratingApi();
-    render(<PopupApp api={api} />);
-
-    fireEvent.click(await screen.findByRole('button', { name: '5 顆星' }));
-    fireEvent.change(screen.getByLabelText('Email（選填，想收到回覆再填）'), {
-      target: { value: 'not-an-email' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '送出' }));
-
-    expect(screen.getByRole('alert')).toHaveTextContent('Email 格式看起來不正確。');
-    expect(api.sendFeedback).not.toHaveBeenCalled();
   });
 
   it('keeps the text and offers a retry when sending fails', async () => {

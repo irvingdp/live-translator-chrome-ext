@@ -525,10 +525,6 @@
     "message": "Anything you'd like to tell us? (optional)",
     "description": "Label of the optional feedback text box shown after picking a star rating."
   },
-  "feedbackEmailLabel": {
-    "message": "Email (optional, if you'd like a reply)",
-    "description": "Label of the optional email field in the feedback form."
-  },
   "feedbackPrivacyNote": {
     "message": "Sends only what you type, your rating, the extension version, provider and UI language. Never your tab URL, API keys or captions.",
     "description": "Small print under the feedback form explaining exactly what is sent."
@@ -558,10 +554,6 @@
         "example": "2000"
       }
     }
-  },
-  "feedbackEmailInvalid": {
-    "message": "That email address doesn't look right.",
-    "description": "Validation error: the optional email is malformed."
   },
   "closeLabel": {
     "message": "Close",

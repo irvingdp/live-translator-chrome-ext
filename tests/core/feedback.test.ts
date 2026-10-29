@@ -16,20 +16,17 @@ const base = {
 };
 
 describe('feedback', () => {
-  it('accepts a rating with no comment and checks the optional email', () => {
-    expect(validateFeedback('   ', '')).toBeUndefined();
-    expect(validateFeedback('x'.repeat(MAX_FEEDBACK_LENGTH + 1), '')).toBe('messageTooLong');
-    expect(validateFeedback('ok', 'not-an-email')).toBe('emailInvalid');
-    expect(validateFeedback('ok', '')).toBeUndefined();
-    expect(validateFeedback('ok', 'me@example.com')).toBeUndefined();
+  it('accepts a rating with no comment and caps the comment length', () => {
+    expect(validateFeedback('   ')).toBeUndefined();
+    expect(validateFeedback('ok')).toBeUndefined();
+    expect(validateFeedback('x'.repeat(MAX_FEEDBACK_LENGTH + 1))).toBe('messageTooLong');
   });
 
-  it('sends only the listed fields and drops a blank email', () => {
+  it('sends only the listed fields, never an email', () => {
     const payload = buildFeedbackPayload({
       ...base,
-      email: '  ',
       // Anything else a caller passes along must not leak out.
-      ...({ apiKey: 'secret', tabUrl: 'https://private.example' } as object),
+      ...({ apiKey: 'secret', email: 'me@example.com', tabUrl: 'https://private.example' } as object),
     });
 
     expect(payload).toEqual({
@@ -43,7 +40,7 @@ describe('feedback', () => {
 
   it('posts a no-cors text/plain request, which needs no host permission', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(null));
-    const payload = buildFeedbackPayload({ ...base, email: 'me@example.com' });
+    const payload = buildFeedbackPayload(base);
 
     await sendFeedback(payload, 'https://script.example/exec', fetchImpl);
 

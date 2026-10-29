@@ -14,15 +14,15 @@ choose, using **your own API key**, and draws the returned text on screen.
 developer cannot tell that you installed it, what you watched, or what was said.
 
 After you have used captions on a couple of tabs, the popup may ask you for a star
-rating, at most twice. Picking a star shows a short form where a comment and an
-email are both optional. **Only if you press Send** does the extension transmit:
+rating, at most twice. Picking a star shows a short form with an optional comment.
+**Only if you press Send** does the extension transmit:
 
 - your star rating and the comment you typed, if any,
-- the email address you typed, if any (so the developer can reply),
 - the extension version, the provider you use (Gemini or Deepgram + DeepL), and the
   extension's interface language.
 
-It never includes your tab URL, API keys, audio, or caption text. The form is
+It never includes your email address, tab URL, API keys, audio, or caption text,
+and the form does not ask who you are. The form is
 posted to a Google Apps Script owned by the developer, which stores it in a private
 Google Sheet and forwards it to the developer's email. It is used only to improve
 the extension and is never sold or shared. To have feedback deleted, contact the
