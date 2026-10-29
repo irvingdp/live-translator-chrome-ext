@@ -43,12 +43,9 @@ const T = {
   popupClose: [222, 238],
   line1: 250,
   line2: 360,
-  cursorToTab: [478, 505],
-  tabClick: 510,
-  badge: 522,
-  cursorToIcon2: [535, 562],
-  iconClick2: 567,
-  line3: 582,
+  cursorToSidebar: [480, 508],
+  sidebarClick: 513,
+  line3: 548,
   end: 630,
 } as const;
 
@@ -58,10 +55,14 @@ const TAB_H = 52;
 const BAR_H = 54;
 const CONTENT_Y = B.y + TAB_H + BAR_H;
 const ICON = { x: B.x + B.w - 56, y: B.y + TAB_H + BAR_H / 2 };
-const TAB2 = { x: B.x + 24 + 300 + 150, y: B.y + TAB_H / 2 };
 const POPUP = { x: ICON.x - 360, y: CONTENT_Y + 8, w: 390 };
 const START_BTN = { x: POPUP.x + POPUP.w / 2, y: POPUP.y + 296 };
+// Floating caption surface, relative to the page content area.
+const CAP = { x: 225, y: 380, w: 1050, h: 270, header: 46 };
+const SIDEBAR_BTN = { x: B.x + CAP.x + CAP.w - 34, y: CONTENT_Y + CAP.y + CAP.header / 2 };
+const PANEL_W = 470;
 const REST = { x: 1580, y: 640 };
+const REST_LEFT = { x: 820, y: 560 };
 
 const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
 const ease = Easing.bezier(0.45, 0, 0.2, 1);
@@ -101,7 +102,7 @@ const Headlines = ({ copy }: { copy: Copy }) => {
     [copy.hook, 0, 92],
     [copy.oneClick, 92, 240],
     [copy.live, 240, 476],
-    [copy.follow, 476, T.end],
+    [copy.sidebar, 476, T.end],
   ];
   return (
     <>
@@ -140,7 +141,8 @@ const Browser = ({ copy }: { copy: Copy }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const enter = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 24 });
-  const onSecondTab = frame >= T.tabClick;
+  const panel = spring({ frame: frame - T.sidebarClick, fps, config: { damping: 200 }, durationInFrames: 20 });
+  const panelW = frame >= T.sidebarClick ? PANEL_W * panel : 0;
 
   return (
     <div
@@ -159,17 +161,18 @@ const Browser = ({ copy }: { copy: Copy }) => {
         transform: `translateY(${(1 - enter) * 40}px)`,
       }}
     >
-      <TabStrip copy={copy} active={onSecondTab ? 1 : 0} />
+      <TabStrip copy={copy} />
       <AddressBar />
-      <div style={{ position: 'absolute', top: TAB_H + BAR_H, left: 0, right: 0, bottom: 0 }}>
-        <FakeVideo variant={onSecondTab ? 1 : 0} />
-        <Captions copy={copy} />
+      <div style={{ position: 'absolute', top: TAB_H + BAR_H, left: 0, right: panelW, bottom: 0, overflow: 'hidden' }}>
+        <FakeVideo />
+        <FloatingCaptions copy={copy} />
       </div>
+      {panelW > 0 && <SidePanel copy={copy} width={PANEL_W} offset={PANEL_W - panelW} />}
     </div>
   );
 };
 
-const TabStrip = ({ copy, active }: { copy: Copy; active: 0 | 1 }) => (
+const TabStrip = ({ copy }: { copy: Copy }) => (
   <div
     style={{
       height: TAB_H,
@@ -186,39 +189,30 @@ const TabStrip = ({ copy, active }: { copy: Copy; active: 0 | 1 }) => (
       ))}
     </div>
     <div style={{ width: 70 }} />
-    {copy.tabs.map((title, i) => (
-      <div
-        key={title}
-        style={{
-          width: 290,
-          height: 40,
-          borderRadius: '12px 12px 0 0',
-          background: i === active ? C.surface : 'transparent',
-          color: i === active ? C.text : C.muted,
-          fontSize: 19,
-          fontWeight: 500,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          padding: '0 16px',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{ width: 16, height: 16, borderRadius: 4, background: i === 0 ? '#f97316' : '#818cf8' }} />
-        {title}
-      </div>
-    ))}
+    <div
+      style={{
+        width: 290,
+        height: 40,
+        borderRadius: '12px 12px 0 0',
+        background: C.surface,
+        fontSize: 19,
+        fontWeight: 500,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '0 16px',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <div style={{ width: 16, height: 16, borderRadius: 4, background: '#f97316' }} />
+      {copy.tab}
+    </div>
   </div>
 );
 
 const AddressBar = () => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const badgeIn = spring({ frame: frame - T.badge, fps, config: { damping: 12 } });
-  const showBadge = frame >= T.badge && frame < T.iconClick2;
-  const running = (frame >= T.startClick && frame < T.tabClick) || frame >= T.iconClick2;
-
+  const running = frame >= T.startClick;
   return (
     <div
       style={{
@@ -245,66 +239,21 @@ const AddressBar = () => {
       >
         https://video.example/watch
       </div>
-      <div style={{ position: 'relative', width: 36, height: 36 }}>
-        <Img
-          src={staticFile('icon.png')}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 8,
-            boxShadow: running ? `0 0 0 3px ${C.teal}` : 'none',
-          }}
-        />
-        {showBadge && (
-          <div
-            style={{
-              position: 'absolute',
-              right: -8,
-              bottom: -6,
-              minWidth: 22,
-              height: 18,
-              borderRadius: 9,
-              background: C.teal,
-              color: C.bg,
-              fontSize: 13,
-              fontWeight: 800,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transform: `scale(${badgeIn})`,
-            }}
-          >
-            CC
-          </div>
-        )}
-      </div>
+      <Img
+        src={staticFile('icon.png')}
+        style={{ width: 36, height: 36, borderRadius: 8, boxShadow: running ? `0 0 0 3px ${C.teal}` : 'none' }}
+      />
     </div>
   );
 };
 
 // A brand-free stand-in for a video player.
-const FakeVideo = ({ variant }: { variant: 0 | 1 }) => {
+const FakeVideo = () => {
   const frame = useCurrentFrame();
-  const progress = ((frame % 600) / 600) * 0.6 + (variant ? 0.12 : 0.28);
-  const bg =
-    variant === 0
-      ? 'linear-gradient(160deg, #1e3a5f 0%, #0f2742 45%, #3b1d3f 100%)'
-      : 'linear-gradient(160deg, #1f2937 0%, #312e81 55%, #0b1120 100%)';
-  return (
-    <AbsoluteFill style={{ background: bg }}>
-      {variant === 0 ? <MarketScene /> : <LectureScene />}
-      <div style={{ position: 'absolute', left: 28, right: 28, bottom: 22, height: 6, borderRadius: 3, background: 'rgba(255,255,255,.2)' }}>
-        <div style={{ width: `${progress * 100}%`, height: '100%', borderRadius: 3, background: '#ef4444' }} />
-      </div>
-    </AbsoluteFill>
-  );
-};
-
-const MarketScene = () => {
-  const frame = useCurrentFrame();
+  const progress = 0.28 + (frame / DURATION) * 0.6;
   const drift = Math.sin(frame / 40) * 12;
   return (
-    <AbsoluteFill>
+    <AbsoluteFill style={{ background: 'linear-gradient(160deg, #1e3a5f 0%, #0f2742 45%, #3b1d3f 100%)' }}>
       {[0, 1, 2, 3, 4].map((i) => (
         <div
           key={i}
@@ -321,116 +270,295 @@ const MarketScene = () => {
         />
       ))}
       <div style={{ position: 'absolute', left: 0, right: 0, top: 360, height: 60, background: 'rgba(0,0,0,.25)' }} />
-    </AbsoluteFill>
-  );
-};
-
-const LectureScene = () => {
-  const frame = useCurrentFrame();
-  return (
-    <AbsoluteFill>
-      <div
-        style={{
-          position: 'absolute',
-          left: 160,
-          top: 90,
-          width: 760,
-          height: 300,
-          borderRadius: 14,
-          background: 'rgba(15,23,42,.7)',
-          border: '1px solid rgba(255,255,255,.12)',
-          padding: 36,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 22,
-        }}
-      >
-        {[0.9, 0.7, 0.8, 0.5].map((w, i) => (
-          <div key={i} style={{ height: 22, width: `${w * 100}%`, borderRadius: 11, background: i === 0 ? C.tealLight : 'rgba(255,255,255,.22)' }} />
-        ))}
+      <div style={{ position: 'absolute', left: 28, right: 28, bottom: 22, height: 6, borderRadius: 3, background: 'rgba(255,255,255,.2)' }}>
+        <div style={{ width: `${progress * 100}%`, height: '100%', borderRadius: 3, background: '#ef4444' }} />
       </div>
-      <div
-        style={{
-          position: 'absolute',
-          right: 220,
-          top: 150 + Math.sin(frame / 25) * 4,
-          width: 150,
-          height: 150,
-          borderRadius: 75,
-          background: 'rgba(255,255,255,.12)',
-          border: '1px solid rgba(255,255,255,.2)',
-        }}
-      />
     </AbsoluteFill>
   );
 };
 
 type TimedLine = CaptionLine & { at: number };
 
-const Captions = ({ copy }: { copy: Copy }) => {
-  const frame = useCurrentFrame();
-  const firstRunning = frame >= T.line1 - 10 && frame < T.tabClick;
-  const secondRunning = frame >= T.line3 - 10;
-  if (!firstRunning && !secondRunning) return null;
+const timedLines = (copy: Copy): TimedLine[] => [
+  { ...copy.lines[0], at: T.line1 },
+  { ...copy.lines[1], at: T.line2 },
+  { ...copy.lines[2], at: T.line3 },
+];
 
-  const lines: TimedLine[] = secondRunning
-    ? [{ ...copy.secondTab[0], at: T.line3 }]
-    : [
-        { ...copy.firstTab[0], at: T.line1 },
-        { ...copy.firstTab[1], at: T.line2 },
-      ];
-  const start = secondRunning ? T.line3 - 10 : T.line1 - 10;
-  const appear = interpolate(frame, [start, start + 10], [0, 1], clamp);
+// Reveals the source text character by character, then fades in the translation.
+const useReveal = (line: TimedLine) => {
+  const frame = useCurrentFrame();
+  const chars = [...line.source];
+  const shown = Math.floor(interpolate(frame, [line.at, line.at + 55], [0, chars.length], clamp));
+  return {
+    visible: frame >= line.at,
+    source: chars.slice(0, shown).join(''),
+    translation: interpolate(frame, [line.at + 30, line.at + 48], [0, 1], clamp),
+  };
+};
+
+// Mirrors the extension's floating caption surface: a header with controls
+// and teal resize corners around the caption body.
+const FloatingCaptions = ({ copy }: { copy: Copy }) => {
+  const frame = useCurrentFrame();
+  if (frame < T.line1 - 10) return null;
+  const appear = interpolate(frame, [T.line1 - 10, T.line1], [0, 1], clamp);
+  const leave = interpolate(frame, [T.sidebarClick, T.sidebarClick + 8], [1, 0], clamp);
+  const hoverSidebar = frame >= T.cursorToSidebar[1] - 4;
+  const lines = timedLines(copy).slice(0, 2);
 
   return (
     <div
       style={{
         position: 'absolute',
-        left: '15%',
-        width: '70%',
-        bottom: 56,
-        minHeight: 210,
-        borderRadius: 10,
-        background: 'rgba(5,8,16,.78)',
-        border: '1px solid rgba(255,255,255,.14)',
-        boxShadow: '0 8px 28px rgba(0,0,0,.34)',
-        padding: '22px 32px',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'flex-end',
-        gap: 16,
-        textAlign: 'center',
-        opacity: appear,
+        left: CAP.x,
+        top: CAP.y,
+        width: CAP.w,
+        height: CAP.h,
+        opacity: Math.min(appear, leave),
       }}
     >
-      {lines.map((line) => (
-        <CaptionPair key={line.source} line={line} />
-      ))}
+      <Corners />
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: 10,
+          overflow: 'hidden',
+          background: 'rgba(5,8,16,.78)',
+          border: '1px solid rgba(255,255,255,.14)',
+          boxShadow: '0 8px 28px rgba(0,0,0,.34)',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <div
+          style={{
+            height: CAP.header,
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '0 14px 0 18px',
+            background: 'rgba(17,24,39,.92)',
+            borderBottom: '1px solid rgba(255,255,255,.08)',
+          }}
+        >
+          <Grip />
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.muted, letterSpacing: '0.08em', flex: 1 }}>{copy.captionLabel}</div>
+          <HeaderIcons hoverSidebar={hoverSidebar} />
+        </div>
+        <div
+          style={{
+            flex: 1,
+            padding: '14px 32px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'flex-end',
+            gap: 14,
+            textAlign: 'center',
+          }}
+        >
+          {lines.map((line) => (
+            <FloatingPair key={line.source} line={line} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 };
 
-const CaptionPair = ({ line }: { line: TimedLine }) => {
-  const frame = useCurrentFrame();
-  if (frame < line.at) return null;
-  const sourceChars = [...line.source];
-  const shown = Math.floor(interpolate(frame, [line.at, line.at + 55], [0, sourceChars.length], clamp));
-  const translation = interpolate(frame, [line.at + 30, line.at + 48], [0, 1], clamp);
+const FloatingPair = ({ line }: { line: TimedLine }) => {
+  const r = useReveal(line);
+  if (!r.visible) return null;
   return (
     <div>
-      <div style={{ fontSize: 30, fontWeight: 650, lineHeight: 1.35, color: C.text }}>
-        {sourceChars.slice(0, shown).join('')}
-      </div>
+      <div style={{ fontSize: 29, fontWeight: 700, lineHeight: 1.35, color: C.text }}>{r.source}</div>
       <div
         style={{
           fontSize: 28,
-          fontWeight: 550,
+          fontWeight: 700,
           lineHeight: 1.35,
           color: C.amber,
-          opacity: translation,
-          transform: `translateY(${(1 - translation) * 8}px)`,
+          opacity: r.translation,
+          transform: `translateY(${(1 - r.translation) * 8}px)`,
         }}
       >
+        {line.translation}
+      </div>
+    </div>
+  );
+};
+
+const Corners = () => {
+  const arm = 30;
+  const t = 6;
+  const out = -14;
+  const corner = (pos: CSSProperties, radius: string, borders: CSSProperties) => (
+    <div style={{ position: 'absolute', width: arm, height: arm, borderRadius: radius, ...pos, ...borders }} />
+  );
+  const line = `${t}px solid ${C.tealLight}`;
+  return (
+    <>
+      {corner({ left: out, top: out }, '10px 0 0 0', { borderLeft: line, borderTop: line })}
+      {corner({ right: out, top: out }, '0 10px 0 0', { borderRight: line, borderTop: line })}
+      {corner({ left: out, bottom: out }, '0 0 0 10px', { borderLeft: line, borderBottom: line })}
+      {corner({ right: out, bottom: out }, '0 0 10px 0', { borderRight: line, borderBottom: line })}
+    </>
+  );
+};
+
+const Grip = () => (
+  <svg width={10} height={18} viewBox="0 0 10 18">
+    {[0, 1, 2].map((r) => [0, 1].map((c) => <circle key={`${r}${c}`} cx={2 + c * 6} cy={3 + r * 6} r={1.4} fill={C.muted} />))}
+  </svg>
+);
+
+const IconBox = ({ children, active = false }: { children: ReactNode; active?: boolean }) => (
+  <div
+    style={{
+      height: 34,
+      minWidth: 40,
+      padding: '0 6px',
+      borderRadius: 8,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 2,
+      color: active ? C.tealLight : C.muted,
+      background: active ? 'rgba(94,234,212,.14)' : 'transparent',
+      fontSize: 20,
+      fontWeight: 500,
+    }}
+  >
+    {children}
+  </div>
+);
+
+const Drop = () => (
+  <svg width={16} height={20} viewBox="0 0 16 20" fill="none" stroke="currentColor" strokeWidth={1.8}>
+    <path d="M8 2C8 2 2.5 8.6 2.5 12.5a5.5 5.5 0 0 0 11 0C13.5 8.6 8 2 8 2z" />
+  </svg>
+);
+
+const PanelIcon = () => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}>
+    <rect x={3} y={4} width={18} height={16} rx={2.5} />
+    <line x1={9} y1={4} x2={9} y2={20} />
+  </svg>
+);
+
+const HeaderIcons = ({ hoverSidebar }: { hoverSidebar: boolean }) => (
+  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+    <IconBox>T+</IconBox>
+    <IconBox>T−</IconBox>
+    <IconBox>
+      <Drop />+
+    </IconBox>
+    <IconBox>
+      <Drop />−
+    </IconBox>
+    <IconBox>
+      <svg width={20} height={22} viewBox="0 0 20 22" fill="none" stroke="currentColor" strokeWidth={1.8}>
+        <path d="M2 5h16M7 5V3h6v2M4 5l1 15h10l1-15M8 9v8M12 9v8" />
+      </svg>
+    </IconBox>
+    <IconBox active={hoverSidebar}>
+      <PanelIcon />
+    </IconBox>
+  </div>
+);
+
+// Chrome's native side panel showing the extension's caption history.
+const SidePanel = ({ copy, width, offset }: { copy: Copy; width: number; offset: number }) => {
+  const lines = timedLines(copy);
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: TAB_H + BAR_H,
+        right: -offset,
+        bottom: 0,
+        width,
+        background: '#14161c',
+        borderLeft: `1px solid ${C.border}`,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <div style={{ height: 46, display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', color: C.muted }}>
+        <Img src={staticFile('icon.png')} style={{ width: 22, height: 22, borderRadius: 5 }} />
+        <div style={{ flex: 1, fontSize: 17, fontWeight: 600 }}>{copy.panelTitle}</div>
+        <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7M4 4l16 16" />
+        </svg>
+        <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      </div>
+      <div
+        style={{
+          flex: 1,
+          margin: '0 10px 10px',
+          borderRadius: 12,
+          background: C.bg,
+          border: `1px solid ${C.surface2}`,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '16px 18px',
+            borderBottom: `1px solid ${C.surface2}`,
+            background: C.surface,
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <div style={{ color: C.tealLight, fontSize: 13, fontWeight: 800, letterSpacing: '0.14em' }}>LIVE CAPTIONS</div>
+            <div style={{ fontSize: 21, fontWeight: 700, marginTop: 2 }}>{copy.historyTitle}</div>
+          </div>
+          {['T+', 'T−'].map((label) => (
+            <div
+              key={label}
+              style={{
+                width: 46,
+                height: 42,
+                marginLeft: 10,
+                borderRadius: 10,
+                border: `1.5px solid ${C.teal}`,
+                color: C.tealLight,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 17,
+                fontWeight: 700,
+              }}
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '0 22px 18px' }}>
+          {lines.map((line, i) => (
+            <PanelPair key={line.source} line={line} first={i === 0} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PanelPair = ({ line, first }: { line: TimedLine; first: boolean }) => {
+  const r = useReveal(line);
+  if (!r.visible) return null;
+  return (
+    <div style={{ padding: '16px 0', borderTop: first ? 'none' : `1px solid ${C.surface2}` }}>
+      <div style={{ fontSize: 27, fontWeight: 700, lineHeight: 1.35, color: C.text }}>{r.source}</div>
+      <div style={{ fontSize: 27, fontWeight: 700, lineHeight: 1.35, color: C.amber, opacity: r.translation }}>
         {line.translation}
       </div>
     </div>
@@ -545,9 +673,8 @@ const Cursor = () => {
     [T.cursorToIcon, REST, ICON],
     [T.cursorToStart, ICON, START_BTN],
     [[T.popupClose[0], T.popupClose[1] + 20], START_BTN, REST],
-    [T.cursorToTab, REST, TAB2],
-    [T.cursorToIcon2, TAB2, ICON],
-    [[T.iconClick2 + 8, T.iconClick2 + 40], ICON, REST],
+    [T.cursorToSidebar, REST, SIDEBAR_BTN],
+    [[T.sidebarClick + 10, T.sidebarClick + 40], SIDEBAR_BTN, REST_LEFT],
   ];
   let pos = REST;
   for (const [[a, b], from, to] of path) {
@@ -557,12 +684,16 @@ const Cursor = () => {
     }
   }
   const visible = interpolate(frame, [80, 92], [0, 1], clamp);
-  const clicks = [T.iconClick, T.startClick, T.tabClick, T.iconClick2];
+  const clicks: [number, Point][] = [
+    [T.iconClick, ICON],
+    [T.startClick, START_BTN],
+    [T.sidebarClick, SIDEBAR_BTN],
+  ];
 
   return (
     <>
-      {clicks.map((at) => (
-        <Ripple key={at} at={at} />
+      {clicks.map(([at, target]) => (
+        <Ripple key={at} at={at} target={target} />
       ))}
       <svg
         width={34}
@@ -576,11 +707,10 @@ const Cursor = () => {
   );
 };
 
-const Ripple = ({ at }: { at: number }) => {
+const Ripple = ({ at, target }: { at: number; target: Point }) => {
   const frame = useCurrentFrame();
   if (frame < at || frame > at + 18) return null;
   const p = (frame - at) / 18;
-  const target = at === T.tabClick ? TAB2 : at === T.startClick ? START_BTN : ICON;
   return (
     <div
       style={{

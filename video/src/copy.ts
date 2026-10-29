@@ -6,7 +6,7 @@ export type Copy = {
   hook: string;
   oneClick: string;
   live: string;
-  follow: string;
+  sidebar: string;
   tagline: string;
   cta: string;
   realProduct: string;
@@ -15,9 +15,13 @@ export type Copy = {
   start: string;
   running: string;
   idle: string;
-  tabs: [string, string];
-  firstTab: CaptionLine[];
-  secondTab: CaptionLine[];
+  tab: string;
+  captionLabel: string;
+  panelTitle: string;
+  historyTitle: string;
+  // Two lines shown in the floating captions, then a third that arrives
+  // after switching to the side panel.
+  lines: [CaptionLine, CaptionLine, CaptionLine];
 };
 
 // Both cuts demo Chinese <-> English. The English cut translates Chinese into
@@ -27,7 +31,7 @@ export const COPY: Record<Locale, Copy> = {
     hook: "Watching something in a language you don't speak?",
     oneClick: 'One click to start.',
     live: 'The original line and its translation, live.',
-    follow: 'Switch tabs. Captions follow.',
+    sidebar: 'Open the side panel for the full history.',
     tagline: 'Live bilingual captions for any tab.',
     cta: 'Add to Chrome — free',
     realProduct: 'The real extension, on a real talk',
@@ -36,8 +40,11 @@ export const COPY: Record<Locale, Copy> = {
     start: 'Start live captions',
     running: 'Running',
     idle: 'Idle',
-    tabs: ['Tokyo Market Walk', 'How It Works — Lecture'],
-    firstTab: [
+    tab: 'Tokyo Market Walk',
+    captionLabel: 'LIVE CAPTIONS',
+    panelTitle: 'Bilingual Live Captions',
+    historyTitle: 'Caption history',
+    lines: [
       {
         source: '今天，我們一起逛逛東京的一個小市場。',
         translation: "Today, let's take a walk through a small market in Tokyo.",
@@ -46,11 +53,9 @@ export const COPY: Record<Locale, Copy> = {
         source: '從一大早開始，攤位上就擺滿了新鮮的魚。',
         translation: 'From early morning, the stalls are full of fresh fish.',
       },
-    ],
-    secondTab: [
       {
-        source: '接下來，我會說明這項技術實際上是怎麼運作的。',
-        translation: "Next, I'll explain how this technology actually works.",
+        source: '這家店的壽司，每天早上都是現做的。',
+        translation: 'The sushi at this shop is made fresh every morning.',
       },
     ],
   },
@@ -58,7 +63,7 @@ export const COPY: Record<Locale, Copy> = {
     hook: '看外語影片，卻聽不懂？',
     oneClick: '一鍵開始。',
     live: '原文與譯文，即時並排。',
-    follow: '換分頁，字幕跟著走。',
+    sidebar: '開啟側邊欄，看完整字幕紀錄。',
     tagline: '任何分頁都能顯示即時雙語字幕。',
     cta: '免費加到 Chrome',
     realProduct: '真實擴充功能的實際畫面',
@@ -67,8 +72,11 @@ export const COPY: Record<Locale, Copy> = {
     start: '開始即時字幕',
     running: '執行中',
     idle: '閒置',
-    tabs: ['Tokyo Market Walk', 'How It Works — Lecture'],
-    firstTab: [
+    tab: 'Tokyo Market Walk',
+    captionLabel: '即時字幕',
+    panelTitle: '雙語即時字幕翻譯',
+    historyTitle: '即時字幕紀錄',
+    lines: [
       {
         source: "Today, let's take a walk through a small market in Tokyo.",
         translation: '今天，我們一起逛逛東京的一個小市場。',
@@ -77,11 +85,9 @@ export const COPY: Record<Locale, Copy> = {
         source: 'From early morning, the stalls are full of fresh fish.',
         translation: '從一大早開始，攤位上就擺滿了新鮮的魚。',
       },
-    ],
-    secondTab: [
       {
-        source: "Next, I'll explain how this technology actually works.",
-        translation: '接下來，我會說明這項技術實際上是怎麼運作的。',
+        source: 'The sushi at this shop is made fresh every morning.',
+        translation: '這家店的壽司，每天早上都是現做的。',
       },
     ],
   },
