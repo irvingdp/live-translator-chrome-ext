@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>預讀狀態模型（PROTOTYPE）</title>
+<style>
+  :root {
+    --bg: #fafaf9; --panel: #ffffff; --ink: #1c1917; --muted: #78716c;
+    --line: #e7e5e4; --accent: #2563eb; --accent-soft: #dbeafe;
+    --live: #d97706; --live-soft: #fef3c7; --bad: #dc2626; --bad-soft: #fee2e2;
+    --ok: #16a34a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, "PingFang TC", "Noto Sans TC", system-ui, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 10px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--bad-soft); color: var(--bad); margin-left: 8px; vertical-align: middle; }
+  .intro { color: var(--muted); margin: 8px 0 20px; }
+  .intro p { margin: 6px 0; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .changed { background: var(--accent-soft); border-radius: 4px; padding: 0 4px; }
+  .screen { background: #111; color: #fff; border-radius: 8px; padding: 18px 16px; min-height: 96px; text-align: center; }
+  .screen .orig { font-size: 15px; opacity: .85; }
+  .screen .tr { font-size: 19px; margin-top: 4px; }
+  .screen .meta { font-size: 12px; margin-top: 10px; color: #a8a29e; }
+  .screen.empty { color: #78716c; display: flex; align-items: center; justify-content: center; }
+  .src { font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-right: 6px; }
+  .src.cue { background: var(--accent); color: #fff; }
+  .src.live { background: var(--live); color: #fff; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { font: inherit; font-size: 14px; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 12px; cursor: pointer; color: var(--ink); }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  .group { margin-bottom: 10px; }
+  .group-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+  .tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 6px 10px; color: var(--muted); }
+  .tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .steps { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .steps button { text-align: left; }
+  .steps button.done { color: var(--muted); text-decoration: line-through; }
+  .steps button.next { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .timeline { position: relative; height: 74px; margin: 6px 0 2px; }
+  .tl-row { position: absolute; left: 0; right: 0; height: 12px; background: #f5f5f4; border-radius: 3px; }
+  .tl-seg { position: absolute; top: 0; height: 100%; border-radius: 2px; }
+  .tl-mark { position: absolute; top: -4px; width: 2px; height: 82px; }
+  .tl-label { position: absolute; font-size: 11px; white-space: nowrap; transform: translateX(-50%); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 18px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  ol.log { margin: 0; padding-left: 20px; max-height: 300px; overflow: auto; font-size: 13px; }
+  ol.log li { margin: 2px 0; }
+  ol.log li.fresh { color: var(--ink); font-weight: 600; }
+  ol.log li.old { color: var(--muted); }
+  ol.log .warn { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bad { color: var(--bad); }
+  .good { color: var(--ok); }
+</style>
+</head>
+<body>
+<main>
+  <h1>預讀（Read-ahead）狀態模型<span class="tag">PROTOTYPE，用完即丟</span></h1>
+  <div class="intro">
+    <p><b>要回答的問題：</b>依照 <code>docs/adr/0001-read-ahead-via-shadow-player.md</code> 定下的規則，觀看者真的操作起來（開始、seek、倒轉、暫停、變速、廣告、換語言）時，字幕是否都能在講者開口時就出現？暖身期交接、Cue 快取、影子播放器的提前量會不會出現意料之外的狀況？</p>
+    <p>這裡不連 Gemini，影片是一份假的「台詞表」（每句真正的開口與結束時間都已知）。Gemini 的行為簡化為：聽到一句話的開頭後過 L 秒（每句 0.6～1.6 秒不等）回傳原文，聽完整句再過 L 秒回傳完整譯文。估算 Cue 起點時一律扣掉固定 1 秒的辨識延遲。</p>
+    <p>藍色 = 預讀的 Cue，橙色 = 即時模式（暖身期）的字幕。每次操作後下方會列出「剛剛發生什麼事」。</p>
+  </div>
+
+  <div class="panel">
+    <h2>媒體時間軸（0–300 秒）</h2>
+    <div class="timeline" id="timeline"></div>
+    <div class="legend">
+      <span><i style="background:#d6d3d1"></i>台詞（真正有人講話的時段）</span>
+      <span><i style="background:var(--accent)"></i>已預讀（Cue 快取涵蓋）</span>
+      <span><i style="background:var(--live)"></i>暖身期（即時 session 負責）</span>
+      <span><i style="background:var(--ink)"></i>主播放器</span>
+      <span><i style="background:var(--accent);opacity:.5"></i>影子播放器</span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <h2>觀看者現在看到的字幕</h2>
+        <div id="screen"></div>
+      </div>
+      <div class="panel">
+        <h2>目前狀態</h2>
+        <dl id="state"></dl>
+      </div>
+      <div class="panel">
+        <h2>剛剛發生什麼事</h2>
+        <ol class="log" id="log" reversed></ol>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2>導覽情境</h2>
+        <div class="tabs" id="tabs"></div>
+        <div id="scenario"></div>
+      </div>
+      <div class="panel">
+        <h2>自由操作</h2>
+        <div id="free"></div>
+      </div>
+      <div class="panel">
+        <h2>Side Panel 字幕紀錄（只列已播到的句子）</h2>
+        <div id="sidepanel"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ===================================================================
+// 可搬移的純邏輯模組：不碰 DOM。reduce(state, action) -> 新 state。
+// ===================================================================
+const ReadAhead = (() => {
+  const LEAD = 30;           // 提前量
+  const OVERLAP = 5;         // 影子播放器提早 5 秒開始，與暖身期重疊
+  const RECOGNITION_DELAY = 1; // 估算 Cue 起點時扣掉的固定延遲
+  const MAX_CUE = 7;         // Cue 最長顯示秒數
+  const SAME_SENTENCE = 0.6; // 兩個字幕起點相差這麼近就視為同一句（Gemini 不給句子 ID，只能靠時間猜；1.5 秒會把相鄰兩句誤認成同一句）
+  const DT = 0.25;           // 模擬步長（真實秒）
+
+  // ---- 假台詞表 --------------------------------------------------
+  const EN = ['So here is the thing we kept missing.', 'It only shows up after a few minutes.',
+    'Nobody noticed at first.', 'We tried three different fixes and none of them stuck.',
+    'Then someone asked a simple question.', 'What if the delay is the feature?',
+    'That changed everything.', 'Let me show you what happened next.',
+    'The numbers were not what we expected.', 'Honestly, it surprised all of us.'];
+  const ZH = ['所以，這就是我們一直沒抓到的地方。', '它只會在幾分鐘之後才出現。',
+    '一開始沒有人注意到。', '我們試了三種修法，沒有一種有效。',
+    '後來有人問了一個很簡單的問題。', '如果延遲本身就是功能呢？',
+    '這改變了一切。', '讓我給你們看接下來發生的事。',
+    '數字跟我們預期的不一樣。', '老實說，我們全都嚇了一跳。'];
+  const SCRIPT = (() => {
+    const durs = [3.2, 4.5, 2.4, 6.1, 3.8, 5.2, 2.9, 7.4, 4.1, 3.3];
+    const gaps = [0.6, 1.1, 0.4, 1.8, 0.7, 0.9];
+    const forced = [{ at: 22, dur: 11 }, { at: 122, dur: 12 }]; // 跨越交接點的長句
+    const silence = { from: 60, to: 76 };                        // 14 秒以上的沉默
+    const spans = [];
+    let t = 0.5, k = 0;
+    while (t < 295) {
+      const f = forced.find(x => t <= x.at && x.at - t < 9);
+      if (f) {
+        if (f.at - t >= 1.2) spans.push([t, f.at - 0.4]);
+        spans.push([f.at, f.at + f.dur]);
+        t = f.at + f.dur + 0.6;
+        forced.splice(forced.indexOf(f), 1);
+        continue;
+      }
+      if (t >= silence.from && t < silence.to) { t = silence.to; continue; }
+      const end = t + durs[k % durs.length];
+      if (t < silence.from && end > silence.from) { spans.push([t, silence.from - 0.5]); t = silence.to; k++; continue; }
+      spans.push([t, end]);
+      t = end + gaps[k % gaps.length];
+      k++;
+    }
+    return spans.map(([start, end], i) => ({
+      i, start: +start.toFixed(2), end: +end.toFixed(2),
+      L: +(0.6 + ((i * 7) % 11) / 10).toFixed(2),
+      en: EN[i % EN.length], zh: ZH[i % ZH.length],
+    }));
+  })();
+
+  const r1 = x => Math.round(x * 10) / 10;
+  const fmt = x => `${r1(x).toFixed(1)}s`;
+
+  function initialState() {
+    return {
+      started: false, now: 0, language: '繁體中文', languageGen: 0, available: true,
+      main: { time: 0, playing: false, rate: 1, inAd: false },
+      shadow: null,     // { time, runStart, adLeft, emitted:Set }
+      live: null,       // { from, until, emitted:Set, completed:Set }
+      cues: [],         // { id, estStart, estEnd, sentence, partial, arrivedAtMain, gen }
+      liveCaptions: [], // { id, showFrom, translatedAt, sentence, truncated, suppressed }
+      coverage: [],     // [[a,b]] 已預讀範圍
+      log: [], logMark: 0,
+    };
+  }
+
+  function merged(ranges) {
+    const rs = ranges.filter(([a, b]) => b > a).map(r => [...r]).sort((x, y) => x[0] - y[0]);
+    const out = [];
+    for (const r of rs) {
+      const last = out[out.length - 1];
+      if (last && r[0] <= last[1] + 0.01) last[1] = Math.max(last[1], r[1]); else out.push(r);
+    }
+    return out;
+  }
+  const isCovered = (s, x) => merged(s.coverage).some(([a, b]) => a <= x && x < b);
+  function firstUncovered(s, x) {
+    for (const [a, b] of merged(s.coverage)) if (a <= x && x < b) return b;
+    return x;
+  }
+
+  function say(s, text, warn = false) { s.log.push({ now: s.now, media: s.main.time, text, warn }); }
+
+  function startShadowRun(s, at) {
+    const pos = firstUncovered(s, at);
+    if (pos !== at) say(s, `影子播放器要從 ${fmt(at)} 開始，但 ${fmt(at)}～${fmt(pos)} 已經預讀過，直接跳到 ${fmt(pos)}。`);
+    s.shadow = { time: pos, runStart: pos, adLeft: 0, emitted: new Set() };
+    s.coverage.push([pos, pos]);
+    s.shadow.coverIdx = s.coverage.length - 1;
+  }
+
+  // 開始觀看、seek、換語言都走這裡：決定要不要暖身期，影子播放器從哪裡開始。
+  function beginAt(s, x, reason) {
+    s.main.time = x;
+    s.live = null; s.shadow = null;
+    if (!s.available) {
+      s.live = { from: x, until: Infinity, emitted: new Set(), completed: new Set() };
+      say(s, `${reason}：這個網站不支援預讀，只開即時 session（字幕會一直落後語音）。`);
+      return;
+    }
+    if (isCovered(s, x)) {
+      say(s, `${reason}：${fmt(x)} 已經在預讀範圍內，不需要暖身期，字幕直接從快取顯示。`);
+      startShadowRun(s, x);
+    } else {
+      s.live = { from: x, until: x + LEAD, emitted: new Set(), completed: new Set() };
+      say(s, `${reason}：${fmt(x)} 還沒預讀過，進入暖身期。即時 session 負責 ${fmt(x)}～${fmt(x + LEAD)}，影子播放器從 ${fmt(x + LEAD - OVERLAP)} 開始。`);
+      startShadowRun(s, x + LEAD - OVERLAP);
+    }
+  }
+
+  // 一個「聽眾」(影子 run 或即時 session) 在位置 pos 時，Gemini 會回傳哪些東西。
+  function shadowEmissions(s) {
+    const sh = s.shadow; if (!sh) return;
+    for (const sen of SCRIPT) {
+      if (sh.emitted.has(sen.i)) continue;
+      if (sen.end <= sh.runStart || sen.start >= sh.time) continue;
+      if (sh.time < sen.end + sen.L) continue; // 還沒聽完這句
+      sh.emitted.add(sen.i);
+      const partial = sen.start < sh.runStart;
+      const heardFrom = Math.max(sen.start, sh.runStart);
+      const estStart = heardFrom + sen.L - RECOGNITION_DELAY;
+      const estEnd = sen.end + sen.L - RECOGNITION_DELAY;
+      if (partial) {
+        say(s, `丟棄影子播放器的半句（只聽到 ${fmt(sh.runStart)} 之後的後半段）：「${sen.en}」`);
+        continue;
+      }
+      const dup = s.cues.find(c => Math.abs(c.estStart - estStart) < SAME_SENTENCE);
+      if (dup) { say(s, `影子播放器又翻了一次 ${fmt(estStart)} 那句，快取裡已經有，略過。`); continue; }
+      const cue = { id: `c${s.cues.length}`, estStart, estEnd, sentence: sen, partial, arrivedAtMain: s.main.time, gen: s.languageGen };
+      s.cues.push(cue);
+      s.cues.sort((a, b) => a.estStart - b.estStart);
+      s.coverage[sh.coverIdx][1] = Math.max(s.coverage[sh.coverIdx][1], estEnd);
+      if (s.main.time > estStart) {
+        say(s, `Cue ${fmt(estStart)} 送達時主影片已經在 ${fmt(s.main.time)}，這句會晚 ${fmt(s.main.time - estStart)} 出現。`, true);
+      }
+    }
+  }
+
+  function liveEmissions(s) {
+    const lv = s.live; if (!lv) return;
+    const pos = s.main.time;
+    for (const sen of SCRIPT) {
+      if (sen.end <= lv.from || sen.start >= Math.min(pos, lv.until)) continue;
+      const heardFrom = Math.max(sen.start, lv.from);
+      const arrival = heardFrom + sen.L;
+      if (!lv.emitted.has(sen.i) && pos >= arrival) {
+        lv.emitted.add(sen.i);
+        const estStart = arrival - RECOGNITION_DELAY;
+        const cue = s.cues.find(c => Math.abs(c.estStart - estStart) < SAME_SENTENCE);
+        const old = s.liveCaptions.find(c => Math.abs(c.showFrom - arrival) < SAME_SENTENCE);
+        if (cue) { say(s, `即時 session 也聽到 ${fmt(sen.start)} 那句，但預讀已經有 Cue，即時字幕丟掉。`); continue; }
+        if (old) continue;
+        const truncated = sen.end > lv.until;
+        s.liveCaptions.push({ id: `l${s.liveCaptions.length}`, showFrom: arrival, translatedAt: null,
+          sentence: sen, truncated, partial: sen.start < lv.from, gen: s.languageGen, i: sen.i });
+      }
+      const cap = s.liveCaptions.find(c => c.i === sen.i && c.translatedAt === null && c.gen === s.languageGen);
+      if (cap) {
+        const doneAt = cap.truncated ? lv.until : sen.end + sen.L;
+        if (pos >= doneAt) {
+          cap.translatedAt = doneAt;
+          if (cap.truncated) say(s, `暖身期在 ${fmt(lv.until)} 結束，但 ${fmt(sen.start)}～${fmt(sen.end)} 那句還沒講完，即時字幕被截斷；影子播放器那邊只有後半句，也丟掉了。`, true);
+        }
+      }
+    }
+    if (pos >= lv.until) {
+      say(s, `主影片到 ${fmt(lv.until)}，暖身期結束，關閉即時 session，之後全部由預讀接手。`);
+      s.live = null;
+    }
+  }
+
+  function step(s) {
+    s.now += DT;
+    const m = s.main;
+    if (!m.playing) return;
+    if (!m.inAd) m.time += DT * m.rate;
+    const sh = s.shadow;
+    if (sh && !m.inAd) {
+      if (sh.adLeft > 0) {
+        sh.adLeft = Math.max(0, sh.adLeft - DT);
+        if (sh.adLeft === 0) say(s, `影子播放器的廣告結束，提前量剩 ${fmt(sh.time - m.time)}。`, sh.time - m.time < LEAD - OVERLAP);
+      } else if (sh.time < m.time + LEAD) {
+        if (isCovered(s, sh.time) && !(sh.time >= s.coverage[sh.coverIdx][0] && sh.time <= s.coverage[sh.coverIdx][1] + 0.01)) {
+          const to = firstUncovered(s, sh.time);
+          say(s, `影子播放器碰到已預讀的範圍，從 ${fmt(sh.time)} 跳到 ${fmt(to)}。`);
+          startShadowRun(s, to);
+        } else {
+          s.shadow.time += DT * m.rate;
+        }
+      }
+    }
+    shadowEmissions(s);
+    liveEmissions(s);
+  }
+
+  function reduce(prev, action) {
+    const s = structuredClone(prev);
+    s.logMark = s.log.length;
+    switch (action.type) {
+      case 'start':
+        s.started = true; s.main.playing = true;
+        beginAt(s, action.at, `從 ${fmt(action.at)} 開始觀看`);
+        break;
+      case 'advance': {
+        if (!s.started) break;
+        const n = Math.round(action.seconds / DT);
+        for (let i = 0; i < n; i++) step(s);
+        say(s, `經過 ${action.seconds} 秒（真實時間）。主影片在 ${fmt(s.main.time)}。`);
+        break;
+      }
+      case 'toggle-play':
+        s.main.playing = !s.main.playing;
+        say(s, s.main.playing ? '繼續播放，影子播放器一起動。' : '暫停，影子播放器也停下來，提前量不變。');
+        break;
+      case 'seek': {
+        const to = Math.max(0, Math.min(290, action.to === undefined ? s.main.time + action.by : action.to));
+        beginAt(s, to, `從 ${fmt(s.main.time)} 拖到 ${fmt(to)}`);
+        break;
+      }
+      case 'rate':
+        s.main.rate = action.rate;
+        say(s, `播放速度改成 ${action.rate}x，影子播放器用同樣的速度。`);
+        break;
+      case 'main-ad':
+        s.main.inAd = !s.main.inAd;
+        say(s, s.main.inAd ? '主影片開始播廣告：媒體時間不動，影子播放器暫停。' : '主影片廣告結束，兩邊一起繼續。');
+        break;
+      case 'shadow-ad':
+        if (s.shadow) { s.shadow.adLeft = 15; say(s, '影子播放器自己跳出 15 秒廣告：這段音訊不送 Gemini，影子播放器的媒體時間停住，但主影片照樣前進。'); }
+        break;
+      case 'language':
+        s.language = s.language === '繁體中文' ? '日本語' : '繁體中文';
+        s.languageGen += 1;
+        s.cues = []; s.coverage = []; s.liveCaptions = [];
+        beginAt(s, s.main.time, `目標語言改成${s.language}，清空所有已翻譯的字幕`);
+        break;
+      case 'availability':
+        s.available = !s.available;
+        if (s.started) beginAt(s, s.main.time, s.available ? '改成支援預讀的網站' : '改成 DRM 網站（例如 Netflix）');
+        else say(s, s.available ? '改成支援預讀的網站。' : '改成 DRM 網站（例如 Netflix），預讀不可用。');
+        break;
+    }
+    if (s.log.length === s.logMark) say(s, '沒有變化。');
+    return s;
+  }
+
+  // ---- 給畫面用的衍生資料 ----------------------------------------
+  function displayItems(s) {
+    const T = s.main.time;
+    const cues = s.cues.map((c, idx) => {
+      const next = s.cues[idx + 1];
+      const showFrom = Math.max(c.estStart, c.arrivedAtMain);
+      return { kind: 'cue', showFrom, until: Math.min(next ? next.estStart : Infinity, c.estStart + MAX_CUE),
+        sentence: c.sentence, originalAt: showFrom, translatedAt: showFrom, item: c };
+    });
+    const live = s.liveCaptions.map((c, idx) => {
+      const next = s.liveCaptions.slice(idx + 1).find(x => x.showFrom > c.showFrom);
+      const end = c.translatedAt === null ? Infinity : c.translatedAt + MAX_CUE;
+      return { kind: 'live', showFrom: c.showFrom, until: Math.min(next ? next.showFrom : Infinity, end),
+        sentence: c.sentence, originalAt: c.showFrom, translatedAt: c.translatedAt, item: c };
+    }).filter(x => !s.cues.some(c => Math.abs(c.estStart - (x.showFrom - RECOGNITION_DELAY)) < SAME_SENTENCE));
+    return { T, all: [...cues, ...live].sort((a, b) => a.showFrom - b.showFrom) };
+  }
+
+  function view(s) {
+    const { T, all } = displayItems(s);
+    const visible = all.filter(x => x.showFrom <= T && T < x.until);
+    const onScreen = visible[visible.length - 1] || null;
+    const speaking = SCRIPT.find(x => x.start <= T && T < x.end) || null;
+    const reached = all.filter(x => x.showFrom <= T);
+    return {
+      T, onScreen, speaking, reached, script: SCRIPT,
+      lead: s.shadow ? s.shadow.time - s.main.time : null,
+      coverage: merged(s.coverage), LEAD, OVERLAP,
+    };
+  }
+
+  return { initialState, reduce, view, SCRIPT, fmt };
+})();
+
+// ===================================================================
+// 頁面殼：只負責畫面與按鈕。
+// ===================================================================
+const $ = id => document.getElementById(id);
+const fmt = ReadAhead.fmt;
+let state = ReadAhead.initialState();
+let prevView = null;
+
+const FREE = [
+  { label: '開始與時間', items: [
+    ['從 0 秒開始觀看', { type: 'start', at: 0 }, s => !s.started],
+    ['經過 1 秒', { type: 'advance', seconds: 1 }, s => s.started],
+    ['經過 5 秒', { type: 'advance', seconds: 5 }, s => s.started],
+    ['經過 30 秒', { type: 'advance', seconds: 30 }, s => s.started],
+    ['播放／暫停', { type: 'toggle-play' }, s => s.started],
+  ]},
+  { label: '拖進度條', items: [
+    ['倒轉 20 秒', { type: 'seek', by: -20 }, s => s.started],
+    ['快轉 60 秒', { type: 'seek', by: 60 }, s => s.started],
+    ['拖到 100 秒', { type: 'seek', to: 100 }, s => s.started],
+    ['拖到 10 秒', { type: 'seek', to: 10 }, s => s.started],
+  ]},
+  { label: '其他', items: [
+    ['速度 1x', { type: 'rate', rate: 1 }, s => s.started],
+    ['速度 1.5x', { type: 'rate', rate: 1.5 }, s => s.started],
+    ['主影片廣告 開始／結束', { type: 'main-ad' }, s => s.started],
+    ['影子播放器跳出 15 秒廣告', { type: 'shadow-ad' }, s => !!s.shadow],
+    ['切換目標語言', { type: 'language' }, s => s.started],
+    ['切換：一般網站／DRM 網站', { type: 'availability' }, () => true],
+  ]},
+];
+
+const adv = n => [`經過 ${n} 秒`, { type: 'advance', seconds: n }];
+const SCENARIOS = [
+  { name: '正常觀看', text: '從頭開始看。注意前 25 秒字幕是橙色（即時模式），原文出現時譯文還在「翻譯中」；25 秒之後換成藍色的 Cue，字幕和開口時間幾乎同步，譯文一起出現。也注意「實際提前量」是多少。',
+    steps: [['從 0 秒開始觀看', { type: 'start', at: 0 }], adv(5), adv(5), adv(5), adv(10), adv(5), adv(5), adv(10)] },
+  { name: '交接處的長句', text: '第 22～33 秒有一句 11 秒的長句，剛好跨過影子播放器的起點（25 秒）和暖身期終點（30 秒）。看看這句最後怎麼顯示。',
+    steps: [['從 0 秒開始觀看', { type: 'start', at: 0 }], adv(20), adv(3), adv(3), adv(3), adv(3), adv(3)] },
+  { name: '倒轉重用快取', text: '看到 90 秒後倒轉回 40 秒：40 秒已預讀過，應該不需要暖身期，字幕直接從快取出來。再倒轉回 10 秒：那段當初是暖身期，沒有 Cue，看看會發生什麼。',
+    steps: [['從 0 秒開始觀看', { type: 'start', at: 0 }], adv(30), adv(30), adv(30), ['拖到 40 秒', { type: 'seek', to: 40 }], adv(5), ['拖到 10 秒', { type: 'seek', to: 10 }], adv(5), adv(10)] },
+  { name: '往前跳出範圍', text: '看到 40 秒後直接拖到 180 秒。180 秒還沒預讀過，要重新暖身；原本影子播放器在 70 秒左右的預讀進度作廢。',
+    steps: [['從 0 秒開始觀看', { type: 'start', at: 0 }], adv(40), ['拖到 180 秒', { type: 'seek', to: 180 }], adv(5), adv(20), adv(10)] },
+  { name: '影子播放器廣告', text: '影子播放器自己跳出 15 秒廣告時，主影片照常前進，提前量會縮水。觀察廣告結束後提前量有沒有恢復。',
+    steps: [['從 0 秒開始觀看', { type: 'start', at: 0 }], adv(40), ['影子播放器跳出 15 秒廣告', { type: 'shadow-ad' }], adv(15), adv(30)] },
+  { name: '長時間沉默', text: '60～76 秒沒人講話。上一句的 Cue 最多顯示 7 秒，之後畫面應該是空的。',
+    steps: [['從 0 秒開始觀看', { type: 'start', at: 0 }], adv(30), adv(25), adv(3), adv(3), adv(3), adv(3), adv(5)] },
+  { name: '換語言', text: '看到 50 秒時換目標語言：所有已翻譯的 Cue 清空，從 50 秒重新暖身。',
+    steps: [['從 0 秒開始觀看', { type: 'start', at: 0 }], adv(50), ['切換目標語言', { type: 'language' }], adv(5), adv(25)] },
+  { name: 'DRM 網站', text: '在 Netflix 之類的網站，預讀不可用，全程只有即時模式。字幕會一直比開口時間晚。',
+    steps: [['切換：一般網站／DRM 網站', { type: 'availability' }], ['從 0 秒開始觀看', { type: 'start', at: 0 }], adv(5), adv(5), adv(30)] },
+];
+let activeTab = 0, stepIndex = 0;
+
+function dispatch(action) { state = ReadAhead.reduce(state, action); render(); }
+
+function renderTimeline(v) {
+  const W = 300, pct = x => `${Math.max(0, Math.min(100, (x / W) * 100))}%`;
+  const width = (a, b) => `${Math.max(0.3, ((Math.min(b, W) - Math.max(a, 0)) / W) * 100)}%`;
+  let html = '<div class="tl-row" style="top:0">';
+  for (const s of v.script) html += `<div class="tl-seg" style="left:${pct(s.start)};width:${width(s.start, s.end)};background:#d6d3d1"></div>`;
+  html += '</div><div class="tl-row" style="top:18px">';
+  for (const [a, b] of v.coverage) html += `<div class="tl-seg" style="left:${pct(a)};width:${width(a, b)};background:var(--accent)"></div>`;
+  html += '</div><div class="tl-row" style="top:36px">';
+  if (state.live) html += `<div class="tl-seg" style="left:${pct(state.live.from)};width:${width(state.live.from, Math.min(state.live.until, 300))};background:var(--live)"></div>`;
+  html += '</div>';
+  if (state.started) {
+    html += `<div class="tl-mark" style="left:${pct(v.T)};background:var(--ink)"></div><div class="tl-label" style="left:${pct(v.T)};top:56px">主 ${fmt(v.T)}</div>`;
+    if (state.shadow) html += `<div class="tl-mark" style="left:${pct(state.shadow.time)};background:var(--accent);opacity:.5"></div><div class="tl-label" style="left:${pct(state.shadow.time)};top:56px;color:var(--accent)">影子 ${fmt(state.shadow.time)}</div>`;
+  }
+  $('timeline').innerHTML = html;
+}
+
+function renderScreen(v) {
+  const x = v.onScreen;
+  if (!x) { $('screen').innerHTML = `<div class="screen empty">${state.started ? '（沒有字幕）' : '（尚未開始）'}</div>`; return; }
+  const sen = x.sentence;
+  const tr = x.translatedAt !== null && x.translatedAt <= v.T ? sen.zh + (state.language === '日本語' ? '（日本語版）' : '') : '（翻譯中…）';
+  const origLag = x.originalAt - sen.start;
+  const trLag = x.translatedAt === null ? null : x.translatedAt - sen.start;
+  const lagText = d => d === null ? '尚未' : `${d >= 0 ? '晚' : '早'} ${fmt(Math.abs(d))}`;
+  const cls = d => d === null || d > 1 ? 'bad' : 'good';
+  const trunc = (x.kind === 'live' && x.item.truncated ? '<span class="bad">（被截斷）</span>' : '')
+    + (x.kind === 'live' && x.item.partial ? '<span class="bad">（只聽到後半句）</span>' : '');
+  $('screen').innerHTML = `<div class="screen">
+    <div class="orig"><span class="src ${x.kind}">${x.kind === 'cue' ? 'Cue' : '即時'}</span>${sen.en}${trunc}</div>
+    <div class="tr">${tr}</div>
+    <div class="meta">這句實際開口：${fmt(sen.start)}　原文出現 <span class="${cls(origLag)}">${lagText(origLag)}</span>　譯文出現 <span class="${cls(trLag)}">${lagText(trLag)}</span></div>
+  </div>`;
+}
+
+function renderState(v) {
+  const sh = state.shadow;
+  const shadowStatus = !state.available ? '不可用（DRM）' : !sh ? '未啟動'
+    : state.main.inAd ? '暫停（主影片在播廣告）'
+    : sh.adLeft > 0 ? `播自己的廣告（剩 ${fmt(sh.adLeft)}）`
+    : !state.main.playing ? '暫停'
+    : sh.time >= state.main.time + v.LEAD ? '等待（已領先 30 秒）' : '播放中';
+  const rows = [
+    ['網站', state.available ? '支援預讀' : 'DRM，只能即時模式'],
+    ['目標語言', state.language],
+    ['主播放器', state.started ? `${fmt(v.T)}・${state.main.playing ? '播放中' : '暫停'}・${state.main.rate}x${state.main.inAd ? '・廣告中' : ''}` : '尚未開始'],
+    ['影子播放器', sh ? `${fmt(sh.time)}・${shadowStatus}` : shadowStatus],
+    ['實際提前量', v.lead === null ? '—' : `${fmt(v.lead)}${v.lead < v.LEAD - 0.01 ? `（設定是 ${v.LEAD}s）` : ''}`],
+    ['暖身期', state.live ? `${fmt(state.live.from)}～${state.live.until === Infinity ? '∞' : fmt(state.live.until)}` : '無'],
+    ['已預讀範圍', v.coverage.length ? v.coverage.map(([a, b]) => `${fmt(a)}～${fmt(b)}`).join('、') : '無'],
+    ['快取的 Cue 數', String(state.cues.length)],
+    ['現在誰在講話', v.speaking ? `${fmt(v.speaking.start)}～${fmt(v.speaking.end)}「${v.speaking.en}」` : '沒人講話'],
+  ];
+  const prev = renderState.prev || {};
+  $('state').innerHTML = rows.map(([k, val]) =>
+    `<dt>${k}</dt><dd>${prev[k] !== undefined && prev[k] !== val ? `<span class="changed">${val}</span>` : val}</dd>`).join('');
+  renderState.prev = Object.fromEntries(rows);
+}
+
+function renderLog() {
+  const items = state.log.map((e, i) => ({ ...e, fresh: i >= state.logMark }));
+  $('log').innerHTML = items.slice(-60).reverse().map(e =>
+    `<li class="${e.fresh ? 'fresh' : 'old'}"><span class="${e.warn ? 'warn' : ''}">${e.text}</span></li>`).join('');
+}
+
+function renderSidePanel(v) {
+  const rows = v.reached.slice(-8);
+  if (!rows.length) { $('sidepanel').innerHTML = '<span style="color:var(--muted)">（還沒有）</span>'; return; }
+  $('sidepanel').innerHTML = `<table><tr><th>出現</th><th>來源</th><th>原文</th><th>譯文晚了</th></tr>${rows.map(x => {
+    const d = x.translatedAt === null || x.translatedAt > v.T ? null : x.translatedAt - x.sentence.start;
+    return `<tr><td class="num">${fmt(x.showFrom)}</td><td><span class="src ${x.kind}">${x.kind === 'cue' ? 'Cue' : '即時'}</span></td><td>${x.sentence.en}</td><td class="num ${d === null || d > 1 ? 'bad' : 'good'}">${d === null ? '翻譯中' : fmt(d)}</td></tr>`;
+  }).join('')}</table>`;
+}
+
+function renderFree() {
+  $('free').innerHTML = FREE.map((g, gi) => `<div class="group"><div class="group-label">${g.label}</div><div class="btns">${
+    g.items.map(([label, , enabled], ii) => `<button data-g="${gi}" data-i="${ii}" ${enabled(state) ? '' : 'disabled'}>${label}</button>`).join('')}</div></div>`).join('');
+  $('free').querySelectorAll('button').forEach(b => b.onclick = () => dispatch(FREE[b.dataset.g].items[b.dataset.i][1]));
+}
+
+function renderScenario() {
+  $('tabs').innerHTML = SCENARIOS.map((sc, i) => `<button class="${i === activeTab ? 'active' : ''}" data-i="${i}">${sc.name}</button>`).join('');
+  $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => { activeTab = +b.dataset.i; resetScenario(); });
+  const sc = SCENARIOS[activeTab];
+  $('scenario').innerHTML = `<div>${sc.text}</div><div class="steps">${sc.steps.map(([label], i) =>
+    `<button data-i="${i}" class="${i < stepIndex ? 'done' : i === stepIndex ? 'next' : ''}" ${i === stepIndex ? '' : 'disabled'}>${i + 1}. ${label}</button>`).join('')}</div>
+    <div style="margin-top:10px"><button data-reset>重新開始這個情境</button></div>`;
+  $('scenario').querySelectorAll('.steps button').forEach(b => b.onclick = () => { stepIndex += 1; dispatch(sc.steps[+b.dataset.i][1]); });
+  $('scenario').querySelector('[data-reset]').onclick = resetScenario;
+}
+
+function resetScenario() {
+  state = ReadAhead.initialState();
+  renderState.prev = undefined;
+  stepIndex = 0;
+  render();
+}
+
+function render() {
+  const v = ReadAhead.view(state);
+  renderTimeline(v); renderScreen(v); renderState(v); renderLog(); renderSidePanel(v); renderFree(); renderScenario();
+}
+render();
+</script>
+</body>
+</html>
