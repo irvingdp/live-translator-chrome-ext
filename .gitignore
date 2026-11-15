@@ -1,6 +1,8 @@
 node_modules/
 coverage/
-docs/
+docs/*
+!docs/adr/
+!docs/agents/
 output/
 .wxt/
 .superdesign/tmp/
