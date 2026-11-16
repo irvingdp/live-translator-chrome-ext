@@ -20,16 +20,20 @@ _Avoid_: Prediction, prefetch, look-ahead translation
 The media element the viewer is actually watching and hearing.
 _Avoid_: Original video, foreground player
 
+**Buffer tap** (緩衝擷取):
+Reading upcoming audio straight from what the main player has already downloaded but not yet played. Used where the main player streams its media in pieces (YouTube).
+_Avoid_: Interceptor, sniffer, prefetch
+
 **Shadow player** (影子播放器):
-A hidden, muted second copy of the same media that plays ahead of the main player and supplies the audio for read-ahead.
+A hidden, muted second copy of the same media that plays ahead of the main player and supplies the audio for read-ahead. Used for plain video files, where there is no buffer to tap.
 _Avoid_: Ghost player, background player, preloader
 
 **Chunk** (片段):
-A stretch of shadow-player audio sent for translation in one request, normally cut at a pause in speech.
+A stretch of upcoming audio sent for translation in one request, normally cut at a pause in speech.
 _Avoid_: Segment, batch, window
 
 **Lead** (提前量):
-How far, in media time, the shadow player has read ahead of the main player. It grows up to 30 seconds.
+How far, in media time, upcoming audio has been read ahead of the main player. It grows up to 30 seconds.
 _Avoid_: Offset, buffer, delay
 
 **Hold** (讀取等待):
