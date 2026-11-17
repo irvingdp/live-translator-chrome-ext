@@ -45,8 +45,12 @@ Timed captions the uploader published with the video. When read-ahead finds one 
 _Avoid_: Subtitles, CC, transcript
 
 **Recognizer** (語音辨識):
-The read-ahead service that turns a chunk's audio into timed sentences: Gemini (which also translates), Groq Whisper or Cloudflare Whisper.
+The read-ahead service that turns a chunk's audio into timed sentences: Gemini (which also translates), Groq Whisper, Cloudflare Whisper, or Local Whisper.
 _Avoid_: Transcriber (the setting's old name for the caption mode), ASR provider
+
+**Local Whisper** (本地 Whisper):
+The recognizer that runs a Whisper model on the viewer's own computer, in the browser: no key and no quota, but the model must be downloaded once and the computer must be fast enough.
+_Avoid_: Offline mode, on-device ASR
 
 **Translator** (翻譯):
 The read-ahead service that translates the recognizer's sentences when the recognizer does not: Chrome's built-in Translator, or where it cannot, Google's web translation.
