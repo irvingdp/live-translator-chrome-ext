@@ -9,8 +9,6 @@ import {
 
 const settings: SessionSettings = {
   backgroundOpacity: 78,
-  cloudflareAccountId: 'cf-account',
-  cloudflareApiToken: 'cf-secret',
   geminiApiKey: 'gemini-key',
   geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
@@ -535,7 +533,6 @@ describe('CaptureSessionController read-ahead mode', () => {
       expect(harness.dependencies.transcribeChunk).toHaveBeenCalledWith({
         apiKey: 'groq-key',
         audioBase64: 'wav',
-        provider: 'groq',
         sourceLanguage: undefined,
       });
       expect(harness.dependencies.translateChunk).not.toHaveBeenCalled();
@@ -561,27 +558,6 @@ describe('CaptureSessionController read-ahead mode', () => {
         .rejects.toMatchObject({ code: 'groq_quota_exceeded' });
     });
 
-    it('recognizes with Cloudflare Whisper when chosen, naming its quota', async () => {
-      const harness = createHarness();
-      const sessionId = await startReadAhead(harness, { readAheadRecognizer: 'cloudflare' });
-      vi.mocked(harness.dependencies.transcribeChunk).mockResolvedValue(heard('Hello.'));
-
-      await expect(harness.controller.translateReadAheadChunk(sessionId, 42, 'wav')).resolves
-        .toMatchObject({ translateInPage: { sourceLanguage: 'en', targetLanguage: 'zh-Hant' } });
-      expect(harness.dependencies.transcribeChunk).toHaveBeenCalledWith({
-        accountId: 'cf-account',
-        apiToken: 'cf-secret',
-        audioBase64: 'wav',
-        provider: 'cloudflare',
-        sourceLanguage: undefined,
-      });
-
-      vi.mocked(harness.dependencies.transcribeChunk)
-        .mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'quota_exceeded' }));
-      await expect(harness.controller.translateReadAheadChunk(sessionId, 42, 'wav'))
-        .rejects.toMatchObject({ code: 'cloudflare_quota_exceeded' });
-    });
-
     it("translates the page's fallback sentences on the web, only for the active session's tab", async () => {
       const harness = createHarness();
       const sessionId = await startReadAhead(harness, groq);
@@ -602,26 +578,6 @@ describe('CaptureSessionController read-ahead mode', () => {
         .mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'quota_exceeded' }));
       await expect(harness.controller.translateReadAheadChunk(sessionId, 42, 'wav'))
         .rejects.toMatchObject({ code: 'gemini_quota_exceeded' });
-    });
-
-    it('offers the switch to Cloudflare when Groq runs out', async () => {
-      const harness = createHarness();
-      const sessionId = await startReadAhead(harness, groq);
-      await harness.controller.acceptReadAheadStatus(sessionId, 42, 'groq_quota_exceeded');
-      expect(harness.dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
-        type: 'SESSION_ERROR',
-        payload: { action: 'switch_to_cloudflare', code: 'groq_quota_exceeded' },
-      });
-    });
-
-    it('offers nothing further when Cloudflare runs out', async () => {
-      const harness = createHarness();
-      const sessionId = await startReadAhead(harness, { readAheadRecognizer: 'cloudflare' });
-      await harness.controller.acceptReadAheadStatus(sessionId, 42, 'cloudflare_quota_exceeded');
-      expect(harness.dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
-        type: 'SESSION_ERROR',
-        payload: { code: 'cloudflare_quota_exceeded' },
-      });
     });
 
     it('offers no switch to Groq when Groq is already doing the recognizing', async () => {
@@ -659,7 +615,6 @@ describe('CaptureSessionController read-ahead mode', () => {
     await harness.controller.acceptReadAheadStatus(sessionId, 42, 'failed');
     await harness.controller.acceptReadAheadStatus(sessionId, 42, 'gemini_quota_exceeded');
     await harness.controller.acceptReadAheadStatus(sessionId, 42, 'groq_quota_exceeded');
-    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'cloudflare_quota_exceeded');
     await harness.controller.acceptReadAheadStatus(sessionId, 42, 'translator_unsupported');
     await harness.controller.acceptReadAheadStatus(sessionId, 42, undefined);
 
@@ -669,11 +624,30 @@ describe('CaptureSessionController read-ahead mode', () => {
       // A used-up Gemini quota offers the switch to Groq Whisper.
       { type: 'SESSION_ERROR', payload: { action: 'switch_to_groq', code: 'gemini_quota_exceeded' } },
       { type: 'SESSION_ERROR', payload: { code: 'groq_quota_exceeded' } },
-      { type: 'SESSION_ERROR', payload: { code: 'cloudflare_quota_exceeded' } },
       { type: 'SESSION_ERROR', payload: { code: 'read_ahead_translator_unsupported' } },
       { type: 'SESSION_ERROR_CLEAR' },
     ]);
     expect(harness.controller.status()).toEqual({ state: 'running', tabId: 42 });
+  });
+
+  it("keeps a provider's failure reason, and offers the next recognizer only where another service helps", async () => {
+    const harness = createHarness();
+    const sessionId = await startReadAhead(harness);
+
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'gemini_rate_limited');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'gemini_timeout');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'gemini_invalid_credentials');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'page_timeout');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'web_translation_failed');
+
+    expect(vi.mocked(harness.dependencies.sendToTab).mock.calls.map(([, message]) => message)).toEqual([
+      { type: 'SESSION_ERROR', payload: { action: 'switch_to_groq', code: 'gemini_rate_limited' } },
+      { type: 'SESSION_ERROR', payload: { action: 'switch_to_groq', code: 'gemini_timeout' } },
+      // Another service does not fix a wrong key.
+      { type: 'SESSION_ERROR', payload: { code: 'gemini_invalid_credentials' } },
+      { type: 'SESSION_ERROR', payload: { code: 'read_ahead_page_timeout' } },
+      { type: 'SESSION_ERROR', payload: { code: 'read_ahead_web_translation_failed' } },
+    ]);
   });
 
   it('reports an unsupported page as an error the popup can explain, without switching modes', async () => {

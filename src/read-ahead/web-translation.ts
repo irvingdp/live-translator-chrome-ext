@@ -21,7 +21,7 @@ export interface WebTranslationRequest {
 
 // Gemini codes (the popup's list) → Google's, where they differ.
 const GOOGLE_CODES: Record<string, string> = {
-  fil: 'tl', he: 'iw', jv: 'jw', nb: 'no', 'pt-BR': 'pt', 'zh-Hans': 'zh-CN', 'zh-Hant': 'zh-TW',
+  fil: 'tl', he: 'iw', jv: 'jw', nb: 'no', 'pt-BR': 'pt', 'zh-HK': 'zh-TW', 'zh-Hans': 'zh-CN', 'zh-Hant': 'zh-TW',
 };
 
 export function googleLanguageCode(code: string): string {

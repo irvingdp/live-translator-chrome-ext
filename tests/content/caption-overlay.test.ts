@@ -4,6 +4,7 @@ import {
   CaptionOverlay,
   findLargestVisiblePlayerFrame,
   findLargestVisibleVideo,
+  sessionErrorText,
 } from '../../src/content/caption-overlay';
 import type { OverlayLayout } from '../../src/core/overlay-layout';
 
@@ -208,11 +209,8 @@ describe('CaptionOverlay', () => {
 
     // The button stays disabled until the first switch has been handled.
     await vi.waitFor(() => expect(button().disabled).toBe(false));
-    overlay.setSessionError('groq_quota_exceeded', 'switch_to_cloudflare');
-    expect(shadow()!.querySelector('.status-message')!.textContent).toBe('Groq 額度已用完');
-    expect(button().textContent).toBe('改用 Cloudflare Whisper');
     button().click();
-    expect(onSessionAction).toHaveBeenLastCalledWith('switch_to_cloudflare');
+    expect(onSessionAction).toHaveBeenCalledTimes(2);
 
     overlay.clearSessionError();
     expect(button().hidden).toBe(true);
@@ -564,9 +562,9 @@ describe('CaptionOverlay', () => {
   it('shows and clears a translated session error', () => {
     const overlay = new CaptionOverlay(document);
     overlay.show(appearance, layout);
-    overlay.setSessionError('cloudflare_quota_exceeded');
+    overlay.setSessionError('groq_quota_exceeded');
     expect(shadow()?.querySelector('.status-message')?.textContent).toBe(
-      'Cloudflare 今日額度已用完',
+      'Groq 今日額度已用完（每天約 2000 次）。建議：改用「Gemini（含翻譯）」，或明天再用。',
     );
 
     overlay.clearSessionError();
@@ -717,3 +715,14 @@ function pointer(type: string, clientX: number, clientY: number): Event {
   Object.defineProperty(event, 'pointerId', { value: 1 });
   return event;
 }
+
+describe('sessionErrorText', () => {
+  it("names the provider and suggests what to do for a read-ahead failure without a message of its own", () => {
+    expect(sessionErrorText('groq_rate_limited')).toMatch(/^Groq Whisper 請求太頻繁.*建議/);
+    expect(sessionErrorText('groq_invalid_credentials')).toMatch(/^Groq Whisper 拒絕了你的金鑰/);
+    expect(sessionErrorText('gemini_timeout')).toMatch(/^Gemini 在 7 秒內沒有回應/);
+    expect(sessionErrorText('read_ahead_web_translation_failed')).toMatch(/Google 網頁翻譯也失敗/);
+    expect(sessionErrorText('groq_quota_exceeded')).toMatch(/每天約 2000 次/);
+    expect(sessionErrorText('something_else')).toBe('字幕服務發生未知錯誤，請重新啟動');
+  });
+});

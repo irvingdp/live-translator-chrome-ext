@@ -5,8 +5,6 @@ import {
 } from '../core/settings';
 
 export interface ApiKeySettings {
-  cloudflareAccountId: string;
-  cloudflareApiToken: string;
   geminiApiKey: string;
   groqApiKey: string;
 }
@@ -25,18 +23,8 @@ async function loadSettings(): Promise<AppSettings> {
 
 export const browserOptionsApi: OptionsApi = {
   async loadKeys() {
-    const {
-      cloudflareAccountId,
-      cloudflareApiToken,
-      geminiApiKey,
-      groqApiKey,
-    } = await loadSettings();
-    return {
-      cloudflareAccountId,
-      cloudflareApiToken,
-      geminiApiKey,
-      groqApiKey,
-    };
+    const { geminiApiKey, groqApiKey } = await loadSettings();
+    return { geminiApiKey, groqApiKey };
   },
   async saveKeys(keys) {
     const current = await loadSettings();

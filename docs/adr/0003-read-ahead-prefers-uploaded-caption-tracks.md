@@ -8,10 +8,10 @@ Read-ahead turns upcoming audio into **cues** through a **recognizer** and a **t
 
 So in read-ahead mode, when the video has a **caption track** in the spoken language, read-ahead reads the sentences from it and skips the recognizer. When it also has one in the target language, the translation comes from that track and the translator is skipped too. Without a caption track, everything works as before. This happens on its own; there is no setting.
 
-- **Which track is the original:** the one in the popup's source language, or, when that is set to detect, the one in the language YouTube marks as the video's. With neither, there is no original track.
+- **Which track is the original:** the one in the popup's source language, or, when that is set to detect, the one in the spoken language. YouTube has no field for that, but its own speech-recognition track is in it; a plain video's `default` track stands in. With neither, there is no original track.
 - **A target-language track only counts alongside an original one.** With a target track alone, the recognizer and translator run as before: recognized sentences and the uploader's lines are cut differently, so they could not be paired.
 - **With an original track but no target track,** the translator translates (Chrome's built-in Translator, then Google's web translation), whatever the recognizer setting. Gemini's quota is not used.
-- **Sentences:** consecutive cues are joined up to a sentence ender, and cut at 15 s without one. The translation of a sentence is the target cues that overlap it most, in order, each used once.
+- **Sentences:** consecutive cues are joined up to a sentence ender, and cut at 15 s or a silence over 2 s without one. The translation of a sentence is the target cues that overlap it most, in order, each used once.
 - **Timing:** the decision is made once per video, including YouTube's in-page navigation. Read-ahead waits for the track at most 2 s, holding the player with "讀取字幕中…", and otherwise uses the recognizer for the rest of that video. With a track no audio is read, so a seek lands on captions straight away. Translation still runs at most 30 s ahead, a batch at a time.
 
 ## How the YouTube track is read
@@ -36,5 +36,8 @@ For ordinary HTML5 video, `<track>` elements are read through `video.textTracks`
 
 ## Consequences
 
-- The plan rests on one unverified fact: that after turning captions on through the player API, the player downloads the whole track in one response that the page can read. This is checked first, in real Chrome. If it does not hold, how the track is obtained is decided again.
+- Verified in real Chrome on 2026-11-17 (TED "Grit", 373 s): fetching a track's listed URL ourselves returns an empty body. After `setOption('captions', 'track', …)` the player downloads the whole track (`fmt=json3`, with its token) in one XMLHttpRequest, which a MAIN-world hook reads, in about 20 ms. Choosing the track already showing downloads nothing, so that one is reloaded (`setOption('captions', 'reload', true)`). `setOption('captions', 'track', {})` turns captions off, which is how "off" is put back.
+- The viewer's track is put back right after the download, not at stop: YouTube's caption rendering stays hidden while the captions run, so the switch is never seen.
+- A streamed plain video (`blob:` source), which read-ahead could not read audio from, now works when it has a readable caption track.
+- With Gemini as the recognizer, a track that needs translating uses Chrome's translator and Google's web translation. Google's host is only granted with a Whisper recognizer, so without it a pair Chrome cannot translate fails as "翻譯失敗". The popup starts Chrome's language-pack download on every read-ahead start for this.
 - Live mode is unchanged: it translates what is heard now and has no use for timed captions ahead.

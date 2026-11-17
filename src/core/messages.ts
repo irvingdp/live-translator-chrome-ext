@@ -87,10 +87,10 @@ export type ExtensionMessage =
       payload: { sessionId: string; status?: ReadAheadStatusCode };
     }
   // The overlay's "switch to … Whisper" button, after a recognizer's quota ran
-  // out (Gemini → Groq, Groq → Cloudflare).
+  // out (Gemini → Groq).
   | {
       target: 'background';
       type: 'READ_AHEAD_SWITCH_RECOGNIZER';
-      payload: { recognizer: 'cloudflare' | 'groq' };
+      payload: { recognizer: 'groq' };
     }
   | { target: 'background'; type: 'SESSION_STATUS' };

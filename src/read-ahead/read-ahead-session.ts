@@ -83,18 +83,49 @@ export interface DisplayedCue {
 
 // 'loading': holding for audio; 'translating': holding for the translation
 // of audio already read. Shown differently so a long hold says which it is.
-// A failed chunk shows 'failed', or the reason when it is worth telling the
-// viewer: a provider's quota is used up, or Chrome's built-in Translator cannot
-// translate this language pair.
+// A failed chunk shows 'failed', or, when the error says why, the reason: which
+// provider failed and how, or that no translator could translate it.
+export const READ_AHEAD_PROVIDERS = ['gemini', 'groq'] as const;
+export type ReadAheadProvider = (typeof READ_AHEAD_PROVIDERS)[number];
+// Why a provider's request failed (ChunkTranslationErrorCode).
+export const PROVIDER_FAILURE_REASONS = [
+  'invalid_credentials',
+  'invalid_response',
+  'network_error',
+  'provider_unavailable',
+  'quota_exceeded',
+  'rate_limited',
+  'timeout',
+] as const;
+export type ProviderFailureReason = (typeof PROVIDER_FAILURE_REASONS)[number];
+
 export const READ_AHEAD_FAILURES = [
-  'cloudflare_quota_exceeded',
-  'gemini_quota_exceeded',
-  'groq_quota_exceeded',
+  ...READ_AHEAD_PROVIDERS.flatMap((provider) =>
+    PROVIDER_FAILURE_REASONS.map((reason) => `${provider}_${reason}` as const)),
+  // The whole chunk was not back within the page's deadline.
+  'page_timeout',
+  // Chrome's built-in Translator cannot translate this pair.
   'translator_unsupported',
+  // …and Google's web translation, tried instead, failed too.
+  'web_translation_failed',
 ] as const;
 export type ReadAheadFailure = (typeof READ_AHEAD_FAILURES)[number];
 
+// The failure an error message names, or undefined for one not worth telling
+// the viewer apart from "翻譯失敗".
+export function readAheadFailure(reason: string | undefined): ReadAheadFailure | undefined {
+  if (!reason) return undefined;
+  if (reason === 'background_timeout') return 'page_timeout';
+  if (reason.startsWith('web_translation_')) return 'web_translation_failed';
+  return READ_AHEAD_FAILURES.find((known) => known === reason);
+}
+
+// Statuses only a caption track (ADR 0003) shows: waiting for the track, and
+// the one-time notice that it is in use.
+export type CaptionTrackStatus = 'captions_loading' | 'captions_video' | 'captions_youtube';
+
 export type ReadAheadStatus =
+  | CaptionTrackStatus
   | 'failed'
   | 'loading'
   | 'translating'
@@ -309,6 +340,9 @@ export class ReadAheadSession {
   onMainSeeking(): void {
     if (this.disposed) return;
     const time = this.dependencies.main.currentTime();
+    // A seek is the viewer asking again: chunks that failed where they are
+    // going are forgotten and read again. Playing on never retries one.
+    this.forgetFailedChunks(time - SEEK_LOOKBACK_SECONDS, time + MAX_LEAD_SECONDS);
     if (this.chunkAt(time, true)) {
       // Cached or on its way: keep reading from where that stretch ends.
       const end = this.chainEnd(time, true);
@@ -401,6 +435,13 @@ export class ReadAheadSession {
     this.dependencies.source.refill(time);
   }
 
+  private forgetFailedChunks(from: number, to: number): void {
+    for (let index = this.chunks.length - 1; index >= 0; index -= 1) {
+      const chunk = this.chunks[index]!;
+      if (chunk.state === 'failed' && chunk.end > from && chunk.start < to) this.chunks.splice(index, 1);
+    }
+  }
+
   // Where to start reading for a viewer at `time` that no chunk covers: 5 s
   // before, or the end of a chunk that ends in between.
   private rereadPoint(time: number): number {
@@ -490,7 +531,7 @@ export class ReadAheadSession {
     } catch (error) {
       sentences = undefined;
       const reason = error instanceof Error ? error.message : undefined;
-      failure = READ_AHEAD_FAILURES.find((known) => known === reason);
+      failure = readAheadFailure(reason);
     }
     this.inFlight -= 1;
     if (this.disposed) return;

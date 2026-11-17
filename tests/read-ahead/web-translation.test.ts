@@ -48,6 +48,7 @@ describe('translateOnWeb', () => {
 
   it("uses Google's codes where they differ from Gemini's", () => {
     expect(googleLanguageCode('zh-Hant')).toBe('zh-TW');
+    expect(googleLanguageCode('zh-HK')).toBe('zh-TW');
     expect(googleLanguageCode('he')).toBe('iw');
     expect(googleLanguageCode('ja')).toBe('ja');
   });

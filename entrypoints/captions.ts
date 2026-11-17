@@ -165,11 +165,11 @@ export default defineUnlistedScript(() => {
     console.error(fullscreenDebugPrefix, 'fullscreenerror', debugState(event));
   };
   const overlay = new CaptionOverlay(document, {
-    async onSessionAction(action) {
+    async onSessionAction() {
       await chrome.runtime.sendMessage({
         target: 'background',
         type: 'READ_AHEAD_SWITCH_RECOGNIZER',
-        payload: { recognizer: action === 'switch_to_cloudflare' ? 'cloudflare' : 'groq' },
+        payload: { recognizer: 'groq' },
       } satisfies import('../src/core/messages').ExtensionMessage);
     },
     onClear() {

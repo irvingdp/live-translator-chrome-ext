@@ -10,8 +10,6 @@ describe('session persistence', () => {
       tabId: 42,
       settings: {
         backgroundOpacity: 78,
-        cloudflareAccountId: 'cf-account',
-        cloudflareApiToken: 'cf-secret',
         geminiApiKey: 'gemini-secret',
         geminiSourceLanguage: 'auto',
         geminiTargetLanguage: 'zh-Hant',
@@ -34,7 +32,6 @@ describe('session persistence', () => {
       tabId: 42,
       settings: {
         backgroundOpacity: 78,
-        cloudflareAccountId: 'cf-account',
         geminiSourceLanguage: 'auto',
         geminiTargetLanguage: 'zh-Hant',
         maxLineWidth: 90,

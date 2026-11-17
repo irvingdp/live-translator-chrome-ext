@@ -7,10 +7,8 @@ import type { OptionsApi } from '../../src/options/browser-api';
 function createApi(overrides: Partial<OptionsApi> = {}): OptionsApi {
   return {
     loadKeys: vi.fn().mockResolvedValue({
-      cloudflareAccountId: 'acc',
-      cloudflareApiToken: 'cf-existing',
       geminiApiKey: 'gm-existing',
-      groqApiKey: '',
+      groqApiKey: 'gq-existing',
     }),
     saveKeys: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -18,25 +16,25 @@ function createApi(overrides: Partial<OptionsApi> = {}): OptionsApi {
 }
 
 describe('OptionsApp', () => {
-  it('loads the keys into password fields, with no Deepgram, DeepL or Microsoft key', async () => {
+  it('loads the keys into password fields, with no Deepgram, DeepL, Microsoft or Cloudflare key', async () => {
     render(<OptionsApp api={createApi()} />);
 
     expect(await screen.findByLabelText('Gemini API Key')).toHaveValue(
       'gm-existing',
     );
-    expect(screen.getByLabelText('Cloudflare API Token')).toHaveValue('cf-existing');
+    expect(screen.getByLabelText('Groq API Key')).toHaveValue('gq-existing');
     expect(screen.getByLabelText('Gemini API Key')).toHaveAttribute(
       'type',
       'password',
     );
-    expect(screen.getByLabelText('Cloudflare API Token')).toHaveAttribute(
+    expect(screen.getByLabelText('Groq API Key')).toHaveAttribute(
       'type',
       'password',
     );
     expect(screen.queryByLabelText('Deepgram API Key')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('DeepL API Key')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Microsoft Translator API Key')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Cloudflare 帳號 ID')).toHaveValue('acc');
+    expect(screen.queryByLabelText('Cloudflare API Token')).not.toBeInTheDocument();
   });
 
   it('reveals only the selected key', async () => {
@@ -44,14 +42,14 @@ describe('OptionsApp', () => {
     await screen.findByLabelText('Gemini API Key');
 
     fireEvent.click(
-      screen.getByRole('button', { name: '顯示 Cloudflare API Token' }),
+      screen.getByRole('button', { name: '顯示 Groq API Key' }),
     );
 
     expect(screen.getByLabelText('Gemini API Key')).toHaveAttribute(
       'type',
       'password',
     );
-    expect(screen.getByLabelText('Cloudflare API Token')).toHaveAttribute(
+    expect(screen.getByLabelText('Groq API Key')).toHaveAttribute(
       'type',
       'text',
     );
@@ -60,17 +58,15 @@ describe('OptionsApp', () => {
   it('saves edited keys and confirms success', async () => {
     const api = createApi();
     render(<OptionsApp api={api} />);
-    const cloudflare = await screen.findByLabelText('Cloudflare API Token');
-    fireEvent.change(cloudflare, { target: { value: 'cf-new' } });
+    const groq = await screen.findByLabelText('Groq API Key');
+    fireEvent.change(groq, { target: { value: 'gq-new' } });
 
     fireEvent.click(screen.getByRole('button', { name: '儲存設定' }));
 
     await waitFor(() =>
       expect(api.saveKeys).toHaveBeenCalledWith({
-        cloudflareAccountId: 'acc',
-        cloudflareApiToken: 'cf-new',
         geminiApiKey: 'gm-existing',
-        groqApiKey: '',
+        groqApiKey: 'gq-new',
       }),
     );
     expect(await screen.findByText('API Key 已儲存')).toBeVisible();
@@ -98,7 +94,7 @@ describe('OptionsApp', () => {
         })}
       />,
     );
-    await screen.findByLabelText('Cloudflare API Token');
+    await screen.findByLabelText('Groq API Key');
 
     fireEvent.click(screen.getByRole('button', { name: '儲存設定' }));
 

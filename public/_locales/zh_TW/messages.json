@@ -315,7 +315,7 @@
     "description": "Heading and document title of the options page."
   },
   "optionsKeyHint": {
-    "message": "可以清除並儲存 Key。只會用到你選的服務需要的 Key：Gemini live 和用 Gemini 的預讀模式需要 Gemini；用 Whisper 的預讀模式需要 Groq，或 Cloudflare 的帳號 ID 與 Token（翻譯由 Chrome 內建翻譯負責，不需要 Key）。",
+    "message": "可以清除並儲存 Key。只會用到你選的服務需要的 Key：Gemini live 和用 Gemini 的預讀模式需要 Gemini；用 Groq Whisper 的預讀模式需要 Groq（翻譯由 Chrome 內建翻譯負責，不需要 Key）。",
     "description": "Explanation under the key fields on the options page."
   },
   "save": {
@@ -516,9 +516,79 @@
     "message": "預讀模式",
     "description": "Provider dropdown option for read-ahead mode, which translates upcoming audio so captions appear as the speech starts."
   },
+  "targetHongKongLiveHint": {
+    "message": "即時音訊模式不分地區，會翻成一般的繁體中文；預讀模式才會使用香港的字幕與用語。",
+    "description": "Popup hint under the target language when live mode is chosen with Hong Kong Traditional Chinese, which Gemini Live Translate has no code for."
+  },
+  "errorProviderRateLimited": {
+    "message": "$1 請求太頻繁，暫時被限流。建議：稍等一分鐘會自動恢復，或改用其他語音辨識服務。",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion. $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "errorProviderTimeout": {
+    "message": "$1 在 7 秒內沒有回應，已略過這一段。建議：檢查網路；服務忙碌時可改用其他語音辨識服務。",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion. $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "errorProviderInvalidCredentials": {
+    "message": "$1 拒絕了你的金鑰。建議：到設定頁重新確認 API Key。",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion. $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "errorProviderNetworkError": {
+    "message": "連不上 $1。建議：檢查網路連線、VPN 或防火牆。",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion. $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "errorProviderUnavailable": {
+    "message": "$1 暫時無法使用。建議：稍後再試，或改用其他語音辨識服務。",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion. $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "errorProviderInvalidResponse": {
+    "message": "$1 回傳了無法解讀的結果，已略過這一段。建議：多半是偶發狀況，下一段會照常處理；一直發生就改用其他服務。",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion. $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "errorReadAheadPageTimeout": {
+    "message": "這一段超過 8.5 秒還沒完成，已略過。建議：網路或服務較慢時，改用回應較快的語音辨識服務（Groq）。",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion."
+  },
+  "errorReadAheadWebTranslationFailed": {
+    "message": "Chrome 內建翻譯無法翻譯這組語言，改用的 Google 網頁翻譯也失敗了。建議：在 popup 重新選一次 Groq Whisper 並允許連線權限，或把語音辨識改成「Gemini（含翻譯）」。",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion."
+  },
   "errorReadAheadLoading": {
     "message": "讀取音訊中…",
     "description": "Caption overlay status while read-ahead mode holds the video until it has the audio of the next sentence."
+  },
+  "errorReadAheadCaptionsLoading": {
+    "message": "讀取字幕中…",
+    "description": "Caption overlay status while read-ahead mode holds the video, at most 2 seconds, to load the video's caption tracks."
+  },
+  "noticeReadAheadCaptionsYouTube": {
+    "message": "使用 YouTube 字幕",
+    "description": "Caption overlay notice, shown for a few seconds, that read-ahead reads the uploader's YouTube caption track instead of recognizing speech."
+  },
+  "noticeReadAheadCaptionsVideo": {
+    "message": "使用影片附帶的字幕",
+    "description": "Caption overlay notice, shown for a few seconds, that read-ahead reads the video's own caption track instead of recognizing speech."
+  },
+  "recognizerCaptionTrackHint": {
+    "message": "影片有上傳者提供的字幕時優先使用：不呼叫語音辨識；也有你的語言的字幕時，連翻譯也不需要。",
+    "description": "Popup hint under the read-ahead speech recognition choice."
   },
   "errorReadAheadTranslating": {
     "message": "翻譯中…",
@@ -573,7 +643,7 @@
     "description": "Caption overlay button shown with a used-up Gemini quota in read-ahead mode."
   },
   "errorGroqQuotaExceeded": {
-    "message": "Groq 額度已用完",
+    "message": "Groq 今日額度已用完（每天約 2000 次）。建議：改用「Gemini（含翻譯）」，或明天再用。",
     "description": "Caption overlay error in read-ahead mode with Groq Whisper."
   },
   "errorReadAheadTranslatorUnsupported": {
@@ -590,42 +660,6 @@
   "transcriberLive": {
     "message": "即時音訊模式",
     "description": "Translation mode option: Gemini live translate, which captions the tab audio as it plays."
-  },
-  "needCloudflareAccountId": {
-    "message": "請先輸入 Cloudflare 帳號 ID。",
-    "description": "Popup error when starting read-ahead with Cloudflare Whisper without an account ID."
-  },
-  "needCloudflareToken": {
-    "message": "請先輸入 Cloudflare API Token。",
-    "description": "Popup error when starting read-ahead with Cloudflare Whisper without a token."
-  },
-  "needCloudflareAccountIdField": {
-    "message": "請輸入 Cloudflare 帳號 ID",
-    "description": "Field-level validation message for the Cloudflare account ID."
-  },
-  "needCloudflareTokenField": {
-    "message": "請輸入 Cloudflare API Token",
-    "description": "Field-level validation message for the Cloudflare API token."
-  },
-  "cloudflarePermissionDenied": {
-    "message": "Cloudflare Whisper 需要連線到 api.cloudflare.com 的權限。",
-    "description": "Popup message when the user declines the Cloudflare host permission."
-  },
-  "cloudflareAccountIdLabel": {
-    "message": "Cloudflare 帳號 ID",
-    "description": "Label of the Cloudflare account ID field."
-  },
-  "cloudflareAccountIdHint": {
-    "message": "在 Cloudflare 後台 Workers AI 頁面的「Use REST API」中；API Token 需要 Workers AI 權限。",
-    "description": "Hint under the Cloudflare account ID field."
-  },
-  "errorCloudflareQuotaExceeded": {
-    "message": "Cloudflare 今日額度已用完",
-    "description": "Caption overlay error in read-ahead mode with Cloudflare Whisper."
-  },
-  "switchToCloudflareWhisper": {
-    "message": "改用 Cloudflare Whisper",
-    "description": "Caption overlay button shown with a used-up Groq quota in read-ahead mode."
   },
   "translatorWebFallback": {
     "message": "Google 網頁翻譯（自動）",

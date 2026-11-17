@@ -155,19 +155,17 @@ describe('read-ahead services', () => {
   it('defaults to Gemini recognition, rejecting unknown recognizers', () => {
     expect(normalizeSettings({}).readAheadRecognizer).toBe('gemini');
     expect(normalizeSettings({ readAheadRecognizer: 'whisper' as never }).readAheadRecognizer).toBe('gemini');
-    expect(normalizeSettings({ groqApiKey: 'gq', readAheadRecognizer: 'cloudflare' }))
-      .toMatchObject({ groqApiKey: 'gq', readAheadRecognizer: 'cloudflare' });
+    // Cloudflare Whisper was removed before release.
+    expect(normalizeSettings({ readAheadRecognizer: 'cloudflare' as never }).readAheadRecognizer).toBe('gemini');
   });
 
   it("asks for the keys of the recognizer chosen, and only those (Chrome's translation needs none)", () => {
     expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'gemini' })).toEqual(['geminiApiKey']);
     expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'groq' })).toEqual(['groqApiKey']);
-    expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'cloudflare' }))
-      .toEqual(['cloudflareAccountId', 'cloudflareApiToken']);
     // Gemini live ignores the read-ahead choice.
     expect(requiredApiKeys({ ...DEFAULT_SETTINGS, readAheadRecognizer: 'groq' })).toEqual(['geminiApiKey']);
-    expect(validateSettingsForStart({ ...readAhead, cloudflareApiToken: 'tok', readAheadRecognizer: 'cloudflare' }))
-      .toEqual({ cloudflareAccountId: '請輸入 Cloudflare 帳號 ID' });
+    expect(validateSettingsForStart({ ...readAhead, readAheadRecognizer: 'groq' }))
+      .toEqual({ groqApiKey: '請輸入 Groq API Key' });
   });
 });
 
@@ -193,6 +191,21 @@ describe('migrateStoredSettings', () => {
       transcriber: 'gemini',
     });
     expect(JSON.stringify(result.settings)).not.toContain('dg-secret');
+  });
+
+  it("drops Cloudflare's account ID and token, and a Cloudflare recognizer, from a development build", () => {
+    const result = migrateStoredSettings({
+      ...DEFAULT_SETTINGS,
+      cloudflareAccountId: 'acc',
+      cloudflareApiToken: 'cf-secret',
+      groqApiKey: 'gq',
+      readAheadRecognizer: 'cloudflare',
+      transcriber: 'gemini-read-ahead',
+    });
+    expect(result.changed).toBe(true);
+    expect(result.settings).toEqual({ ...DEFAULT_SETTINGS, groqApiKey: 'gq', transcriber: 'gemini-read-ahead' });
+    expect(JSON.stringify(result.settings)).not.toContain('cf-secret');
+    expect(result.needsGeminiKeyNotice).toBe(false);
   });
 
   it('asks for a Gemini key only when the moved user has none', () => {

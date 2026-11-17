@@ -10,7 +10,6 @@ import {
   type AppSettings,
 } from '../core/settings';
 import { chromeLanguageCode, type TranslatorApi } from '../read-ahead/chrome-translation';
-import { CLOUDFLARE_ORIGIN } from '../read-ahead/cloudflare-transcription';
 import { GROQ_ORIGIN } from '../read-ahead/groq-transcription';
 import { WEB_TRANSLATION_ORIGINS } from '../read-ahead/web-translation';
 import type { PopupApi } from './PopupApp';
@@ -52,8 +51,8 @@ export const browserPopupApi: PopupApi = {
   },
   // One prompt for the Whisper service and the web translation it may fall
   // back to (asked for here, since the fallback happens without a gesture).
-  requestPermission: (service) => chrome.permissions.request({
-    origins: [service === 'cloudflare' ? CLOUDFLARE_ORIGIN : GROQ_ORIGIN, ...WEB_TRANSLATION_ORIGINS],
+  requestPermission: () => chrome.permissions.request({
+    origins: [GROQ_ORIGIN, ...WEB_TRANSLATION_ORIGINS],
   }),
   async authorizeCurrentTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

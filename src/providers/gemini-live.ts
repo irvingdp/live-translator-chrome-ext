@@ -1,6 +1,7 @@
 import type { CaptionPairUpdate } from '../audio/offscreen-capture-controller';
 import { isWideCharacter, splitIntoSentences } from '../core/sentence-splitter';
 import { t } from '../core/i18n';
+import { liveTargetLanguageCode } from '../core/gemini-languages';
 
 export const GEMINI_MODEL = 'models/gemini-3.5-live-translate-preview';
 
@@ -22,7 +23,7 @@ export function buildGeminiSetupMessage(
           // Staying silent on audio already in the target language keeps the
           // caption from echoing the source line back as its own translation.
           echoTargetLanguage: false,
-          targetLanguageCode: targetLanguage,
+          targetLanguageCode: liveTargetLanguageCode(targetLanguage),
         },
       },
       inputAudioTranscription: {},

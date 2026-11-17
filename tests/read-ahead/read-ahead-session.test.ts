@@ -4,6 +4,7 @@ import type { ChunkSentence } from '../../src/read-ahead/gemini-chunk-translatio
 import { ChunkTranslationError } from '../../src/read-ahead/gemini-chunk-translation';
 import {
   decideCut,
+  readAheadFailure,
   ReadAheadSession,
   SAMPLE_RATE,
   type DisplayedCue,
@@ -263,6 +264,31 @@ describe('ReadAheadSession', () => {
     expect(t.statuses.at(-1)).toBe('failed');
   });
 
+  it('reads a failed chunk again when the viewer seeks back into it, and only then', async () => {
+    const t = setup();
+    t.translate.mockRejectedValueOnce(new Error('groq_timeout'));
+    t.session.acceptAudio({ samples: audio([3, 0.5, 1]), start: 0 });
+    t.at(0);
+    await t.settle();
+    t.at(1);
+    expect(t.statuses.at(-1)).toBe('groq_timeout');
+    t.at(2);
+    t.session.tick();
+    expect(t.translate).toHaveBeenCalledTimes(1);
+
+    // Back to the start: the failed stretch is asked for again.
+    t.main.time = 0.5;
+    t.session.onMainSeeking();
+    t.session.acceptAudio({ samples: audio([3, 0.5, 1]), start: 0 });
+    t.session.tick();
+    expect(t.translate).toHaveBeenCalledTimes(2);
+    const retry = t.pending.shift()!;
+    retry.resolve(sentencesFor(retry.pcm));
+    await t.settle();
+    t.at(1);
+    expect(t.lastCue()?.original).toBe('sentence 0.03');
+  });
+
   it('says the quota is used up when that is why a chunk failed', async () => {
     const t = setup();
     t.translate.mockRejectedValue(new Error('gemini_quota_exceeded'));
@@ -272,6 +298,21 @@ describe('ReadAheadSession', () => {
     expect(t.main.isPaused).toBe(false);
     t.at(1);
     expect(t.statuses.at(-1)).toBe('gemini_quota_exceeded');
+  });
+
+  it('names the provider and reason of any failure the error says, for the overlay to explain', async () => {
+    const t = setup();
+    t.translate.mockRejectedValue(new Error('groq_rate_limited'));
+    t.session.acceptAudio({ samples: audio([3, 0.5, 1]), start: 0 });
+    t.at(0);
+    await t.settle();
+    t.at(1);
+    expect(t.statuses.at(-1)).toBe('groq_rate_limited');
+
+    expect(readAheadFailure('background_timeout')).toBe('page_timeout');
+    expect(readAheadFailure('web_translation_provider_unavailable')).toBe('web_translation_failed');
+    expect(readAheadFailure('groq_invalid_credentials')).toBe('groq_invalid_credentials');
+    expect(readAheadFailure('inactive_session')).toBeUndefined();
   });
 
   it('drops a sentence the model heard in silence', async () => {

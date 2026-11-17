@@ -21,8 +21,6 @@ import {
 
 export interface SessionSettings {
   backgroundOpacity: number;
-  cloudflareAccountId: string;
-  cloudflareApiToken: string;
   geminiApiKey: string;
   // Read-ahead mode only; 'auto' lets the model detect it.
   geminiSourceLanguage: string;
@@ -69,17 +67,34 @@ export interface ReadAheadStartRequest {
 
 export type ReadAheadStatusCode = Exclude<ReadAheadStatus, undefined> | 'unsupported';
 
-export type SessionErrorAction = 'switch_to_cloudflare' | 'switch_to_groq';
+export type SessionErrorAction = 'switch_to_groq';
 
-const READ_AHEAD_STATUS_ERRORS: Record<ReadAheadStatusCode, string> = {
-  cloudflare_quota_exceeded: 'cloudflare_quota_exceeded',
+const READ_AHEAD_STATUS_ERRORS: Partial<Record<ReadAheadStatusCode, string>> = {
+  captions_loading: 'read_ahead_captions_loading',
+  captions_video: 'read_ahead_captions_video',
+  captions_youtube: 'read_ahead_captions_youtube',
   failed: 'read_ahead_failed',
-  gemini_quota_exceeded: 'gemini_quota_exceeded',
-  groq_quota_exceeded: 'groq_quota_exceeded',
   loading: 'read_ahead_loading',
+  page_timeout: 'read_ahead_page_timeout',
   translating: 'read_ahead_translating',
   translator_unsupported: 'read_ahead_translator_unsupported',
   unsupported: 'read_ahead_unsupported',
+  web_translation_failed: 'read_ahead_web_translation_failed',
+};
+
+// The overlay's code for a read-ahead status. A provider's failure keeps its
+// own name ('groq_rate_limited'): the overlay names the service and suggests
+// what to do.
+function readAheadErrorCode(status: ReadAheadStatusCode): string {
+  return READ_AHEAD_STATUS_ERRORS[status] ?? status;
+}
+
+// The next recognizer offered by a button when one cannot serve now (issue
+// #11): Gemini → Groq Whisper. Only for failures
+// another service fixes: not a wrong key, or a reply it could not read.
+const SWITCH_ON_FAILURE = new Set(['provider_unavailable', 'quota_exceeded', 'rate_limited', 'timeout']);
+const NEXT_RECOGNIZER: Partial<Record<string, SessionErrorAction>> = {
+  gemini: 'switch_to_groq',
 };
 
 // What one read-ahead chunk comes back as. With Chrome's built-in Translator
@@ -98,18 +113,14 @@ export class ReadAheadChunkError extends Error {
   }
 }
 
-// A Whisper service for read-ahead recognition (ADR 0002).
-export type WhisperRecognition =
-  | { apiKey: string; audioBase64: string; provider: 'groq'; sourceLanguage?: string }
-  | {
-      accountId: string;
-      apiToken: string;
-      audioBase64: string;
-      provider: 'cloudflare';
-      sourceLanguage?: string;
-    };
+// Read-ahead recognition through Groq Whisper (ADR 0002).
+export interface WhisperRecognition {
+  apiKey: string;
+  audioBase64: string;
+  sourceLanguage?: string;
+}
 
-function providerFailure(provider: 'cloudflare' | 'gemini' | 'groq') {
+function providerFailure(provider: 'gemini' | 'groq') {
   return (error: unknown): never => {
     const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
       ? error.code
@@ -404,23 +415,22 @@ export class CaptureSessionController {
   ): Promise<void> {
     if (!this.isActiveReadAhead(sessionId, tabId)) return;
     if (status === 'unsupported') {
-      this.currentStatus = { error: READ_AHEAD_STATUS_ERRORS.unsupported, state: 'error', tabId };
+      this.currentStatus = { error: readAheadErrorCode('unsupported'), state: 'error', tabId };
     } else if (this.currentStatus.state === 'running') {
       this.currentStatus = status
-        ? { error: READ_AHEAD_STATUS_ERRORS[status], state: 'running', tabId }
+        ? { error: readAheadErrorCode(status), state: 'running', tabId }
         : { state: 'running', tabId };
     }
-    // A recognizer whose quota ran out offers the next one (issue #11):
-    // Gemini → Groq Whisper, Groq → Cloudflare Whisper.
+    // A recognizer that cannot serve now offers the next one.
     const recognizer = this.settings?.readAheadRecognizer;
-    const action: SessionErrorAction | undefined =
-      status === 'gemini_quota_exceeded' && recognizer === 'gemini' ? 'switch_to_groq'
-        : status === 'groq_quota_exceeded' && recognizer === 'groq' ? 'switch_to_cloudflare'
-          : undefined;
+    const reason = recognizer && status?.startsWith(`${recognizer}_`)
+      ? status.slice(recognizer.length + 1)
+      : undefined;
+    const action = reason && SWITCH_ON_FAILURE.has(reason) ? NEXT_RECOGNIZER[recognizer!] : undefined;
     await this.dependencies.sendToTab(tabId, status
       ? {
           type: 'SESSION_ERROR',
-          payload: { code: READ_AHEAD_STATUS_ERRORS[status], ...(action ? { action } : {}) },
+          payload: { code: readAheadErrorCode(status), ...(action ? { action } : {}) },
         }
       : { type: 'SESSION_ERROR_CLEAR' });
   }
@@ -457,17 +467,11 @@ export class CaptureSessionController {
       return { sentences };
     }
 
-    const recognizer = settings.readAheadRecognizer;
-    const recognized = await this.dependencies.transcribeChunk(recognizer === 'cloudflare'
-      ? {
-          accountId: settings.cloudflareAccountId,
-          apiToken: settings.cloudflareApiToken,
-          audioBase64,
-          provider: 'cloudflare',
-          sourceLanguage,
-        }
-      : { apiKey: settings.groqApiKey, audioBase64, provider: 'groq', sourceLanguage },
-    ).catch(providerFailure(recognizer));
+    const recognized = await this.dependencies.transcribeChunk({
+      apiKey: settings.groqApiKey,
+      audioBase64,
+      ...(sourceLanguage ? { sourceLanguage } : {}),
+    }).catch(providerFailure('groq'));
     const source = sourceLanguage ?? recognized.language;
     if (recognized.sentences.length === 0) return { sentences: [] };
     if (source && sameLanguage(source, targetLanguage)) {

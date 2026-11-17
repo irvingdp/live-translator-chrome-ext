@@ -28,6 +28,11 @@ describe('buildGeminiSetupMessage', () => {
     expect(setup.sessionResumption).toEqual({});
   });
 
+  it("sends Live Translate's Traditional Chinese for Hong Kong, which it has no code for", () => {
+    const setup = JSON.parse(buildGeminiSetupMessage('zh-HK')).setup;
+    expect(setup.generationConfig.translationConfig.targetLanguageCode).toBe('zh-Hant');
+  });
+
   it('resumes the previous session when a handle is known', () => {
     const setup = JSON.parse(buildGeminiSetupMessage('ja', 'handle-1')).setup;
 

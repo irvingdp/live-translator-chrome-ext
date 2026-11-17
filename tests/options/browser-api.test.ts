@@ -16,8 +16,6 @@ describe('browserOptionsApi', () => {
     vi.stubGlobal('chrome', { storage: { local: { get, set: vi.fn() } } });
 
     await expect(browserOptionsApi.loadKeys()).resolves.toEqual({
-      cloudflareAccountId: '',
-      cloudflareApiToken: '',
       geminiApiKey: 'gm-existing',
       groqApiKey: '',
     });
@@ -36,8 +34,6 @@ describe('browserOptionsApi', () => {
     vi.stubGlobal('chrome', { storage: { local: { get, set } } });
 
     await browserOptionsApi.saveKeys({
-      cloudflareAccountId: 'cf-new',
-      cloudflareApiToken: 'cft-new',
       geminiApiKey: 'gm-new',
       groqApiKey: 'gq-new',
     });
@@ -45,8 +41,6 @@ describe('browserOptionsApi', () => {
     expect(set).toHaveBeenCalledWith({
       settings: {
         ...existing,
-        cloudflareAccountId: 'cf-new',
-        cloudflareApiToken: 'cft-new',
         geminiApiKey: 'gm-new',
         groqApiKey: 'gq-new',
       },

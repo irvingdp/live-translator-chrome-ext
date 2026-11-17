@@ -40,6 +40,21 @@ describe('sentencesFromWords', () => {
     ]);
   });
 
+  it('splits speech Whisper left without punctuation at its pauses, at most 8 s a sentence', () => {
+    // Lowercase, unpunctuated, as Groq returned a fast casual talk.
+    const talk = words(
+      ['one', 0.5, 0.8], ['is', 0.8, 1], ['to', 1, 1.2], ['follow', 1.2, 1.8], ['tdd', 1.8, 2.2],
+      ['matt', 3, 3.3], ['pocock', 3.3, 3.8], ['and', 3.8, 4], ['also', 4, 4.4],
+      ...Array.from({ length: 20 }, (_, index) => [`w${index}`, 4.4 + index * 0.5, 4.9 + index * 0.5] as [string, number, number]),
+    );
+    const sentences = sentencesFromWords(talk);
+    expect(sentences.map((sentence) => [sentence.original.split(' ')[0], sentence.start, sentence.cut]))
+      .toEqual([['one', 0.5, false], ['matt', 3, false], ['w13', 10.9, true]]);
+    expect(sentences.every((sentence) => sentence.end - sentence.start <= 8)).toBe(true);
+    // Without capitals, only speech right at the chunk's start is a fragment.
+    expect(sentencesFromWords(words(['so', 0.1, 0.3], ['we', 0.3, 0.5]))[0]!.cut).toBe(true);
+  });
+
   it('keeps a closing quote with the sentence and joins CJK without spaces', () => {
     expect(sentencesFromWords(words(['He', 0, 0.2], ['said', 0.2, 0.4], ['"stop."', 0.4, 0.8]))
       .map((sentence) => sentence.original)).toEqual(['He said "stop."']);

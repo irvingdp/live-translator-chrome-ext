@@ -26,6 +26,8 @@ export interface LanguageDetectorApi {
 // Chrome's codes differ from Gemini's for a few languages.
 export function chromeLanguageCode(code: string): string {
   if (code === 'zh-Hans') return 'zh';
+  // Chrome names Traditional Chinese by script only.
+  if (code === 'zh-HK') return 'zh-Hant';
   if (code === 'pt-BR' || code === 'pt-PT') return 'pt';
   return code;
 }
