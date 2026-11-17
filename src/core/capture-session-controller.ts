@@ -1,3 +1,4 @@
+import type { PlaybackClock } from './word-highlight';
 import type { LocalWhisperModel } from '../read-ahead/local-whisper';
 import type {
   CaptionPairUpdate,
@@ -203,6 +204,9 @@ export class CaptureSessionController {
   // Read-ahead shows only the cue the main player is at; the window above
   // keeps every cue reached, for the side panel.
   private readAheadCue?: CaptionPair;
+  // The main player's time as the page last reported it, for word highlight
+  // in the side panel (which cannot read it).
+  private readAheadClock?: PlaybackClock;
 
   constructor(private readonly dependencies: CaptureSessionDependencies) {}
 
@@ -308,6 +312,7 @@ export class CaptureSessionController {
     this.settings = settings;
     this.captionWindow.clear();
     this.readAheadCue = undefined;
+    this.readAheadClock = undefined;
     if (isReadAhead(settings)) {
       await this.startReadAheadInternal(tabId, settings, sessionId, generation);
       return;
@@ -437,8 +442,18 @@ export class CaptureSessionController {
     if (cue) {
       this.captionWindow.upsertOriginal(cue.id, cue.original);
       this.captionWindow.upsertTranslation(cue.id, cue.translation);
+      if (this.readAheadCue?.words) this.captionWindow.upsertWords(cue.id, this.readAheadCue.words);
     }
     await this.sendWindow(tabId);
+  }
+
+  acceptReadAheadClock(sessionId: string, tabId: number, clock: PlaybackClock): void {
+    if (!this.isActiveReadAhead(sessionId, tabId) || !this.settings?.wordHighlight) return;
+    this.readAheadClock = { ...clock };
+  }
+
+  playbackClock(): PlaybackClock | undefined {
+    return this.readAheadClock && { ...this.readAheadClock };
   }
 
   async acceptReadAheadStatus(
@@ -586,6 +601,7 @@ export class CaptureSessionController {
     }
     this.captionWindow.clear();
     this.readAheadCue = undefined;
+    this.readAheadClock = undefined;
     await this.sendWindow(tabId);
     return true;
   }

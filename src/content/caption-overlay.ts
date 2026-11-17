@@ -1,4 +1,5 @@
-import type { CaptionPair, CaptionWord } from '../core/caption-window';
+import type { CaptionPair } from '../core/caption-window';
+import { currentWordIndex, wordState } from '../core/word-highlight';
 import { spaceBetween } from '../core/sentence-splitter';
 import { t, type MessageKey } from '../core/i18n';
 import {
@@ -64,16 +65,7 @@ export function sessionErrorText(code: string): string {
 
 const HIGHLIGHT_INTERVAL_MS = 80;
 
-// The word being said at `time`: the last one that has started, or -1 before
-// the first. A word stays current through the pause after it.
-export function currentWordIndex(words: CaptionWord[], time: number): number {
-  let current = -1;
-  for (let index = 0; index < words.length; index += 1) {
-    if (words[index]!.start <= time) current = index;
-    else break;
-  }
-  return current;
-}
+export { currentWordIndex } from '../core/word-highlight';
 
 const VIEWPORT_MARGIN = 8;
 const TITLEBAR_HEIGHT = 32;
@@ -647,7 +639,7 @@ export class CaptionOverlay {
       if (!spans) continue;
       const current = currentWordIndex(pair.words, time);
       spans.forEach((span, index) => {
-        span.dataset.state = index < current ? 'said' : index === current ? 'current' : 'upcoming';
+        span.dataset.state = wordState(index, current);
       });
     }
   }
