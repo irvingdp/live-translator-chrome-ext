@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -214,5 +214,39 @@ describe('SidePanelApp', () => {
     expect(await screen.findByText(/字幕已回到網頁浮動顯示/)).toBeVisible();
     expect(screen.queryByRole('button', { name: '回到浮動字幕' }))
       .not.toBeInTheDocument();
+  });
+
+  it('highlights the newest pair word by word from the playback clock', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    try {
+      vi.setSystemTime(10_000);
+      const harness = createHarness();
+      render(<SidePanelApp api={harness.api} />);
+      const words = [
+        { end: 20.4, start: 20, text: 'Hello' },
+        { end: 21, start: 20.6, text: 'there,' },
+        { end: 22, start: 21.5, text: 'friend.' },
+      ];
+      harness.publish({
+        active: true,
+        clock: { at: 10_000, paused: false, rate: 1, time: 20.7 },
+        pairs: [
+          { id: 'old', original: 'Before.', translation: '之前。', words: [{ end: 1, start: 0, text: 'Before.' }] },
+          { id: 'now', original: 'Hello there, friend.', translation: '你好，朋友。', words },
+        ],
+        status: { state: 'running', tabId: 42 },
+      });
+      const states = () => [...document.querySelectorAll<HTMLElement>('.word')]
+        .map((word) => `${word.textContent}:${word.dataset.state}`);
+      await vi.waitFor(() => expect(states()).toEqual(['Hello:said', 'there,:current', 'friend.:upcoming']));
+      // Older pairs are shown plainly.
+      expect(screen.getByText('Before.').querySelector('.word')).toBeNull();
+
+      vi.setSystemTime(11_000);
+      await act(async () => { vi.advanceTimersByTime(100); });
+      expect(states()).toEqual(['Hello:said', 'there,:said', 'friend.:current']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

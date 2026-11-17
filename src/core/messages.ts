@@ -7,6 +7,7 @@ import type { ReadAheadStatusCode } from './capture-session-controller';
 import type { AppSettings, CaptionAppearance } from './settings';
 import type { OverlayLayout } from './overlay-layout';
 import type { LocalWhisperModel } from '../read-ahead/local-whisper';
+import type { PlaybackClock } from './word-highlight';
 
 // A model download as the popup shows it (chrome.storage.session).
 export interface LocalWhisperDownload {
@@ -131,6 +132,13 @@ export type ExtensionMessage =
       target: 'background';
       type: 'READ_AHEAD_SWITCH_RECOGNIZER';
       payload: { recognizer: 'groq' | 'local' };
+    }
+  // The main player's time, on play, pause, seek, rate change and every few
+  // seconds, for word highlight in the side panel.
+  | {
+      target: 'background';
+      type: 'READ_AHEAD_CLOCK';
+      payload: { clock: PlaybackClock; sessionId: string };
     }
   // The caption-track notice's "改用語音辨識" button (issue #18): stop
   // preferring caption tracks and recognize from where the viewer is.

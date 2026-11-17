@@ -54,6 +54,7 @@ const MIN_PAGE_TRANSLATION_MS = 1_000;
 // stuck, and the web fallback gets the rest of the budget.
 const CHROME_TRANSLATION_MS = 3_000;
 const TICK_MS = 100;
+const CLOCK_MS = 2_000;
 // How long a video may wait for its caption tracks before the recognizer runs
 // instead (ADR 0003).
 const CAPTION_WAIT_MS = 2_000;
@@ -200,20 +201,49 @@ export function installReadAhead(document: Document): void {
     !youtube && (!video.currentSrc || video.currentSrc.startsWith('blob:'));
 
   // Wires a session to the main player's events and the tick.
-  const attach = (video: HTMLVideoElement, session: PlayerDriven): (() => void) => {
-    const onPause = () => session.onMainPause();
-    const onPlay = () => session.onMainPlay();
+  // The main player's time for the side panel's word highlight, which cannot
+  // read it: on every change of pace, and every CLOCK_MS against drift (a
+  // player stalled on the network is not paused, but its time stands still).
+  const reportClock = (sessionId: string, video: HTMLVideoElement) =>
+    void send({
+      target: 'background',
+      type: 'READ_AHEAD_CLOCK',
+      payload: {
+        clock: {
+          at: Date.now(),
+          paused: video.paused || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA,
+          rate: video.playbackRate,
+          time: video.currentTime,
+        },
+        sessionId,
+      },
+    }).catch(() => undefined);
+
+  const attach = (
+    video: HTMLVideoElement,
+    session: PlayerDriven,
+    sessionId: string,
+  ): (() => void) => {
+    const clock = () => reportClock(sessionId, video);
+    const onPause = () => { session.onMainPause(); clock(); };
+    const onPlay = () => { session.onMainPlay(); clock(); };
     const onSeeking = () => session.onMainSeeking();
+    const clockEvents = ['playing', 'ratechange', 'seeked', 'waiting'] as const;
     video.addEventListener('pause', onPause);
     video.addEventListener('play', onPlay);
     video.addEventListener('seeking', onSeeking);
+    for (const event of clockEvents) video.addEventListener(event, clock);
     const interval = view.setInterval(() => session.tick(), TICK_MS);
+    const clockInterval = view.setInterval(clock, CLOCK_MS);
     session.tick();
+    clock();
     return () => {
       view.clearInterval(interval);
+      view.clearInterval(clockInterval);
       video.removeEventListener('pause', onPause);
       video.removeEventListener('play', onPlay);
       video.removeEventListener('seeking', onSeeking);
+      for (const event of clockEvents) video.removeEventListener(event, clock);
       session.dispose();
     };
   };
@@ -341,7 +371,7 @@ export function installReadAhead(document: Document): void {
       },
     });
     if (tracks.site === 'youtube') setYouTubeCaptionsHidden(true);
-    const detach = attach(video, session);
+    const detach = attach(video, session, sessionId);
     reportStatus(sessionId, tracks.site === 'youtube' ? 'captions_youtube' : 'captions_video');
     const notice = view.setTimeout(() => {
       if (sessionStatus === undefined) reportStatus(sessionId);
@@ -429,7 +459,7 @@ export function installReadAhead(document: Document): void {
     });
 
     if (youtube) postToTap(true);
-    const detach = attach(video, session);
+    const detach = attach(video, session, sessionId);
 
     return {
       dispose() {

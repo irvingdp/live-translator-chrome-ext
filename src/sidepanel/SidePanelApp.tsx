@@ -6,7 +6,14 @@ import {
   useState,
 } from 'react';
 
-import type { CaptionPair } from '../core/caption-window';
+import type { CaptionPair, CaptionWord } from '../core/caption-window';
+import { spaceBetween } from '../core/sentence-splitter';
+import {
+  clockTime,
+  currentWordIndex,
+  wordState,
+  type PlaybackClock,
+} from '../core/word-highlight';
 import type { SessionStatus } from '../core/capture-session-controller';
 import { t } from '../core/i18n';
 import { SETTING_RANGES, type CaptionAppearance } from '../core/settings';
@@ -14,8 +21,39 @@ import { SETTING_RANGES, type CaptionAppearance } from '../core/settings';
 export interface SidePanelSnapshot {
   active: boolean;
   appearance?: CaptionAppearance;
+  // The main player's time, for word highlight (read-ahead with it on).
+  clock?: PlaybackClock;
   pairs: CaptionPair[];
   status: SessionStatus;
+}
+
+const HIGHLIGHT_INTERVAL_MS = 80;
+
+// The newest pair's words marked from the playback clock, like the overlay:
+// said normal, current marked, upcoming dimmed.
+function HighlightedOriginal({ clock, words }: { clock: PlaybackClock; words: CaptionWord[] }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (clock.paused) return;
+    const timer = window.setInterval(() => setNow(Date.now()), HIGHLIGHT_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [clock]);
+  const current = currentWordIndex(words, clockTime(clock, clock.paused ? clock.at : now));
+  let text = '';
+  return (
+    <>
+      {words.map((word, index) => {
+        const space = spaceBetween(text, word.text);
+        text += (space ? ' ' : '') + word.text;
+        return (
+          <span key={index}>
+            {space ? ' ' : ''}
+            <span className="word" data-state={wordState(index, current)}>{word.text}</span>
+          </span>
+        );
+      })}
+    </>
+  );
 }
 
 export interface SidePanelConnection {
@@ -222,16 +260,20 @@ export function SidePanelApp({ api }: { api: SidePanelApi }) {
             <div className="caption-history-content" ref={historyContentRef}>
               {snapshot.pairs.length === 0 ? (
                 <p className="empty-state">{t('sidePanelEmpty')}</p>
-              ) : snapshot.pairs.map((pair) => (
+              ) : snapshot.pairs.map((pair, index) => (
                 <article className="caption-pair" key={pair.id}>
                   <p
                     className="caption-original"
                     style={{
                       color: appearance?.originalTextColor,
                       fontSize: appearance?.originalFontSize,
+                      ['--caption-translation-color' as string]: appearance?.translationTextColor,
                     }}
                   >
-                    {pair.original}
+                    {/* Only the sentence being said is highlighted. */}
+                    {snapshot.clock && pair.words?.length && index === snapshot.pairs.length - 1
+                      ? <HighlightedOriginal clock={snapshot.clock} words={pair.words} />
+                      : pair.original}
                   </p>
                   {pair.translation && (
                     <p

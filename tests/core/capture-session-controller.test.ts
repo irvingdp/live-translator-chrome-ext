@@ -734,6 +734,27 @@ describe('CaptureSessionController read-ahead mode', () => {
     });
   });
 
+  it('keeps the words in the side panel history and the playback clock, only with word highlight on', async () => {
+    const cue = { id: 'c1', original: 'Hi there.', translation: '嗨。', words: [{ end: 1, start: 0, text: 'Hi' }] };
+    const clock = { at: 1_000, paused: false, rate: 1, time: 12 };
+    const on = createHarness();
+    const onSession = await startReadAhead(on);
+    await on.controller.acceptReadAheadCue(onSession, 42, cue);
+    on.controller.acceptReadAheadClock(onSession, 42, clock);
+    expect(on.controller.captionPairs()).toEqual([cue]);
+    expect(on.controller.playbackClock()).toEqual(clock);
+    // Another session's clock is ignored.
+    on.controller.acceptReadAheadClock('other', 42, { ...clock, time: 99 });
+    expect(on.controller.playbackClock()).toEqual(clock);
+
+    const off = createHarness();
+    const offSession = await startReadAhead(off, { wordHighlight: false });
+    await off.controller.acceptReadAheadCue(offSession, 42, cue);
+    off.controller.acceptReadAheadClock(offSession, 42, clock);
+    expect(off.controller.captionPairs()[0]!.words).toBeUndefined();
+    expect(off.controller.playbackClock()).toBeUndefined();
+  });
+
   it('says a caption track has no word highlight, offering speech recognition, only with highlighting on', async () => {
     const on = createHarness();
     const onSession = await startReadAhead(on);

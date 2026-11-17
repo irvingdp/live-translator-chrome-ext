@@ -342,6 +342,7 @@ export default defineBackground(() => {
         appearance: controller.appearance(),
         pairs: controller.captionPairs(),
         status,
+        ...(controller.playbackClock() ? { clock: controller.playbackClock() } : {}),
       },
     };
   }
@@ -721,6 +722,7 @@ export default defineBackground(() => {
     'READ_AHEAD_STATUS',
     'READ_AHEAD_SWITCH_RECOGNIZER',
     'READ_AHEAD_USE_RECOGNIZER',
+    'READ_AHEAD_CLOCK',
     'READ_AHEAD_TRANSLATE',
     'READ_AHEAD_WEB_TRANSLATE',
     'BROWSER_FULLSCREEN_FALLBACK',
@@ -833,6 +835,18 @@ export default defineBackground(() => {
               return { error: 'unsupported_recognizer', ok: false };
             }
             return enqueueLifecycle(() => switchReadAheadRecognizer(tabId, recognizer));
+          }
+          case 'READ_AHEAD_CLOCK': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            const { clock, sessionId } = message.payload;
+            if (![clock?.at, clock?.rate, clock?.time].every((value) => Number.isFinite(value))) {
+              return { error: 'invalid_request', ok: false };
+            }
+            controller.acceptReadAheadClock(sessionId, tabId, {
+              at: clock.at, paused: Boolean(clock.paused), rate: clock.rate, time: clock.time,
+            });
+            return { ok: true };
           }
           case 'READ_AHEAD_USE_RECOGNIZER': {
             const tabId = sender.tab?.id;

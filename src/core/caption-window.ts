@@ -57,13 +57,22 @@ export class CaptionWindow {
     existing.translation = translation;
   }
 
+  // The original's timed words, for word highlight in the side panel.
+  upsertWords(id: string, words: CaptionWord[]): void {
+    const existing = this.entries.get(id);
+    if (!existing) return;
+    existing.words = words.map((word) => ({ ...word }));
+  }
+
   // Returns copies: the caller sends this straight into a chrome.runtime
   // message, and a shared mutable reference would let that payload keep
   // changing after it was sent.
   pairs(): CaptionPair[] {
     return this.order.flatMap((id) => {
       const entry = this.entries.get(id);
-      return entry ? [{ ...entry }] : [];
+      return entry
+        ? [{ ...entry, ...(entry.words ? { words: entry.words.map((word) => ({ ...word })) } : {}) }]
+        : [];
     });
   }
 
