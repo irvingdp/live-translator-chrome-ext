@@ -22,9 +22,17 @@ export default defineConfig({
       'storage',
       'tabCapture',
     ],
+    // Groq and Cloudflare are asked for only when the user picks them
+    // (read-ahead, issue #11),
+    // so adding it does not disable the extension on update.
+    optional_host_permissions: [
+      'https://api.groq.com/*',
+      'https://api.cloudflare.com/*',
+      // Read-ahead's fallback when Chrome's built-in Translator cannot
+      // translate: Google's web translation.
+      'https://translate.googleapis.com/*',
+    ],
     host_permissions: [
-      'https://api.deepl.com/*',
-      'https://api-free.deepl.com/*',
       'https://generativelanguage.googleapis.com/*'
     ]
   }

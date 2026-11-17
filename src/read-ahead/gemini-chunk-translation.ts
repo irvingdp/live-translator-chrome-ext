@@ -129,12 +129,37 @@ function isSentence(value: unknown): value is ChunkSentence {
     typeof row.translation === 'string';
 }
 
-export async function translateChunk(
+export function translateChunk(
   request: ChunkTranslationRequest,
   fetcher: typeof fetch = fetch,
   signal?: AbortSignal,
   timeoutMs = CHUNK_REQUEST_TIMEOUT_MS,
 ): Promise<ChunkSentence[]> {
+  return withRequestTimeout(
+    (abort) => requestChunk(request, fetcher, abort),
+    timeoutMs,
+    signal,
+  );
+}
+
+// Rejects with Error(code) if `promise` has not settled within `timeoutMs`,
+// for steps that take no AbortSignal (a runtime message, Chrome's Translator).
+export function withDeadline<T>(promise: Promise<T>, timeoutMs: number, code: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(code)), timeoutMs);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
+// Runs a request that is aborted, and rejected with a 'timeout'
+// ChunkTranslationError, once `timeoutMs` has passed; the rejection does not
+// wait for a fetch that ignores its signal.
+export async function withRequestTimeout<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<T> {
   const controller = new AbortController();
   const onAbort = () => controller.abort();
   if (signal?.aborted) controller.abort();
@@ -147,7 +172,7 @@ export async function translateChunk(
     }, timeoutMs);
   });
   try {
-    return await Promise.race([requestChunk(request, fetcher, controller.signal), timeout]);
+    return await Promise.race([run(controller.signal), timeout]);
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);

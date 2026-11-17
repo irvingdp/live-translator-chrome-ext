@@ -20,8 +20,11 @@ import {
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
+  requiredApiKeys,
   SETTING_RANGES,
+  type ApiKeyField,
   type AppSettings,
+  type ReadAheadRecognizer,
   type TranscriberId,
   validateSettingsForStart,
 } from '../core/settings';
@@ -32,7 +35,25 @@ export interface AuthorizedTab {
   authorized: boolean;
 }
 
+// Whether Chrome's built-in Translator can translate a language pair here:
+// 'unsupported' when this browser or computer has no Translator API at all.
+export type ChromeTranslatorStatus =
+  | 'available'
+  | 'downloadable'
+  | 'unavailable'
+  | 'unsupported';
+
+export type OptionalService = 'cloudflare' | 'groq';
+
 export interface PopupApi {
+  chromeTranslatorStatus(sourceLanguage: string, targetLanguage: string): Promise<ChromeTranslatorStatus>;
+  // Starts the language-pack download; needs a user gesture (choosing a
+  // Whisper recognizer, or the start click).
+  prepareChromeTranslator(sourceLanguage: string, targetLanguage: string): Promise<void>;
+  // Groq's and Cloudflare's hosts are optional permissions, asked for when
+  // the service is chosen (and again at start, in case it was set up
+  // elsewhere).
+  requestPermission(service: OptionalService): Promise<boolean>;
   authorizeCurrentTab(): Promise<AuthorizedTab | undefined>;
   extensionVersion(): string;
   loadRatingPrompt(): Promise<RatingPromptState>;
@@ -53,6 +74,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
   const [status, setStatus] = useState<SessionStatus>({ state: 'idle' });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [chromeStatus, setChromeStatus] = useState<ChromeTranslatorStatus>();
   const [revealedSecret, setRevealedSecret] = useState<string>();
   const [ratingVisible, setRatingVisible] = useState(false);
   const saveTail = useRef<Promise<void>>(Promise.resolve());
@@ -103,6 +125,34 @@ export function PopupApp({ api }: { api: PopupApi }) {
     );
   }, [api, updateRatingPrompt]);
 
+  // A Whisper recognizer leaves the translation to a separate service.
+  const usesWhisper = settings?.transcriber === 'gemini-read-ahead' &&
+    settings.readAheadRecognizer !== 'gemini';
+  const statusSource = settings?.geminiSourceLanguage;
+  const statusTarget = settings?.geminiTargetLanguage;
+  useEffect(() => {
+    if (!usesWhisper || !statusTarget) return;
+    let current = true;
+    void api.chromeTranslatorStatus(chromeProbeSource(statusSource), statusTarget)
+      .catch((): ChromeTranslatorStatus => 'unsupported')
+      .then((next) => { if (current) setChromeStatus(next); });
+    return () => { current = false; };
+  }, [api, usesWhisper, statusSource, statusTarget]);
+
+  // Downloads Chrome's language pack when it still needs one; creating a
+  // translator that has to download needs a user gesture, so this runs from
+  // one (choosing a Whisper recognizer, or the start click).
+  const prepareChromeTranslation = async (source: string, target: string) => {
+    try {
+      const probe = chromeProbeSource(source);
+      if (await api.chromeTranslatorStatus(probe, target) === 'downloadable') {
+        await api.prepareChromeTranslator(probe, target);
+      }
+    } catch {
+      // The page reports an unusable pair when it gets there.
+    }
+  };
+
   const updateSettings = (patch: Partial<AppSettings>) => {
     setSettings((current) => {
       if (!current) return current;
@@ -136,9 +186,24 @@ export function PopupApp({ api }: { api: PopupApi }) {
       return;
     }
 
-    if (Object.keys(validateSettingsForStart(settings)).length > 0) {
-      setMessage(t('needGeminiKey'));
+    const missing = Object.keys(validateSettingsForStart(settings))[0] as ApiKeyField | undefined;
+    if (missing) {
+      setMessage(t(MISSING_KEY_MESSAGES[missing]));
       return;
+    }
+    for (const [field, service] of [
+      ['groqApiKey', 'groq'],
+      ['cloudflareApiToken', 'cloudflare'],
+    ] as const) {
+      if (requiredApiKeys(settings).includes(field) && !await api.requestPermission(service)) {
+        setMessage(t(PERMISSION_DENIED_MESSAGES[service]));
+        return;
+      }
+    }
+    // The start click is a user gesture: the moment to download Chrome's
+    // language pack if a Whisper recognizer will need it.
+    if (settings.transcriber === 'gemini-read-ahead' && settings.readAheadRecognizer !== 'gemini') {
+      void prepareChromeTranslation(settings.geminiSourceLanguage, settings.geminiTargetLanguage);
     }
 
     const attempt = ++sessionAttempt.current;
@@ -177,6 +242,9 @@ export function PopupApp({ api }: { api: PopupApi }) {
 
   const running = status.state === 'running' || status.state === 'starting';
   const transcriber = settings.transcriber;
+  const recognizer = settings.readAheadRecognizer;
+  const keys = requiredApiKeys(settings);
+  const chromeBlocked = chromeStatus === 'unsupported' || chromeStatus === 'unavailable';
   const isReadAhead = transcriber === 'gemini-read-ahead';
   const closeRating = () => setRatingVisible(false);
   return (
@@ -247,7 +315,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
 
       <section className="card" aria-labelledby="provider-heading">
         <h2 id="provider-heading">{t('providerHeading')}</h2>
-        <label htmlFor="transcriber">{t('transcriberLabel')}</label>
+        <label htmlFor="transcriber">{t('captionModeLabel')}</label>
         <select
           id="transcriber"
           disabled={running}
@@ -256,23 +324,126 @@ export function PopupApp({ api }: { api: PopupApi }) {
             update('transcriber', event.target.value as TranscriberId)
           }
         >
-          <option value="gemini">Gemini live translate 3.5</option>
+          <option value="gemini">{t('transcriberLive')}</option>
           <option value="gemini-read-ahead">{t('transcriberReadAhead')}</option>
         </select>
-        <GeminiGuideLink />
-        <ConfigurableSecretField
-          id="gemini-key"
-          label="Gemini API Key"
-          onSave={(geminiApiKey) => {
-            update('geminiApiKey', geminiApiKey);
-          }}
-          onToggle={() => setRevealedSecret((current) =>
-            current === 'gemini-key' ? undefined : 'gemini-key'
-          )}
-          revealed={revealedSecret === 'gemini-key'}
-          value={settings.geminiApiKey}
-        />
 
+        {/* Read-ahead picks recognition and translation separately; Gemini
+            does both in one request, so with it the translator is fixed. */}
+        {isReadAhead && (
+          <>
+            <label htmlFor="recognizer">{t('transcriberLabel')}</label>
+            <select
+              id="recognizer"
+              disabled={running}
+              value={recognizer}
+              onChange={(event) => {
+                const next = event.target.value as ReadAheadRecognizer;
+                if (next === 'gemini') {
+                  update('readAheadRecognizer', next);
+                  return;
+                }
+                // Asked inside the change's user gesture.
+                void prepareChromeTranslation(settings.geminiSourceLanguage, settings.geminiTargetLanguage);
+                void api.requestPermission(next).then((granted) => {
+                  if (granted) update('readAheadRecognizer', next);
+                  else setMessage(t(PERMISSION_DENIED_MESSAGES[next]));
+                });
+              }}
+            >
+              <option value="gemini">{t('recognizerGemini')}</option>
+              <option value="groq">Groq Whisper</option>
+              <option value="cloudflare">Cloudflare Whisper</option>
+            </select>
+            {/* With a Whisper recognizer Chrome's built-in Translator
+                translates, and where it cannot, Google's web translation
+                does, automatically: shown, not offered. */}
+            <label htmlFor="translator">{t('translatorLabel')}</label>
+            <select
+              id="translator"
+              disabled
+              value={recognizer === 'gemini' ? 'gemini' : 'chrome'}
+            >
+              {recognizer === 'gemini' ? (
+                <option value="gemini">Gemini</option>
+              ) : (
+                <option value="chrome">
+                  {chromeBlocked ? t('translatorWebFallback') : t('translatorChrome')}
+                </option>
+              )}
+            </select>
+            {recognizer !== 'gemini' && chromeBlocked && (
+              <p className="field-hint" role="note">
+                {t(chromeStatus === 'unsupported'
+                  ? 'translatorWebFallbackHintComputer'
+                  : 'translatorWebFallbackHintLanguage')}
+              </p>
+            )}
+          </>
+        )}
+
+        {keys.includes('geminiApiKey') && (
+          <>
+            <GeminiGuideLink />
+            <ConfigurableSecretField
+              id="gemini-key"
+              label="Gemini API Key"
+              onSave={(geminiApiKey) => {
+                update('geminiApiKey', geminiApiKey);
+              }}
+              onToggle={() => setRevealedSecret((current) =>
+                current === 'gemini-key' ? undefined : 'gemini-key'
+              )}
+              revealed={revealedSecret === 'gemini-key'}
+              value={settings.geminiApiKey}
+            />
+          </>
+        )}
+        {keys.includes('groqApiKey') && (
+          <>
+            <ProviderLink href="https://console.groq.com/keys" label="console.groq.com" />
+            <ConfigurableSecretField
+              id="groq-key"
+              label="Groq API Key"
+              onSave={(groqApiKey) => {
+                update('groqApiKey', groqApiKey);
+              }}
+              onToggle={() => setRevealedSecret((current) =>
+                current === 'groq-key' ? undefined : 'groq-key'
+              )}
+              revealed={revealedSecret === 'groq-key'}
+              value={settings.groqApiKey}
+            />
+          </>
+        )}
+        {keys.includes('cloudflareApiToken') && (
+          <>
+            <ProviderLink
+              href="https://dash.cloudflare.com/profile/api-tokens"
+              label="dash.cloudflare.com"
+            />
+            <TextField
+              hint={t('cloudflareAccountIdHint')}
+              id="cloudflare-account"
+              label={t('cloudflareAccountIdLabel')}
+              placeholder="0123456789abcdef0123456789abcdef"
+              value={settings.cloudflareAccountId}
+              onSave={(cloudflareAccountId) => update('cloudflareAccountId', cloudflareAccountId)}
+            />
+            <ConfigurableSecretField
+              id="cloudflare-token"
+              label="Cloudflare API Token"
+              onSave={(cloudflareApiToken) => {
+                update('cloudflareApiToken', cloudflareApiToken);
+              }}
+              onToggle={() => setRevealedSecret((current) =>
+                current === 'cloudflare-token' ? undefined : 'cloudflare-token'
+              )}
+              revealed={revealedSecret === 'cloudflare-token'}
+              value={settings.cloudflareApiToken}
+            />
+          </>
+        )}
       </section>
 
       <section className="card grid" aria-labelledby="language-heading">
@@ -396,6 +567,75 @@ function statusMessageKey(status: SessionStatus): MessageKey {
   if (status.state === 'starting') return 'statusStarting';
   if (status.state === 'error') return 'statusRetry';
   return 'statusIdle';
+}
+
+const MISSING_KEY_MESSAGES = {
+  cloudflareAccountId: 'needCloudflareAccountId',
+  cloudflareApiToken: 'needCloudflareToken',
+  geminiApiKey: 'needGeminiKey',
+  groqApiKey: 'needGroqKey',
+} as const satisfies Record<ApiKeyField, MessageKey>;
+
+const PERMISSION_DENIED_MESSAGES = {
+  cloudflare: 'cloudflarePermissionDenied',
+  groq: 'groqPermissionDenied',
+} as const satisfies Record<OptionalService, MessageKey>;
+
+// A plain setting saved when the field loses focus (or on Enter).
+function TextField({
+  hint,
+  id,
+  label,
+  onSave,
+  placeholder,
+  value,
+}: {
+  hint: string;
+  id: string;
+  label: string;
+  onSave(value: string): void;
+  placeholder: string;
+  value: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const commit = () => {
+    const next = draft.trim();
+    if (next !== value) onSave(next);
+  };
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <input
+        autoComplete="off"
+        id={id}
+        placeholder={placeholder}
+        spellCheck={false}
+        type="text"
+        value={draft}
+        onBlur={commit}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+        }}
+      />
+      <p className="field-note">{hint}</p>
+    </div>
+  );
+}
+
+// The Translator API needs a source language; with auto-detect, English is the
+// pair worth probing (and pre-downloading) in the popup.
+function chromeProbeSource(source: string | undefined): string {
+  return !source || source === GEMINI_AUTO_SOURCE ? 'en' : source;
+}
+
+function ProviderLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a className="provider-link" href={href} rel="noreferrer" target="_blank">
+      {t('providerSignupLink', label)}
+    </a>
+  );
 }
 
 function GeminiGuideLink() {

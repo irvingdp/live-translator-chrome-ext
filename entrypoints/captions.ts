@@ -165,6 +165,13 @@ export default defineUnlistedScript(() => {
     console.error(fullscreenDebugPrefix, 'fullscreenerror', debugState(event));
   };
   const overlay = new CaptionOverlay(document, {
+    async onSessionAction(action) {
+      await chrome.runtime.sendMessage({
+        target: 'background',
+        type: 'READ_AHEAD_SWITCH_RECOGNIZER',
+        payload: { recognizer: action === 'switch_to_cloudflare' ? 'cloudflare' : 'groq' },
+      } satisfies import('../src/core/messages').ExtensionMessage);
+    },
     onClear() {
       return chrome.runtime.sendMessage({
         target: 'background',
@@ -287,7 +294,7 @@ export default defineUnlistedScript(() => {
           overlay.setWindow(tabMessage.payload.pairs);
           break;
         case 'SESSION_ERROR':
-          overlay.setSessionError(tabMessage.payload.code);
+          overlay.setSessionError(tabMessage.payload.code, tabMessage.payload.action);
           break;
         case 'SESSION_ERROR_CLEAR':
           overlay.clearSessionError();

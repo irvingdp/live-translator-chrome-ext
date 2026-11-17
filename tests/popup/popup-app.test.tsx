@@ -18,6 +18,9 @@ function createApi(overrides: Partial<PopupApi> = {}): PopupApi {
     status: vi.fn().mockResolvedValue({ state: 'idle' }),
     stop: vi.fn().mockResolvedValue({ state: 'idle' }),
     takeDeepgramRemovedNotice: vi.fn().mockResolvedValue(false),
+    chromeTranslatorStatus: vi.fn().mockResolvedValue('available'),
+    prepareChromeTranslator: vi.fn().mockResolvedValue(undefined),
+    requestPermission: vi.fn().mockResolvedValue(true),
     ...overrides,
   };
 }
@@ -35,14 +38,17 @@ describe('PopupApp', () => {
   it('offers only the transcribers that actually work', async () => {
     render(<PopupApp api={createApi()} />);
 
-    const transcriber = await screen.findByLabelText('語音辨識');
+    const transcriber = await screen.findByLabelText('翻譯模式');
 
     expect(
       [...transcriber.querySelectorAll('option')].map(
         (option) => option.textContent,
       ),
-    ).toEqual(['Gemini live translate 3.5', 'Gemini 預讀']);
+    ).toEqual(['即時音訊模式', '預讀模式']);
     expect(transcriber).toHaveValue('gemini');
+    // Live audio has no separate recognition or translation to choose.
+    expect(screen.queryByLabelText('語音辨識')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('翻譯服務')).not.toBeInTheDocument();
   });
 
   it('asks only for the Gemini API Key, for both modes', async () => {
@@ -55,14 +61,14 @@ describe('PopupApp', () => {
       'password',
     );
     expect(screen.queryByLabelText('Deepgram API Key')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('DeepL API Key')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Microsoft Translator API Key')).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('語音辨識'), {
+    fireEvent.change(screen.getByLabelText('翻譯模式'), {
       target: { value: 'gemini-read-ahead' },
     });
 
     expect(screen.getByLabelText('Gemini API Key')).toBeVisible();
-    expect(screen.queryByLabelText('DeepL API Key')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Microsoft Translator API Key')).not.toBeInTheDocument();
   });
 
   it('shows an API Key as missing as soon as its textbox is cleared', async () => {
@@ -255,7 +261,7 @@ describe('PopupApp', () => {
     const api = createApi();
     render(<PopupApp api={api} />);
 
-    fireEvent.change(await screen.findByLabelText('語音辨識'), {
+    fireEvent.change(await screen.findByLabelText('翻譯模式'), {
       target: { value: 'gemini' },
     });
 
@@ -264,7 +270,7 @@ describe('PopupApp', () => {
         expect.objectContaining({ transcriber: 'gemini' }),
       ),
     );
-    expect(screen.queryByLabelText('翻譯')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('翻譯服務')).not.toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: '如何建立 Gemini API Key？' }),
     ).toHaveAttribute('href', 'onboarding.html');
@@ -325,6 +331,153 @@ describe('PopupApp', () => {
         expect.objectContaining({ geminiSourceLanguage: 'ja', transcriber: 'gemini-read-ahead' }),
       ),
     );
+  });
+
+  describe('read-ahead services', () => {
+    const readAheadApi = (settings: Record<string, unknown> = {}, overrides: Partial<PopupApi> = {}) =>
+      createApi({
+        loadSettings: vi.fn().mockResolvedValue({
+          ...DEFAULT_SETTINGS,
+          transcriber: 'gemini-read-ahead',
+          ...settings,
+        }),
+        ...overrides,
+      });
+
+    it('shows recognition and translation only in read-ahead mode, Gemini locking the translator', async () => {
+      render(<PopupApp api={readAheadApi()} />);
+
+      const recognizer = await screen.findByLabelText('語音辨識');
+      expect([...recognizer.querySelectorAll('option')].map((option) => option.textContent))
+        .toEqual(['Gemini（含翻譯）', 'Groq Whisper', 'Cloudflare Whisper']);
+      const translator = screen.getByLabelText('翻譯服務');
+      expect(translator).toBeDisabled();
+      expect(translator).toHaveValue('gemini');
+      expect(screen.getByLabelText('Gemini API Key')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Groq API Key')).not.toBeInTheDocument();
+
+      fireEvent.change(screen.getByLabelText('翻譯模式'), { target: { value: 'gemini' } });
+      expect(screen.queryByLabelText('語音辨識')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('翻譯服務')).not.toBeInTheDocument();
+    });
+
+    it('asks for the Groq permission when Groq is chosen, then shows its key instead of Gemini', async () => {
+      const api = readAheadApi();
+      render(<PopupApp api={api} />);
+
+      fireEvent.change(await screen.findByLabelText('語音辨識'), { target: { value: 'groq' } });
+
+      await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ readAheadRecognizer: 'groq' }),
+      ));
+      expect(api.requestPermission).toHaveBeenCalledWith('groq');
+      expect(screen.getByLabelText('Groq API Key')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Gemini API Key')).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /console\.groq\.com/ }))
+        .toHaveAttribute('href', 'https://console.groq.com/keys');
+      // Chrome's built-in translation is the only translation with Whisper.
+      expect(screen.getByLabelText('翻譯服務')).toBeDisabled();
+      expect(screen.getByLabelText('翻譯服務')).toHaveValue('chrome');
+    });
+
+    it('asks for the Cloudflare permission and shows its account ID and token when Cloudflare is chosen', async () => {
+      const api = readAheadApi();
+      render(<PopupApp api={api} />);
+
+      fireEvent.change(await screen.findByLabelText('語音辨識'), { target: { value: 'cloudflare' } });
+
+      await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ readAheadRecognizer: 'cloudflare' }),
+      ));
+      expect(api.requestPermission).toHaveBeenCalledWith('cloudflare');
+      expect(screen.getByLabelText('Cloudflare 帳號 ID')).toBeInTheDocument();
+      expect(screen.getByLabelText('Cloudflare API Token')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Groq API Key')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('翻譯服務')).toHaveValue('chrome');
+    });
+
+    it('names the missing Cloudflare account ID before starting', async () => {
+      const api = readAheadApi({ cloudflareApiToken: 'cft', readAheadRecognizer: 'cloudflare' });
+      render(<PopupApp api={api} />);
+      fireEvent.click(await screen.findByRole('switch', { name: '開始即時字幕' }));
+      expect(await screen.findByText('請先輸入 Cloudflare 帳號 ID。')).toBeVisible();
+      expect(api.start).not.toHaveBeenCalled();
+    });
+
+    it('stays on Gemini when the Groq permission is declined', async () => {
+      const api = readAheadApi({}, { requestPermission: vi.fn().mockResolvedValue(false) });
+      render(<PopupApp api={api} />);
+
+      fireEvent.change(await screen.findByLabelText('語音辨識'), { target: { value: 'groq' } });
+
+      expect(await screen.findByText('Groq Whisper 需要連線到 api.groq.com 的權限。')).toBeVisible();
+      expect(api.saveSettings).not.toHaveBeenCalled();
+    });
+
+    it("shows the automatic web translation where Chrome's cannot translate the languages", async () => {
+      const api = readAheadApi(
+        { geminiTargetLanguage: 'zu', readAheadRecognizer: 'groq' },
+        { chromeTranslatorStatus: vi.fn().mockResolvedValue('unavailable') },
+      );
+      render(<PopupApp api={api} />);
+
+      expect(await screen.findByRole('option', { name: 'Google 網頁翻譯（自動）' })).toBeInTheDocument();
+      expect(screen.getByText(/Chrome 內建翻譯不支援這組語言，會自動改用 Google 網頁翻譯/))
+        .toBeVisible();
+      // With auto-detect, English is the pair worth probing.
+      expect(api.chromeTranslatorStatus).toHaveBeenCalledWith('en', 'zu');
+    });
+
+    it('says why when this computer has no built-in Translator at all', async () => {
+      render(<PopupApp api={readAheadApi(
+        { readAheadRecognizer: 'cloudflare' },
+        { chromeTranslatorStatus: vi.fn().mockResolvedValue('unsupported') },
+      )} />);
+      expect(await screen.findByText(/這台電腦無法使用 Chrome 內建翻譯/)).toBeVisible();
+    });
+
+    it("starts the language-pack download when a Whisper recognizer is chosen and Chrome's needs one", async () => {
+      const api = readAheadApi({}, { chromeTranslatorStatus: vi.fn().mockResolvedValue('downloadable') });
+      render(<PopupApp api={api} />);
+
+      fireEvent.change(await screen.findByLabelText('語音辨識'), { target: { value: 'groq' } });
+
+      await waitFor(() => expect(api.prepareChromeTranslator).toHaveBeenCalledWith('en', 'zh-Hant'));
+    });
+
+    it('starts the download from the start click too, and not when the pack is there', async () => {
+      const api = readAheadApi(
+        { groqApiKey: 'gq', readAheadRecognizer: 'groq' },
+        { chromeTranslatorStatus: vi.fn().mockResolvedValue('downloadable') },
+      );
+      render(<PopupApp api={api} />);
+      fireEvent.click(await screen.findByRole('switch', { name: '開始即時字幕' }));
+      await waitFor(() => expect(api.prepareChromeTranslator).toHaveBeenCalledOnce());
+
+      const ready = readAheadApi({ groqApiKey: 'gq', readAheadRecognizer: 'groq' });
+      render(<PopupApp api={ready} />);
+      fireEvent.click((await screen.findAllByRole('switch', { name: '開始即時字幕' })).at(-1)!);
+      await waitFor(() => expect(ready.start).toHaveBeenCalledOnce());
+      expect(ready.prepareChromeTranslator).not.toHaveBeenCalled();
+    });
+
+    it('names the missing key and checks the Groq permission before starting', async () => {
+      const api = readAheadApi({ readAheadRecognizer: 'groq' });
+      render(<PopupApp api={api} />);
+      fireEvent.click(await screen.findByRole('switch', { name: '開始即時字幕' }));
+      expect(await screen.findByText('請先輸入 Groq API Key。')).toBeVisible();
+      expect(api.start).not.toHaveBeenCalled();
+    });
+
+    it('starts once the chosen services have their keys and Groq its permission', async () => {
+      const api = readAheadApi({
+        groqApiKey: 'gq', readAheadRecognizer: 'groq',
+      });
+      render(<PopupApp api={api} />);
+      fireEvent.click(await screen.findByRole('switch', { name: '開始即時字幕' }));
+      await waitFor(() => expect(api.start).toHaveBeenCalledOnce());
+      expect(api.requestPermission).toHaveBeenCalledWith('groq');
+    });
   });
 
   it('tells the viewer to use Gemini live when read-ahead cannot run on the page', async () => {

@@ -7,8 +7,10 @@ import type { OptionsApi } from '../../src/options/browser-api';
 function createApi(overrides: Partial<OptionsApi> = {}): OptionsApi {
   return {
     loadKeys: vi.fn().mockResolvedValue({
-      deeplApiKey: 'dl-existing',
+      cloudflareAccountId: 'acc',
+      cloudflareApiToken: 'cf-existing',
       geminiApiKey: 'gm-existing',
+      groqApiKey: '',
     }),
     saveKeys: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -16,22 +18,25 @@ function createApi(overrides: Partial<OptionsApi> = {}): OptionsApi {
 }
 
 describe('OptionsApp', () => {
-  it('loads both keys into password fields, with no Deepgram key', async () => {
+  it('loads the keys into password fields, with no Deepgram, DeepL or Microsoft key', async () => {
     render(<OptionsApp api={createApi()} />);
 
     expect(await screen.findByLabelText('Gemini API Key')).toHaveValue(
       'gm-existing',
     );
-    expect(screen.getByLabelText('DeepL API Key')).toHaveValue('dl-existing');
+    expect(screen.getByLabelText('Cloudflare API Token')).toHaveValue('cf-existing');
     expect(screen.getByLabelText('Gemini API Key')).toHaveAttribute(
       'type',
       'password',
     );
-    expect(screen.getByLabelText('DeepL API Key')).toHaveAttribute(
+    expect(screen.getByLabelText('Cloudflare API Token')).toHaveAttribute(
       'type',
       'password',
     );
     expect(screen.queryByLabelText('Deepgram API Key')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('DeepL API Key')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Microsoft Translator API Key')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Cloudflare 帳號 ID')).toHaveValue('acc');
   });
 
   it('reveals only the selected key', async () => {
@@ -39,14 +44,14 @@ describe('OptionsApp', () => {
     await screen.findByLabelText('Gemini API Key');
 
     fireEvent.click(
-      screen.getByRole('button', { name: '顯示 DeepL API Key' }),
+      screen.getByRole('button', { name: '顯示 Cloudflare API Token' }),
     );
 
     expect(screen.getByLabelText('Gemini API Key')).toHaveAttribute(
       'type',
       'password',
     );
-    expect(screen.getByLabelText('DeepL API Key')).toHaveAttribute(
+    expect(screen.getByLabelText('Cloudflare API Token')).toHaveAttribute(
       'type',
       'text',
     );
@@ -55,15 +60,17 @@ describe('OptionsApp', () => {
   it('saves edited keys and confirms success', async () => {
     const api = createApi();
     render(<OptionsApp api={api} />);
-    const deepl = await screen.findByLabelText('DeepL API Key');
-    fireEvent.change(deepl, { target: { value: 'dl-new' } });
+    const cloudflare = await screen.findByLabelText('Cloudflare API Token');
+    fireEvent.change(cloudflare, { target: { value: 'cf-new' } });
 
     fireEvent.click(screen.getByRole('button', { name: '儲存設定' }));
 
     await waitFor(() =>
       expect(api.saveKeys).toHaveBeenCalledWith({
-        deeplApiKey: 'dl-new',
+        cloudflareAccountId: 'acc',
+        cloudflareApiToken: 'cf-new',
         geminiApiKey: 'gm-existing',
+        groqApiKey: '',
       }),
     );
     expect(await screen.findByText('API Key 已儲存')).toBeVisible();
@@ -91,7 +98,7 @@ describe('OptionsApp', () => {
         })}
       />,
     );
-    await screen.findByLabelText('DeepL API Key');
+    await screen.findByLabelText('Cloudflare API Token');
 
     fireEvent.click(screen.getByRole('button', { name: '儲存設定' }));
 

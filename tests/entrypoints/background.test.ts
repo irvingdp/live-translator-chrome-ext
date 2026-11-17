@@ -11,11 +11,14 @@ type BackgroundListener = (
 
 const settings: AppSettings = {
   backgroundOpacity: 78,
-  deeplApiKey: 'deepl-key:fx',
+  cloudflareAccountId: 'cf-account',
+  cloudflareApiToken: 'cf-secret',
   geminiApiKey: 'gemini-key',
   geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
+  groqApiKey: 'groq-key',
   maxLineWidth: 90,
+  readAheadRecognizer: 'gemini',
   originalFontSize: 24,
   originalTextColor: '#ffffff',
   transcriber: 'gemini',
@@ -39,6 +42,8 @@ let onTabUpdated: (
 let actionSetBadgeBackgroundColor: ReturnType<typeof vi.fn>;
 let actionSetBadgeText: ReturnType<typeof vi.fn>;
 let actionSetTitle: ReturnType<typeof vi.fn>;
+let actionOpenPopup: ReturnType<typeof vi.fn>;
+let permissionsContains: ReturnType<typeof vi.fn>;
 let offscreenExists: boolean;
 let closeDocument: ReturnType<typeof vi.fn>;
 let createDocument: ReturnType<typeof vi.fn>;
@@ -69,6 +74,8 @@ beforeEach(async () => {
     offscreenExists = true;
   });
   executeScript = vi.fn().mockResolvedValue(undefined);
+  actionOpenPopup = vi.fn().mockResolvedValue(undefined);
+  permissionsContains = vi.fn().mockResolvedValue(true);
   getStreamId = vi.fn().mockResolvedValue('stream-id');
   localStorageData = {};
   sessionStorageData = {};
@@ -98,6 +105,7 @@ beforeEach(async () => {
   vi.stubGlobal('defineBackground', (register: () => void) => register());
   vi.stubGlobal('chrome', {
     action: {
+      openPopup: actionOpenPopup,
       setBadgeBackgroundColor: actionSetBadgeBackgroundColor,
       setBadgeText: actionSetBadgeText,
       setTitle: actionSetTitle,
@@ -105,6 +113,7 @@ beforeEach(async () => {
     i18n: {
       getMessage: vi.fn((key: string) => key),
     },
+    permissions: { contains: permissionsContains },
     offscreen: {
       Reason: { USER_MEDIA: 'USER_MEDIA' },
       closeDocument,
@@ -259,6 +268,105 @@ describe('background offscreen document lifecycle', () => {
     expect(localStorageData.settings).toMatchObject({ transcriber: 'gemini' });
     expect(JSON.stringify(localStorageData.settings)).not.toContain('dg-secret');
     expect(localStorageData.settings).not.toHaveProperty('sourceLocale');
+  });
+
+  describe('switching read-ahead to Groq Whisper from the overlay', () => {
+    const readAhead = { ...settings, transcriber: 'gemini-read-ahead' } as const;
+    const fromTab = { frameId: 0, id: 'test', tab: { id: 42 } as chrome.tabs.Tab };
+    const switchMessage = {
+      target: 'background',
+      type: 'READ_AHEAD_SWITCH_RECOGNIZER',
+      payload: { recognizer: 'groq' },
+    } as const;
+    const toCloudflare = { ...switchMessage, payload: { recognizer: 'cloudflare' } } as const;
+    const readAheadStarts = () => tabsSendMessage.mock.calls
+      .filter(([, message]) => (message as { type?: string }).type === 'READ_AHEAD_START');
+
+    async function startReadAhead(stored: Partial<AppSettings>) {
+      localStorageData.settings = { ...readAhead, ...stored };
+      const response = await dispatch({
+        target: 'background',
+        type: 'SESSION_START',
+        payload: { settings: { ...readAhead, ...stored }, tabId: 42 },
+      });
+      expect(response).toMatchObject({ ok: true, status: { state: 'running' } });
+    }
+
+    it('restarts the session on Groq when its key and permission are set', async () => {
+      await startReadAhead({ groqApiKey: 'gq' });
+      expect(readAheadStarts()).toHaveLength(1);
+
+      await expect(dispatchFrom(switchMessage, fromTab)).resolves.toEqual({ ok: true, switched: true });
+
+      expect(localStorageData.settings).toMatchObject({ readAheadRecognizer: 'groq' });
+      expect(readAheadStarts()).toHaveLength(2);
+      expect(permissionsContains).toHaveBeenCalledWith({ origins: ['https://api.groq.com/*'] });
+    });
+
+    it('stops the captions and opens the popup on Groq when Groq is not set up yet', async () => {
+      await startReadAhead({ groqApiKey: '' });
+
+      await expect(dispatchFrom(switchMessage, fromTab)).resolves.toEqual({ ok: true, switched: false });
+
+      expect(actionOpenPopup).toHaveBeenCalledOnce();
+      expect(readAheadStarts()).toHaveLength(1);
+      // The popup opens with Groq already chosen, for its key and permission.
+      expect(localStorageData.settings).toMatchObject({ readAheadRecognizer: 'groq' });
+      expect(tabsSendMessage).toHaveBeenCalledWith(42, { type: 'OVERLAY_HIDE' });
+      expect(tabsSendMessage).toHaveBeenCalledWith(42, expect.objectContaining({ type: 'READ_AHEAD_STOP' }));
+      await expect(dispatch({ target: 'background', type: 'SESSION_STATUS' }))
+        .resolves.toMatchObject({ status: { state: 'idle' } });
+    });
+
+    it('stops the captions too when the Groq key is set but the permission is not', async () => {
+      permissionsContains.mockResolvedValue(false);
+      await startReadAhead({ groqApiKey: 'gq' });
+
+      await dispatchFrom(switchMessage, fromTab);
+
+      expect(actionOpenPopup).toHaveBeenCalledOnce();
+      expect(localStorageData.settings).toMatchObject({ readAheadRecognizer: 'groq' });
+      expect(readAheadStarts()).toHaveLength(1);
+    });
+
+    it('switches a Groq session whose quota ran out to Cloudflare once it is set up', async () => {
+      await startReadAhead({
+        cloudflareAccountId: 'acc', cloudflareApiToken: 'tok', groqApiKey: 'gq', readAheadRecognizer: 'groq',
+      });
+
+      await expect(dispatchFrom(toCloudflare, fromTab)).resolves.toEqual({ ok: true, switched: true });
+
+      expect(localStorageData.settings).toMatchObject({ readAheadRecognizer: 'cloudflare' });
+      expect(permissionsContains).toHaveBeenCalledWith({ origins: ['https://api.cloudflare.com/*'] });
+      expect(readAheadStarts()).toHaveLength(2);
+    });
+
+    it('stops and opens the popup on Cloudflare when its account ID or token is missing', async () => {
+      await startReadAhead({
+        cloudflareAccountId: '', cloudflareApiToken: 'tok', groqApiKey: 'gq', readAheadRecognizer: 'groq',
+      });
+
+      await expect(dispatchFrom(toCloudflare, fromTab)).resolves.toEqual({ ok: true, switched: false });
+
+      expect(actionOpenPopup).toHaveBeenCalledOnce();
+      expect(localStorageData.settings).toMatchObject({ readAheadRecognizer: 'cloudflare' });
+      expect(readAheadStarts()).toHaveLength(1);
+    });
+
+    it('refuses a recognizer the button never offers', async () => {
+      await startReadAhead({ groqApiKey: 'gq' });
+      await expect(dispatchFrom(
+        { ...switchMessage, payload: { recognizer: 'gemini' as never } },
+        fromTab,
+      )).resolves.toEqual({ error: 'unsupported_recognizer', ok: false });
+    });
+
+    it('ignores the button from a tab that is not running read-ahead', async () => {
+      await startReadAhead({ groqApiKey: 'gq' });
+      await expect(dispatchFrom(switchMessage, { ...fromTab, tab: { id: 43 } as chrome.tabs.Tab }))
+        .resolves.toEqual({ ok: true, switched: false });
+      expect(actionOpenPopup).not.toHaveBeenCalled();
+    });
   });
 
   it('restricts local storage before accepting session control', async () => {

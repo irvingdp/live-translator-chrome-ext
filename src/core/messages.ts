@@ -67,6 +67,17 @@ export type ExtensionMessage =
     }
   | {
       target: 'background';
+      type: 'READ_AHEAD_WEB_TRANSLATE';
+      payload: {
+        sessionId: string;
+        sourceLanguage?: string;
+        targetLanguage: string;
+        texts: string[];
+        timeoutMs: number;
+      };
+    }
+  | {
+      target: 'background';
       type: 'READ_AHEAD_CUE';
       payload: { cue?: CaptionPair; sessionId: string };
     }
@@ -74,5 +85,12 @@ export type ExtensionMessage =
       target: 'background';
       type: 'READ_AHEAD_STATUS';
       payload: { sessionId: string; status?: ReadAheadStatusCode };
+    }
+  // The overlay's "switch to … Whisper" button, after a recognizer's quota ran
+  // out (Gemini → Groq, Groq → Cloudflare).
+  | {
+      target: 'background';
+      type: 'READ_AHEAD_SWITCH_RECOGNIZER';
+      payload: { recognizer: 'cloudflare' | 'groq' };
     }
   | { target: 'background'; type: 'SESSION_STATUS' };

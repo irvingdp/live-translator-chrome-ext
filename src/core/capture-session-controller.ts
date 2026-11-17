@@ -6,23 +6,30 @@ import type {
   ChunkSentence,
   ChunkTranslationRequest,
 } from '../read-ahead/gemini-chunk-translation';
+import type { RecognizedChunk } from '../read-ahead/groq-transcription';
+import type { ReadAheadStatus } from '../read-ahead/read-ahead-session';
+import type { WebTranslationRequest } from '../read-ahead/web-translation';
 import { CaptionWindow, type CaptionPair } from './caption-window';
 import type { ExtensionMessage } from './messages';
 import type { OverlayLayout, OverlayPlacement } from './overlay-layout';
 import {
   captionAppearance,
   type CaptionAppearance,
+  type ReadAheadRecognizer,
   type TranscriberId,
 } from './settings';
 
 export interface SessionSettings {
   backgroundOpacity: number;
-  deeplApiKey: string;
+  cloudflareAccountId: string;
+  cloudflareApiToken: string;
   geminiApiKey: string;
   // Read-ahead mode only; 'auto' lets the model detect it.
   geminiSourceLanguage: string;
   geminiTargetLanguage: string;
+  groqApiKey: string;
   maxLineWidth: number;
+  readAheadRecognizer: ReadAheadRecognizer;
   transcriber: TranscriberId;
   originalFontSize: number;
   originalTextColor: string;
@@ -46,7 +53,9 @@ export type TabMessage =
   | { type: 'CAPTION_WINDOW'; payload: { pairs: CaptionPair[] } }
   | {
       type: 'SESSION_ERROR';
-      payload: { code: string };
+      // `action` adds a button to the message (read-ahead's switch from a
+      // used-up Gemini quota to Groq Whisper).
+      payload: { action?: SessionErrorAction; code: string };
     }
   | { type: 'SESSION_ERROR_CLEAR' }
   | { type: 'READ_AHEAD_START'; payload: ReadAheadStartRequest }
@@ -58,20 +67,60 @@ export interface ReadAheadStartRequest {
   targetLanguage: string;
 }
 
-export type ReadAheadStatusCode =
-  | 'failed'
-  | 'loading'
-  | 'quota_exceeded'
-  | 'translating'
-  | 'unsupported';
+export type ReadAheadStatusCode = Exclude<ReadAheadStatus, undefined> | 'unsupported';
+
+export type SessionErrorAction = 'switch_to_cloudflare' | 'switch_to_groq';
 
 const READ_AHEAD_STATUS_ERRORS: Record<ReadAheadStatusCode, string> = {
+  cloudflare_quota_exceeded: 'cloudflare_quota_exceeded',
   failed: 'read_ahead_failed',
+  gemini_quota_exceeded: 'gemini_quota_exceeded',
+  groq_quota_exceeded: 'groq_quota_exceeded',
   loading: 'read_ahead_loading',
-  quota_exceeded: 'gemini_quota_exceeded',
   translating: 'read_ahead_translating',
+  translator_unsupported: 'read_ahead_translator_unsupported',
   unsupported: 'read_ahead_unsupported',
 };
+
+// What one read-ahead chunk comes back as. With Chrome's built-in Translator
+// the page translates the sentences itself, since that API exists only there.
+export interface ReadAheadChunkResult {
+  sentences: ChunkSentence[];
+  translateInPage?: { sourceLanguage?: string; targetLanguage: string };
+}
+
+// A chunk that failed, named by provider and reason ('groq_quota_exceeded'),
+// so the page can tell the viewer which quota ran out.
+export class ReadAheadChunkError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = 'ReadAheadChunkError';
+  }
+}
+
+// A Whisper service for read-ahead recognition (ADR 0002).
+export type WhisperRecognition =
+  | { apiKey: string; audioBase64: string; provider: 'groq'; sourceLanguage?: string }
+  | {
+      accountId: string;
+      apiToken: string;
+      audioBase64: string;
+      provider: 'cloudflare';
+      sourceLanguage?: string;
+    };
+
+function providerFailure(provider: 'cloudflare' | 'gemini' | 'groq') {
+  return (error: unknown): never => {
+    const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : 'failed';
+    throw new ReadAheadChunkError(`${provider}_${code}`);
+  };
+}
+
+function sameLanguage(source: string, target: string): boolean {
+  return source.split('-')[0]!.toLowerCase() === target.split('-')[0]!.toLowerCase();
+}
 
 export type SessionStatus =
   | { state: 'idle' }
@@ -90,6 +139,12 @@ export interface CaptureSessionDependencies {
   startReadAhead(tabId: number, request: ReadAheadStartRequest): Promise<void>;
   stopReadAhead(tabId: number, sessionId: string): Promise<void>;
   translateChunk(request: ChunkTranslationRequest): Promise<ChunkSentence[]>;
+  // Read-ahead with a Whisper service; the page then translates with
+  // Chrome's built-in Translator.
+  transcribeChunk(request: WhisperRecognition): Promise<RecognizedChunk>;
+  // The fallback when the page's built-in Translator cannot translate:
+  // Google's web translation (ADR 0002).
+  translateOnWeb(request: WebTranslationRequest, timeoutMs: number): Promise<string[]>;
 }
 
 export interface ActiveSessionSnapshot {
@@ -355,26 +410,75 @@ export class CaptureSessionController {
         ? { error: READ_AHEAD_STATUS_ERRORS[status], state: 'running', tabId }
         : { state: 'running', tabId };
     }
+    // A recognizer whose quota ran out offers the next one (issue #11):
+    // Gemini → Groq Whisper, Groq → Cloudflare Whisper.
+    const recognizer = this.settings?.readAheadRecognizer;
+    const action: SessionErrorAction | undefined =
+      status === 'gemini_quota_exceeded' && recognizer === 'gemini' ? 'switch_to_groq'
+        : status === 'groq_quota_exceeded' && recognizer === 'groq' ? 'switch_to_cloudflare'
+          : undefined;
     await this.dependencies.sendToTab(tabId, status
-      ? { type: 'SESSION_ERROR', payload: { code: READ_AHEAD_STATUS_ERRORS[status] } }
+      ? {
+          type: 'SESSION_ERROR',
+          payload: { code: READ_AHEAD_STATUS_ERRORS[status], ...(action ? { action } : {}) },
+        }
       : { type: 'SESSION_ERROR_CLEAR' });
   }
 
-  translateReadAheadChunk(
+  // The page's fallback for sentences its built-in Translator could not
+  // translate; only for the active read-ahead session's tab.
+  async translateReadAheadTexts(
+    sessionId: string,
+    tabId: number,
+    request: WebTranslationRequest,
+    timeoutMs: number,
+  ): Promise<string[]> {
+    if (!this.isActiveReadAhead(sessionId, tabId)) throw new Error('inactive_session');
+    return this.dependencies.translateOnWeb(request, timeoutMs);
+  }
+
+  async translateReadAheadChunk(
     sessionId: string,
     tabId: number,
     audioBase64: string,
-  ): Promise<ChunkSentence[]> {
+  ): Promise<ReadAheadChunkResult> {
     if (!this.isActiveReadAhead(sessionId, tabId) || !this.settings) {
-      return Promise.reject(new Error('inactive_session'));
+      throw new Error('inactive_session');
     }
-    const request = readAheadRequest(sessionId, this.settings);
-    return this.dependencies.translateChunk({
-      apiKey: this.settings.geminiApiKey,
-      audioBase64,
-      sourceLanguage: request.sourceLanguage,
-      targetLanguage: request.targetLanguage,
-    });
+    const settings = this.settings;
+    const { sourceLanguage, targetLanguage } = readAheadRequest(sessionId, settings);
+    if (settings.readAheadRecognizer === 'gemini') {
+      const sentences = await this.dependencies.translateChunk({
+        apiKey: settings.geminiApiKey,
+        audioBase64,
+        sourceLanguage,
+        targetLanguage,
+      }).catch(providerFailure('gemini'));
+      return { sentences };
+    }
+
+    const recognizer = settings.readAheadRecognizer;
+    const recognized = await this.dependencies.transcribeChunk(recognizer === 'cloudflare'
+      ? {
+          accountId: settings.cloudflareAccountId,
+          apiToken: settings.cloudflareApiToken,
+          audioBase64,
+          provider: 'cloudflare',
+          sourceLanguage,
+        }
+      : { apiKey: settings.groqApiKey, audioBase64, provider: 'groq', sourceLanguage },
+    ).catch(providerFailure(recognizer));
+    const source = sourceLanguage ?? recognized.language;
+    if (recognized.sentences.length === 0) return { sentences: [] };
+    if (source && sameLanguage(source, targetLanguage)) {
+      return {
+        sentences: recognized.sentences.map((sentence) => ({ ...sentence, sameLanguage: true })),
+      };
+    }
+    return {
+      sentences: recognized.sentences,
+      translateInPage: { ...(source ? { sourceLanguage: source } : {}), targetLanguage },
+    };
   }
 
   // Gemini live already did the transcribing and the translating, so each row

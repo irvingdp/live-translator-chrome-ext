@@ -190,6 +190,34 @@ describe('CaptionOverlay', () => {
     expect(shadow()?.activeElement).not.toBe(fontButton);
   });
 
+  it('offers a button with a session error that has an action, and hides it when cleared', async () => {
+    const onSessionAction = vi.fn().mockResolvedValue(undefined);
+    const overlay = new CaptionOverlay(document, { onSessionAction });
+    overlay.show(appearance, layout);
+    const button = () => shadow()!.querySelector<HTMLButtonElement>('.status-action')!;
+
+    overlay.setSessionError('read_ahead_failed');
+    expect(button().hidden).toBe(true);
+
+    overlay.setSessionError('gemini_quota_exceeded', 'switch_to_groq');
+    expect(shadow()!.querySelector('.status-message')!.textContent).toBe('Gemini 配額已用完，請稍後再試或改用其他服務');
+    expect(button().hidden).toBe(false);
+    expect(button().textContent).toBe('改用 Groq Whisper');
+    button().click();
+    expect(onSessionAction).toHaveBeenCalledWith('switch_to_groq');
+
+    // The button stays disabled until the first switch has been handled.
+    await vi.waitFor(() => expect(button().disabled).toBe(false));
+    overlay.setSessionError('groq_quota_exceeded', 'switch_to_cloudflare');
+    expect(shadow()!.querySelector('.status-message')!.textContent).toBe('Groq 額度已用完');
+    expect(button().textContent).toBe('改用 Cloudflare Whisper');
+    button().click();
+    expect(onSessionAction).toHaveBeenLastCalledWith('switch_to_cloudflare');
+
+    overlay.clearSessionError();
+    expect(button().hidden).toBe(true);
+  });
+
   it('renders bilingual pairs and only visual appearance variables', () => {
     const overlay = new CaptionOverlay(document);
     overlay.show(appearance, layout);
@@ -536,9 +564,9 @@ describe('CaptionOverlay', () => {
   it('shows and clears a translated session error', () => {
     const overlay = new CaptionOverlay(document);
     overlay.show(appearance, layout);
-    overlay.setSessionError('translation_disabled');
+    overlay.setSessionError('cloudflare_quota_exceeded');
     expect(shadow()?.querySelector('.status-message')?.textContent).toBe(
-      'DeepL 連續失敗 5 次，本次字幕已停止翻譯',
+      'Cloudflare 今日額度已用完',
     );
 
     overlay.clearSessionError();

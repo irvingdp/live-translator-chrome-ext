@@ -5,6 +5,7 @@ import {
   DEFAULT_SETTINGS,
   migrateStoredSettings,
   normalizeSettings,
+  requiredApiKeys,
   validateSettingsForStart,
 } from '../../src/core/settings';
 
@@ -42,13 +43,13 @@ describe('normalizeSettings', () => {
   it('preserves supported user settings', () => {
     expect(
       normalizeSettings({
-        deeplApiKey: 'dl',
+        groqApiKey: 'gq',
         geminiTargetLanguage: 'ja',
         originalFontSize: 30,
         translationFontSize: 26,
       }),
     ).toMatchObject({
-      deeplApiKey: 'dl',
+      groqApiKey: 'gq',
       geminiTargetLanguage: 'ja',
       originalFontSize: 30,
       translationFontSize: 26,
@@ -148,6 +149,28 @@ describe('validateSettingsForStart', () => {
   });
 });
 
+describe('read-ahead services', () => {
+  const readAhead = { ...DEFAULT_SETTINGS, transcriber: 'gemini-read-ahead' } as const;
+
+  it('defaults to Gemini recognition, rejecting unknown recognizers', () => {
+    expect(normalizeSettings({}).readAheadRecognizer).toBe('gemini');
+    expect(normalizeSettings({ readAheadRecognizer: 'whisper' as never }).readAheadRecognizer).toBe('gemini');
+    expect(normalizeSettings({ groqApiKey: 'gq', readAheadRecognizer: 'cloudflare' }))
+      .toMatchObject({ groqApiKey: 'gq', readAheadRecognizer: 'cloudflare' });
+  });
+
+  it("asks for the keys of the recognizer chosen, and only those (Chrome's translation needs none)", () => {
+    expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'gemini' })).toEqual(['geminiApiKey']);
+    expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'groq' })).toEqual(['groqApiKey']);
+    expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'cloudflare' }))
+      .toEqual(['cloudflareAccountId', 'cloudflareApiToken']);
+    // Gemini live ignores the read-ahead choice.
+    expect(requiredApiKeys({ ...DEFAULT_SETTINGS, readAheadRecognizer: 'groq' })).toEqual(['geminiApiKey']);
+    expect(validateSettingsForStart({ ...readAhead, cloudflareApiToken: 'tok', readAheadRecognizer: 'cloudflare' }))
+      .toEqual({ cloudflareAccountId: '請輸入 Cloudflare 帳號 ID' });
+  });
+});
+
 describe('migrateStoredSettings', () => {
   // As a 1.4.x Deepgram user had them stored.
   const deepgramUser = {
@@ -161,11 +184,11 @@ describe('migrateStoredSettings', () => {
   };
 
   it('moves a Deepgram user to Gemini live and drops Deepgram key and fields', () => {
-    const result = migrateStoredSettings({ ...deepgramUser, deeplApiKey: 'dl', originalFontSize: 30 });
+    const result = migrateStoredSettings({ ...deepgramUser, groqApiKey: 'gq', originalFontSize: 30 });
     expect(result.changed).toBe(true);
     expect(result.settings).toEqual({
       ...DEFAULT_SETTINGS,
-      deeplApiKey: 'dl',
+      groqApiKey: 'gq',
       originalFontSize: 30,
       transcriber: 'gemini',
     });
@@ -182,6 +205,12 @@ describe('migrateStoredSettings', () => {
     const result = migrateStoredSettings({ ...DEFAULT_SETTINGS, deepgramApiKey: 'dg' });
     expect(result).toMatchObject({ changed: true, needsGeminiKeyNotice: false });
     expect(result.settings).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('drops a DeepL key stored by 1.4.x (DeepL is no longer used)', () => {
+    const result = migrateStoredSettings({ ...DEFAULT_SETTINGS, deeplApiKey: 'dl-secret' });
+    expect(result).toMatchObject({ changed: true, needsGeminiKeyNotice: false });
+    expect(JSON.stringify(result.settings)).not.toContain('dl-secret');
   });
 
   it('leaves settings that are already current alone', () => {

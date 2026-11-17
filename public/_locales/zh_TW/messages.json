@@ -315,7 +315,7 @@
     "description": "Heading and document title of the options page."
   },
   "optionsKeyHint": {
-    "message": "可以清除並儲存 Key。兩種字幕模式都只需要 Gemini 的 Key；DeepL 的 Key 是給即將推出的翻譯選項使用。",
+    "message": "可以清除並儲存 Key。只會用到你選的服務需要的 Key：Gemini live 和用 Gemini 的預讀模式需要 Gemini；用 Whisper 的預讀模式需要 Groq，或 Cloudflare 的帳號 ID 與 Token（翻譯由 Chrome 內建翻譯負責，不需要 Key）。",
     "description": "Explanation under the key fields on the options page."
   },
   "save": {
@@ -383,34 +383,6 @@
   },
   "errorGeminiUnavailable": {
     "message": "Gemini 服務暫時無法使用",
-    "description": "Caption overlay error."
-  },
-  "errorInvalidCredentials": {
-    "message": "DeepL API Key 無效，請到設定頁更新",
-    "description": "Caption overlay error."
-  },
-  "errorInvalidResponse": {
-    "message": "DeepL 回傳了無法辨識的資料",
-    "description": "Caption overlay error."
-  },
-  "errorProviderUnavailable": {
-    "message": "DeepL 服務暫時無法使用",
-    "description": "Caption overlay error."
-  },
-  "errorQuotaExceeded": {
-    "message": "DeepL 本月翻譯額度已用完",
-    "description": "Caption overlay error."
-  },
-  "errorRateLimited": {
-    "message": "DeepL 請求過於頻繁，請稍後再試",
-    "description": "Caption overlay error."
-  },
-  "errorTranslationDisabled": {
-    "message": "DeepL 連續失敗 5 次，本次字幕已停止翻譯",
-    "description": "Caption overlay error."
-  },
-  "errorTranslationFailed": {
-    "message": "DeepL 翻譯失敗，原文字幕仍會繼續",
     "description": "Caption overlay error."
   },
   "errorUnknown": {
@@ -541,7 +513,7 @@
     "description": "Feedback drop-down option that reveals a free-text box."
   },
   "transcriberReadAhead": {
-    "message": "Gemini 預讀",
+    "message": "預讀模式",
     "description": "Provider dropdown option for read-ahead mode, which translates upcoming audio so captions appear as the speech starts."
   },
   "errorReadAheadLoading": {
@@ -567,5 +539,104 @@
   "deepgramRemovedNeedGeminiKey": {
     "message": "已不再支援 Deepgram，字幕已改用 Gemini live。請設定 Gemini API 金鑰以繼續使用。",
     "description": "Popup notice shown once after the update that removed Deepgram, to a Deepgram user who has no Gemini key yet."
+  },
+  "captionModeLabel": {
+    "message": "翻譯模式",
+    "description": "Label for the dropdown that picks Gemini live or read-ahead mode."
+  },
+  "recognizerGemini": {
+    "message": "Gemini（含翻譯）",
+    "description": "Read-ahead speech recognition option: Gemini, which also translates."
+  },
+  "translatorLabel": {
+    "message": "翻譯服務",
+    "description": "Label for the read-ahead translation dropdown."
+  },
+  "translatorChrome": {
+    "message": "Chrome 內建翻譯",
+    "description": "Read-ahead translation option: Chrome's on-device Translator."
+  },
+  "needGroqKey": {
+    "message": "請先輸入 Groq API Key。",
+    "description": "Popup error when starting read-ahead with Groq Whisper without a key."
+  },
+  "needGroqKeyField": {
+    "message": "請輸入 Groq API Key",
+    "description": "Field-level validation message for the Groq key."
+  },
+  "groqPermissionDenied": {
+    "message": "Groq Whisper 需要連線到 api.groq.com 的權限。",
+    "description": "Popup message when the user declines the Groq host permission."
+  },
+  "switchToGroqWhisper": {
+    "message": "改用 Groq Whisper",
+    "description": "Caption overlay button shown with a used-up Gemini quota in read-ahead mode."
+  },
+  "errorGroqQuotaExceeded": {
+    "message": "Groq 額度已用完",
+    "description": "Caption overlay error in read-ahead mode with Groq Whisper."
+  },
+  "errorReadAheadTranslatorUnsupported": {
+    "message": "Chrome 內建翻譯不支援此語言，請把語音辨識改回「Gemini（含翻譯）」",
+    "description": "Caption overlay error when Chrome translation cannot translate the language pair."
+  },
+  "providerSignupLink": {
+    "message": "前往申請 API Key：$1",
+    "description": "Link under a provider dropdown. $1 is the provider's sign-up domain.",
+    "placeholders": {
+      "domain": { "content": "$1", "example": "console.groq.com" }
+    }
+  },
+  "transcriberLive": {
+    "message": "即時音訊模式",
+    "description": "Translation mode option: Gemini live translate, which captions the tab audio as it plays."
+  },
+  "needCloudflareAccountId": {
+    "message": "請先輸入 Cloudflare 帳號 ID。",
+    "description": "Popup error when starting read-ahead with Cloudflare Whisper without an account ID."
+  },
+  "needCloudflareToken": {
+    "message": "請先輸入 Cloudflare API Token。",
+    "description": "Popup error when starting read-ahead with Cloudflare Whisper without a token."
+  },
+  "needCloudflareAccountIdField": {
+    "message": "請輸入 Cloudflare 帳號 ID",
+    "description": "Field-level validation message for the Cloudflare account ID."
+  },
+  "needCloudflareTokenField": {
+    "message": "請輸入 Cloudflare API Token",
+    "description": "Field-level validation message for the Cloudflare API token."
+  },
+  "cloudflarePermissionDenied": {
+    "message": "Cloudflare Whisper 需要連線到 api.cloudflare.com 的權限。",
+    "description": "Popup message when the user declines the Cloudflare host permission."
+  },
+  "cloudflareAccountIdLabel": {
+    "message": "Cloudflare 帳號 ID",
+    "description": "Label of the Cloudflare account ID field."
+  },
+  "cloudflareAccountIdHint": {
+    "message": "在 Cloudflare 後台 Workers AI 頁面的「Use REST API」中；API Token 需要 Workers AI 權限。",
+    "description": "Hint under the Cloudflare account ID field."
+  },
+  "errorCloudflareQuotaExceeded": {
+    "message": "Cloudflare 今日額度已用完",
+    "description": "Caption overlay error in read-ahead mode with Cloudflare Whisper."
+  },
+  "switchToCloudflareWhisper": {
+    "message": "改用 Cloudflare Whisper",
+    "description": "Caption overlay button shown with a used-up Groq quota in read-ahead mode."
+  },
+  "translatorWebFallback": {
+    "message": "Google 網頁翻譯（自動）",
+    "description": "Read-ahead translation shown when Chrome's built-in Translator cannot be used and the web fallback takes over."
+  },
+  "translatorWebFallbackHintComputer": {
+    "message": "這台電腦無法使用 Chrome 內建翻譯，會自動改用 Google 網頁翻譯。這不是官方 API，可能隨時失效。",
+    "description": "Popup hint when the built-in Translator is missing and the web fallback is used."
+  },
+  "translatorWebFallbackHintLanguage": {
+    "message": "Chrome 內建翻譯不支援這組語言，會自動改用 Google 網頁翻譯。這不是官方 API，可能隨時失效。",
+    "description": "Popup hint when the built-in Translator cannot do the language pair and the web fallback is used."
   }
 }

@@ -1,12 +1,14 @@
 # 雙語即時字幕翻譯
 
-Chrome 116+ 的 Manifest V3 擴充功能：在影片上顯示原文與譯文兩行字幕，辨識與翻譯都由 Gemini 完成，只需要一把 Gemini API Key。
+Chrome 116+ 的 Manifest V3 擴充功能：在影片上顯示原文與譯文兩行字幕。預設由 Gemini 一手包辦辨識與翻譯，只需要一把 Gemini API Key；預讀模式也可以改用 Groq 或 Cloudflare 的 Whisper 辨識，搭配 Chrome 內建翻譯（無法使用時自動改用 Google 網頁翻譯）。
 
 ## 目前支援
 
-- 兩種模式，在 Popup 的「語音辨識」下拉切換，都只需要一把 Gemini API Key：
-  - **Gemini live translate 3.5**（預設）：擷取目前分頁的音訊（`chrome.tabCapture` + offscreen document），單一 WebSocket 同時回傳原文與譯文
-  - **Gemini 預讀**：先讀取播放器已經載入、還沒播放的音訊並翻譯，字幕在講者開口時就出現（YouTube 與一般 HTML5 影片；見 [ADR 0001](docs/adr/0001-read-ahead-via-shadow-player.md)）
+- 兩種模式，在 Popup 的「翻譯模式」下拉切換：
+  - **即時音訊模式**（預設，Gemini live translate 3.5）：擷取目前分頁的音訊（`chrome.tabCapture` + offscreen document），單一 WebSocket 同時回傳原文與譯文
+  - **預讀模式**：先讀取播放器已經載入、還沒播放的音訊並翻譯，字幕在講者開口時就出現（YouTube 與一般 HTML5 影片；見 [ADR 0001](docs/adr/0001-read-ahead-via-shadow-player.md)）。語音辨識與翻譯可以分開選（見 [ADR 0002](docs/adr/0002-read-ahead-recognition-and-translation-chosen-separately.md)）：
+    - **Gemini（含翻譯）**：一把 Gemini API Key
+    - **Groq Whisper** 或 **Cloudflare Whisper**（免費方案每天約 3.5 小時音訊）辨識，搭配 **Chrome 內建翻譯**（在本機執行，不需要金鑰；這台電腦或這組語言無法使用時，自動改用 Google 網頁翻譯。這不是官方 API，可能隨時失效）：Gemini 每天 500 次的免費額度用完時可以改用；額度用完時，字幕上的「改用 Groq Whisper」／「改用 Cloudflare Whisper」按鈕會直接切換
 - YouTube、Netflix、Disney+ 與一般 HTML5 影片的頁內字幕
 - 可自由拖曳、調整寬高的浮動字幕；拉高後會自動顯示更多完整的雙語句子
 - 可將字幕切換至 Chrome 原生 Side Panel 查看較長的字幕紀錄，關閉 Side Panel 後會自動切回浮動字幕
@@ -15,17 +17,18 @@ Chrome 116+ 的 Manifest V3 擴充功能：在影片上顯示原文與譯文兩�
 - 背景透明度可調，且在字幕進行中即時生效
 - API Key 僅存放於 `chrome.storage.local`
 
-系統音訊與跨 App 置頂字幕尚未支援。預設值：Gemini live translate 3.5、字幕寬度約為視窗 70%、背景透明度 50%。
+系統音訊與跨 App 置頂字幕尚未支援。預設值：即時音訊模式、字幕寬度約為視窗 70%、背景透明度 50%。
 
 兩種模式的差異：
 
-| | Gemini live translate 3.5 | Gemini 預讀 |
+| | 即時音訊模式（Gemini live translate 3.5） | 預讀模式 |
 | --- | --- | --- |
 | 字幕時機 | 比講者稍晚出現 | 講者開口時出現；下一句還沒翻好時，影片會暫停等待 |
 | 適用範圍 | 任何分頁（含直播、DRM 影片） | YouTube 與一般 HTML5 影片（不支援直播與 DRM） |
 | 來源語言 | 自動偵測（無法指定） | 自動偵測，也可以指定 |
 | 語言清單 | Google 官方 78 種 | 同左 |
-| 免費額度 | 依每分鐘 token 計算 | 每段 10～15 秒音訊算一次請求，免費方案每天 500 次，約 1.5～2 小時影片 |
+| API Key | Gemini | Gemini；或 Groq，或 Cloudflare（帳號 ID 與 API Token） |
+| 免費額度 | 依每分鐘 token 計算 | 每段 10～15 秒音訊算一次請求：Gemini 免費方案每天 500 次（約 1.5～2 小時影片），Groq 每天 2000 次；Cloudflare 每天約 214 分鐘音訊 |
 
 > 1.5.0 起移除了 Deepgram Nova-3 + DeepL。原本選 Deepgram 的使用者會自動改用 Gemini live。
 
@@ -122,7 +125,7 @@ npm run dev                          # 本機預覽官網
 
 ## 隱私與費用
 
-音訊只會傳送至 Google Gemini，原文與譯文都由它產生：Gemini live 傳送目前分頁的音訊，Gemini 預讀則傳送播放器已載入的音訊片段。使用者需自行提供並負擔 Gemini 的 API 額度：Gemini Live 按每分鐘 token 計費，語音約 25 tokens/秒，也就是一條連線持續消耗約 1500 input tokens/分鐘，即使沒人說話也一樣。API Key 不會同步到其他裝置，但能存取這個 Chrome profile 的人或程式仍可能讀取本機擴充功能資料。
+Gemini live 把目前分頁的音訊傳送至 Google Gemini。預讀模式把播放器已載入的音訊片段傳送至你選的語音辨識服務（Google Gemini、Groq 或 Cloudflare）；改用 Groq 或 Cloudflare 時，辨識出的文字由 Chrome 內建翻譯在本機翻譯；Chrome 內建翻譯無法使用時，改送至 Google 網頁翻譯。使用者需自行提供並負擔所選服務的 API 額度：Gemini Live 按每分鐘 token 計費，語音約 25 tokens/秒，也就是一條連線持續消耗約 1500 input tokens/分鐘，即使沒人說話也一樣。API Key 不會同步到其他裝置，但能存取這個 Chrome profile 的人或程式仍可能讀取本機擴充功能資料。
 
 ## 授權
 

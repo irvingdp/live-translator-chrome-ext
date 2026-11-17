@@ -9,7 +9,15 @@ import {
   normalizeSettings,
   type AppSettings,
 } from '../core/settings';
+import { chromeLanguageCode, type TranslatorApi } from '../read-ahead/chrome-translation';
+import { CLOUDFLARE_ORIGIN } from '../read-ahead/cloudflare-transcription';
+import { GROQ_ORIGIN } from '../read-ahead/groq-transcription';
+import { WEB_TRANSLATION_ORIGINS } from '../read-ahead/web-translation';
 import type { PopupApi } from './PopupApp';
+
+function translatorApi(): TranslatorApi | undefined {
+  return (globalThis as { Translator?: TranslatorApi }).Translator;
+}
 
 interface SessionResponse {
   authorized?: boolean;
@@ -27,6 +35,26 @@ async function control(message: ExtensionMessage): Promise<SessionStatus> {
 }
 
 export const browserPopupApi: PopupApi = {
+  async chromeTranslatorStatus(sourceLanguage, targetLanguage) {
+    const api = translatorApi();
+    if (!api) return 'unsupported';
+    const availability = await api.availability({
+      sourceLanguage: chromeLanguageCode(sourceLanguage),
+      targetLanguage: chromeLanguageCode(targetLanguage),
+    });
+    return availability === 'downloading' ? 'downloadable' : availability;
+  },
+  async prepareChromeTranslator(sourceLanguage, targetLanguage) {
+    await translatorApi()?.create({
+      sourceLanguage: chromeLanguageCode(sourceLanguage),
+      targetLanguage: chromeLanguageCode(targetLanguage),
+    });
+  },
+  // One prompt for the Whisper service and the web translation it may fall
+  // back to (asked for here, since the fallback happens without a gesture).
+  requestPermission: (service) => chrome.permissions.request({
+    origins: [service === 'cloudflare' ? CLOUDFLARE_ORIGIN : GROQ_ORIGIN, ...WEB_TRANSLATION_ORIGINS],
+  }),
   async authorizeCurrentTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id === undefined) return undefined;

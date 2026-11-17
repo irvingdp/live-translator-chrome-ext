@@ -83,8 +83,23 @@ export interface DisplayedCue {
 
 // 'loading': holding for audio; 'translating': holding for the translation
 // of audio already read. Shown differently so a long hold says which it is.
-// 'quota_exceeded': a chunk failed because the API's daily quota is used up.
-export type ReadAheadStatus = 'failed' | 'loading' | 'quota_exceeded' | 'translating' | undefined;
+// A failed chunk shows 'failed', or the reason when it is worth telling the
+// viewer: a provider's quota is used up, or Chrome's built-in Translator cannot
+// translate this language pair.
+export const READ_AHEAD_FAILURES = [
+  'cloudflare_quota_exceeded',
+  'gemini_quota_exceeded',
+  'groq_quota_exceeded',
+  'translator_unsupported',
+] as const;
+export type ReadAheadFailure = (typeof READ_AHEAD_FAILURES)[number];
+
+export type ReadAheadStatus =
+  | 'failed'
+  | 'loading'
+  | 'translating'
+  | ReadAheadFailure
+  | undefined;
 
 export interface ReadAheadDependencies {
   main: MainPlayer;
@@ -97,7 +112,7 @@ export interface ReadAheadDependencies {
 
 interface Chunk {
   // Why a failed chunk failed, when that is worth telling the viewer.
-  failure?: 'quota_exceeded';
+  failure?: ReadAheadFailure;
   end: number; // media time up to which this chunk's cues are complete
   start: number;
   state: 'done' | 'failed' | 'pending';
@@ -469,18 +484,19 @@ export class ReadAheadSession {
     // One attempt only (no retries): a failed chunk shows "翻譯失敗" rather
     // than holding the viewer for another request.
     let sentences: ChunkSentence[] | undefined;
-    let quotaExceeded = false;
+    let failure: ReadAheadFailure | undefined;
     try {
       sentences = await this.dependencies.translate(pcm);
     } catch (error) {
       sentences = undefined;
-      quotaExceeded = error instanceof Error && error.message === 'quota_exceeded';
+      const reason = error instanceof Error ? error.message : undefined;
+      failure = READ_AHEAD_FAILURES.find((known) => known === reason);
     }
     this.inFlight -= 1;
     if (this.disposed) return;
     if (!sentences) {
       chunk.state = 'failed';
-      if (quotaExceeded) chunk.failure = 'quota_exceeded';
+      if (failure) chunk.failure = failure;
     } else {
       chunk.state = 'done';
       this.addCues(chunk, sentences, startsHard, endsHard, samples);

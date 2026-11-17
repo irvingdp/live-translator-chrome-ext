@@ -9,14 +9,25 @@ if ((manifest.content_scripts?.length ?? 0) > 0) {
 }
 
 const expectedProviderHosts = [
-  'https://api.deepl.com/*',
-  'https://api-free.deepl.com/*',
   'https://generativelanguage.googleapis.com/*',
 ].sort();
 const actualProviderHosts = [...(manifest.host_permissions ?? [])].sort();
 if (JSON.stringify(actualProviderHosts) !== JSON.stringify(expectedProviderHosts)) {
   throw new Error(
     `Unexpected host permissions: ${JSON.stringify(actualProviderHosts)}`,
+  );
+}
+
+// Hosts asked for at runtime, when the user picks that provider.
+const expectedOptionalHosts = [
+  'https://api.cloudflare.com/*',
+  'https://translate.googleapis.com/*',
+  'https://api.groq.com/*',
+].sort();
+const actualOptionalHosts = [...(manifest.optional_host_permissions ?? [])].sort();
+if (JSON.stringify(actualOptionalHosts) !== JSON.stringify(expectedOptionalHosts)) {
+  throw new Error(
+    `Unexpected optional host permissions: ${JSON.stringify(actualOptionalHosts)}`,
   );
 }
 
