@@ -75,9 +75,19 @@ export default defineBackground(() => {
   // where the viewer is. Otherwise they can only be set up in the popup: the
   // captions stop, and the popup opens (or, where Chrome refuses, the options
   // page) with that service already selected.
-  async function switchReadAheadRecognizer(
+  function switchReadAheadRecognizer(
     tabId: number,
     recognizer: 'groq' | 'local',
+  ): Promise<{ ok: true; switched: boolean }> {
+    return restartReadAhead(tabId, { readAheadRecognizer: recognizer });
+  }
+
+  // Saves `change` and restarts the running read-ahead session with it from
+  // where the viewer is; or, when its recognizer is not set up, stops and
+  // opens the popup on it.
+  async function restartReadAhead(
+    tabId: number,
+    change: Partial<AppSettings>,
   ): Promise<{ ok: true; switched: boolean }> {
     const status = controller.status();
     const stored = await chrome.storage.local.get('settings');
@@ -85,13 +95,17 @@ export default defineBackground(() => {
     if (status.state !== 'running' || status.tabId !== tabId || settings.transcriber !== 'gemini-read-ahead') {
       return { ok: true, switched: false };
     }
-    // Groq needs its key and permission; Local Whisper its downloaded model.
+    const next = normalizeSettings({ ...settings, ...change });
+    const recognizer = next.readAheadRecognizer;
+    // Gemini needs its key; Groq its key and permission; Local Whisper its
+    // downloaded model.
     const ready = recognizer === 'local'
-      ? isModelCached(settings.localWhisperModel, await cachedModelUrls().catch(() => []))
-      : settings.groqApiKey.trim() !== '' && await chrome.permissions.contains({
-        origins: [GROQ_ORIGIN],
-      }).catch(() => false);
-    const next = { ...settings, readAheadRecognizer: recognizer };
+      ? isModelCached(next.localWhisperModel, await cachedModelUrls().catch(() => []))
+      : recognizer === 'gemini'
+        ? next.geminiApiKey.trim() !== ''
+        : next.groqApiKey.trim() !== '' && await chrome.permissions.contains({
+          origins: [GROQ_ORIGIN],
+        }).catch(() => false);
     await chrome.storage.local.set({ settings: next });
     if (!ready) {
       await stopSession();
@@ -706,6 +720,7 @@ export default defineBackground(() => {
     'READ_AHEAD_CUE',
     'READ_AHEAD_STATUS',
     'READ_AHEAD_SWITCH_RECOGNIZER',
+    'READ_AHEAD_USE_RECOGNIZER',
     'READ_AHEAD_TRANSLATE',
     'READ_AHEAD_WEB_TRANSLATE',
     'BROWSER_FULLSCREEN_FALLBACK',
@@ -818,6 +833,11 @@ export default defineBackground(() => {
               return { error: 'unsupported_recognizer', ok: false };
             }
             return enqueueLifecycle(() => switchReadAheadRecognizer(tabId, recognizer));
+          }
+          case 'READ_AHEAD_USE_RECOGNIZER': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            return enqueueLifecycle(() => restartReadAhead(tabId, { preferCaptionTracks: false }));
           }
           case 'READ_AHEAD_WEB_TRANSLATE': {
             const tabId = sender.tab?.id;

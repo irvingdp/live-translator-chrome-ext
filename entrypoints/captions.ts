@@ -166,6 +166,13 @@ export default defineUnlistedScript(() => {
   };
   const overlay = new CaptionOverlay(document, {
     async onSessionAction(action) {
+      if (action === 'use_recognizer') {
+        await chrome.runtime.sendMessage({
+          target: 'background',
+          type: 'READ_AHEAD_USE_RECOGNIZER',
+        } satisfies import('../src/core/messages').ExtensionMessage);
+        return;
+      }
       await chrome.runtime.sendMessage({
         target: 'background',
         type: 'READ_AHEAD_SWITCH_RECOGNIZER',
@@ -303,6 +310,15 @@ export default defineUnlistedScript(() => {
       return false;
     },
   );
+
+  // After the extension is reloaded or updated this script is cut off from
+  // it: nothing will update or clear the captions any more, so they go.
+  const orphanCheck = window.setInterval(() => {
+    if (chrome.runtime?.id) return;
+    window.clearInterval(orphanCheck);
+    stopPositioning();
+    overlay.hide();
+  }, 2_000);
 
   void chrome.runtime.sendMessage({
     target: 'background',

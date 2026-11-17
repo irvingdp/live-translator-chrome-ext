@@ -1,7 +1,18 @@
+// A word of a cue's original line with the media time it is said, for word
+// highlight (read-ahead with Whisper).
+export interface CaptionWord {
+  end: number;
+  start: number;
+  text: string;
+}
+
 export interface CaptionPair {
   id: string;
   original: string;
   translation: string;
+  // The original line word by word, when the viewer has word highlight on and
+  // the recognizer timed each word; absent otherwise.
+  words?: CaptionWord[];
 }
 
 // Owned by the background controller and sent whole to the content script on

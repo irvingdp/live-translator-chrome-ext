@@ -4,6 +4,7 @@ import {
   CaptionOverlay,
   findLargestVisiblePlayerFrame,
   findLargestVisibleVideo,
+  currentWordIndex,
   sessionErrorText,
 } from '../../src/content/caption-overlay';
 import type { OverlayLayout } from '../../src/core/overlay-layout';
@@ -538,6 +539,30 @@ describe('CaptionOverlay', () => {
     ]);
   });
 
+  it('still shows the newest pair when it alone is taller than the captions box', () => {
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains('viewport') ? 77 : 0;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains('pair') ? 104 : 0;
+      },
+    );
+    const overlay = new CaptionOverlay(document);
+    overlay.show(appearance, layout);
+    overlay.setWindow([
+      { id: 'old', original: 'Before.', translation: '之前。' },
+      { id: 'long', original: 'And I was firmly convinced that every one of my students could learn.', translation: '我堅信每個學生都能學會。' },
+    ]);
+
+    expect(pairsOf().map(({ id, hidden }) => ({ id, hidden }))).toEqual([
+      { hidden: 'true', id: 'old' },
+      { hidden: 'false', id: 'long' },
+    ]);
+  });
+
   it('opens the native panel and hides the webpage overlay', async () => {
     const onOpenSidePanel = vi.fn().mockResolvedValue(undefined);
     const overlay = new CaptionOverlay(document, { onOpenSidePanel });
@@ -733,5 +758,70 @@ describe('sessionErrorText', () => {
     expect(sessionErrorText('local_provider_unavailable')).toMatch(/^本地 Whisper 暫時無法使用/);
     expect(sessionErrorText('groq_quota_exceeded')).toMatch(/每天約 2000 次/);
     expect(sessionErrorText('something_else')).toBe('字幕服務發生未知錯誤，請重新啟動');
+  });
+});
+
+describe('word highlight', () => {
+  const words = [
+    { end: 10.4, start: 10, text: 'Hello' },
+    { end: 11, start: 10.6, text: 'there,' },
+    { end: 12, start: 11.5, text: 'friend.' },
+  ];
+
+  it('takes the word being said as the last one started, through the pause after it', () => {
+    expect(currentWordIndex(words, 9)).toBe(-1);
+    expect(currentWordIndex(words, 10.5)).toBe(0);
+    expect(currentWordIndex(words, 11.2)).toBe(1);
+    expect(currentWordIndex(words, 13)).toBe(2);
+  });
+
+  it("marks the original's words by the player's time: said, current, upcoming", () => {
+    vi.useFakeTimers();
+    try {
+      const video = document.createElement('video');
+      Object.defineProperty(video, 'currentTime', { configurable: true, value: 10.7, writable: true });
+      const player = document.createElement('div');
+      player.id = 'movie_player';
+      player.append(video);
+      document.body.append(player);
+      const overlay = new CaptionOverlay(document);
+      overlay.show(appearance, layout);
+      overlay.setWindow([{ id: 'c1', original: 'Hello there, friend.', translation: '你好，朋友。', words }]);
+
+      const states = () => [...shadow()!.querySelectorAll<HTMLElement>('.word')]
+        .map((word) => `${word.textContent}:${word.dataset.state}`);
+      expect(shadow()!.querySelector('.original')!.textContent).toBe('Hello there, friend.');
+      expect(states()).toEqual(['Hello:said', 'there,:current', 'friend.:upcoming']);
+
+      video.currentTime = 11.6;
+      vi.advanceTimersByTime(100);
+      expect(states()).toEqual(['Hello:said', 'there,:said', 'friend.:current']);
+      // The translation is never split into words.
+      expect(shadow()!.querySelector('.translation .word')).toBeNull();
+
+      overlay.setWindow([{ id: 'c2', original: 'Plain.', translation: '平。' }]);
+      expect(shadow()!.querySelectorAll('.word')).toHaveLength(0);
+      overlay.hide();
+      player.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a notice with a button while the pointer is over the captions', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show(appearance, layout);
+    overlay.setSessionError('read_ahead_captions_youtube_no_highlight', 'use_recognizer');
+    const message = () => shadow()!.querySelector('.status-message')!.textContent;
+    expect(message()).toBe('使用 YouTube 字幕（不支援逐字標示）');
+    expect(shadow()!.querySelector('.status-action')!.textContent).toBe('改用語音辨識');
+
+    const captions = shadow()!.querySelector('.captions')!;
+    captions.dispatchEvent(new Event('pointerenter'));
+    overlay.clearSessionError();
+    expect(message()).toBe('使用 YouTube 字幕（不支援逐字標示）');
+    captions.dispatchEvent(new Event('pointerleave'));
+    expect(message()).toBe('');
+    overlay.hide();
   });
 });

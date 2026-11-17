@@ -92,3 +92,10 @@ export function splitIntoSentences(text: string): SentenceSpan[] {
   if (tail) spans.push(tail);
   return spans;
 }
+
+// Whether a space goes between text so far and the next word: not at the
+// start, and not between two characters of a script written without spaces.
+export function spaceBetween(before: string, next: string): boolean {
+  const previous = before.at(-1);
+  return Boolean(previous) && !(isWideCharacter(previous!) && isWideCharacter(next[0] ?? ''));
+}

@@ -6,7 +6,7 @@ status: accepted
 
 Read-ahead turns upcoming audio into **cues** through a **recognizer** and a **translator** (ADR 0002). Many videos already ship timed captions written by their uploader. Those are better sentences than any recognizer's, and they cost no quota and need no audio.
 
-So in read-ahead mode, when the video has a **caption track** in the spoken language, read-ahead reads the sentences from it and skips the recognizer. When it also has one in the target language, the translation comes from that track and the translator is skipped too. Without a caption track, everything works as before. This happens on its own; there is no setting.
+So in read-ahead mode, when the video has a **caption track** in the spoken language, read-ahead reads the sentences from it and skips the recognizer. When it also has one in the target language, the translation comes from that track and the translator is skipped too. Without a caption track, everything works as before. This happens on its own. Since issue #18, the viewer can turn it off ("優先使用影片字幕軌"); see Considered Options.
 
 - **Which track is the original:** the one in the popup's source language, or, when that is set to detect, the one in the spoken language. YouTube has no field for that, but its own speech-recognition track is in it; a plain video's `default` track stands in. With neither, there is no original track.
 - **A target-language track only counts alongside an original one.** With a target track alone, the recognizer and translator run as before: recognized sentences and the uploader's lines are cut differently, so they could not be paired.
@@ -31,7 +31,7 @@ For ordinary HTML5 video, `<track>` elements are read through `video.textTracks`
 - **YouTube's auto-generated captions as an original track:** rejected. They are mostly unpunctuated, so sentences could only be cut at pauses and translate poorly. Gemini and Whisper punctuate, so such videos go to the recognizer.
 - **YouTube's auto-translate (`tlang`) as the translation:** rejected by the user. Only a track the uploader wrote in the target language replaces the translator.
 - **Gemini translating the track's text** when Gemini is the recognizer: rejected. It would still spend the 500-a-day quota that ADR 0002 works around; the on-device translator costs nothing.
-- **A setting to turn caption tracks off:** not now. It can be added to the popup if someone needs it.
+- **A setting to turn caption tracks off:** not at first. It was added with word highlight (issue #18): a caption track has no word timing, so a viewer who wants words marked must be able to choose Whisper instead. The popup has "優先使用影片字幕軌" (on by default). With word highlight on, the notice reads "使用 YouTube 字幕（不支援逐字標示）" and carries a "改用語音辨識" button, which turns the setting off and restarts on the recognizer from where the viewer is.
 - **Fetching `timedtext` URLs directly:** rejected; see above.
 
 ## Consequences

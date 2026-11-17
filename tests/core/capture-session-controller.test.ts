@@ -16,6 +16,8 @@ const settings: SessionSettings = {
   geminiTargetLanguage: 'zh-Hant',
   groqApiKey: 'groq-key',
   localWhisperModel: 'turbo',
+  preferCaptionTracks: true,
+  wordHighlight: true,
   maxLineWidth: 90,
   readAheadRecognizer: 'gemini',
   transcriber: 'gemini',
@@ -487,6 +489,7 @@ describe('CaptureSessionController read-ahead mode', () => {
     expect(harness.dependencies.getStreamId).not.toHaveBeenCalled();
     expect(harness.dependencies.sendToOffscreen).not.toHaveBeenCalled();
     expect(harness.dependencies.startReadAhead).toHaveBeenCalledWith(42, {
+      preferCaptionTracks: true,
       sessionId: expect.any(String),
       targetLanguage: 'zh-Hant',
     });
@@ -713,6 +716,44 @@ describe('CaptureSessionController read-ahead mode', () => {
     expect(vi.mocked(noGpu.dependencies.sendToTab).mock.calls.map(([, message]) => message)).toEqual([
       { type: 'SESSION_ERROR', payload: { code: 'groq_timeout' } },
     ]);
+  });
+
+  it('passes the words of a cue to the overlay only with word highlight on', async () => {
+    const cue = { id: 'c1', original: 'Hi there.', translation: '嗨。', words: [{ end: 1, start: 0, text: 'Hi' }] };
+    const on = createHarness();
+    const onSession = await startReadAhead(on);
+    await on.controller.acceptReadAheadCue(onSession, 42, cue);
+    expect(on.dependencies.sendToTab).toHaveBeenLastCalledWith(42, { type: 'CAPTION_WINDOW', payload: { pairs: [cue] } });
+
+    const off = createHarness();
+    const offSession = await startReadAhead(off, { wordHighlight: false });
+    await off.controller.acceptReadAheadCue(offSession, 42, cue);
+    expect(off.dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
+      type: 'CAPTION_WINDOW',
+      payload: { pairs: [{ id: 'c1', original: 'Hi there.', translation: '嗨。' }] },
+    });
+  });
+
+  it('says a caption track has no word highlight, offering speech recognition, only with highlighting on', async () => {
+    const on = createHarness();
+    const onSession = await startReadAhead(on);
+    await on.controller.acceptReadAheadStatus(onSession, 42, 'captions_youtube');
+    expect(on.dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
+      type: 'SESSION_ERROR',
+      payload: { action: 'use_recognizer', code: 'read_ahead_captions_youtube_no_highlight' },
+    });
+
+    const off = createHarness();
+    const offSession = await startReadAhead(off, { wordHighlight: false });
+    await off.controller.acceptReadAheadStatus(offSession, 42, 'captions_youtube');
+    expect(off.dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
+      type: 'SESSION_ERROR',
+      payload: { code: 'read_ahead_captions_youtube' },
+    });
+    // The viewer's caption-track choice goes to the page.
+    const skip = createHarness();
+    await startReadAhead(skip, { preferCaptionTracks: false });
+    expect(vi.mocked(skip.dependencies.startReadAhead).mock.calls.at(-1)![1]).toMatchObject({ preferCaptionTracks: false });
   });
 
   it('reports an unsupported page as an error the popup can explain, without switching modes', async () => {

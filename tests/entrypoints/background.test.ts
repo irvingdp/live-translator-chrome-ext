@@ -16,6 +16,8 @@ const settings: AppSettings = {
   geminiTargetLanguage: 'zh-Hant',
   groqApiKey: 'groq-key',
   localWhisperModel: 'turbo',
+  preferCaptionTracks: true,
+  wordHighlight: true,
   maxLineWidth: 90,
   readAheadRecognizer: 'gemini',
   originalFontSize: 24,
@@ -439,6 +441,17 @@ describe('background offscreen document lifecycle', () => {
         expect(localStorageData.settings).toMatchObject({ readAheadRecognizer: 'local' });
         expect(readAheadStarts()).toHaveLength(1);
       });
+    });
+
+    it('stops preferring caption tracks and restarts on the recognizer from the notice button', async () => {
+      await startReadAhead({ geminiApiKey: 'gm', readAheadRecognizer: 'gemini' });
+
+      await expect(dispatchFrom({ target: 'background', type: 'READ_AHEAD_USE_RECOGNIZER' }, fromTab))
+        .resolves.toEqual({ ok: true, switched: true });
+
+      expect(localStorageData.settings).toMatchObject({ preferCaptionTracks: false, readAheadRecognizer: 'gemini' });
+      expect(readAheadStarts()).toHaveLength(2);
+      expect(readAheadStarts().at(-1)![1]).toMatchObject({ payload: { preferCaptionTracks: false } });
     });
 
     it('stops the captions too when the Groq key is set but the permission is not', async () => {

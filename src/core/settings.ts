@@ -53,12 +53,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxLineWidth: 90,
   originalFontSize: 16,
   originalTextColor: '#ffffff',
+  // Read-ahead: use the uploader's caption track when the video has one
+  // (ADR 0003), and mark the original word by word (issue #18).
+  preferCaptionTracks: true,
   // Without WebGPU; where the computer has it, the popup starts a viewer who
   // never chose on Local Whisper instead (initialRecognizer).
   readAheadRecognizer: 'groq',
   transcriber: 'gemini',
   translationFontSize: 16,
   translationTextColor: '#fde68a',
+  wordHighlight: true,
 };
 
 // Deepgram was removed in 1.5.0 (issue #10); a stored 'deepgram' falls back to
@@ -77,6 +81,10 @@ export type ReadAheadRecognizer = (typeof READ_AHEAD_RECOGNIZERS)[number];
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+function booleanValue(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
 }
 
 function stringValue(value: unknown, fallback: string): string {
@@ -143,6 +151,7 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       raw.originalTextColor,
       DEFAULT_SETTINGS.originalTextColor,
     ),
+    preferCaptionTracks: booleanValue(raw.preferCaptionTracks, DEFAULT_SETTINGS.preferCaptionTracks),
     readAheadRecognizer: oneOf(
       raw.readAheadRecognizer,
       READ_AHEAD_RECOGNIZERS,
@@ -158,6 +167,7 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       raw.translationTextColor,
       DEFAULT_SETTINGS.translationTextColor,
     ),
+    wordHighlight: booleanValue(raw.wordHighlight, DEFAULT_SETTINGS.wordHighlight),
   };
 }
 

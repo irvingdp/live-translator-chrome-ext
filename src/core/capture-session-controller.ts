@@ -29,8 +29,10 @@ export interface SessionSettings {
   groqApiKey: string;
   localWhisperModel: LocalWhisperModel;
   maxLineWidth: number;
+  preferCaptionTracks: boolean;
   readAheadRecognizer: ReadAheadRecognizer;
   transcriber: TranscriberId;
+  wordHighlight: boolean;
   originalFontSize: number;
   originalTextColor: string;
   translationFontSize: number;
@@ -62,6 +64,8 @@ export type TabMessage =
   | { type: 'READ_AHEAD_STOP'; payload: { sessionId: string } };
 
 export interface ReadAheadStartRequest {
+  // Whether to look for the video's caption tracks (ADR 0003).
+  preferCaptionTracks: boolean;
   sessionId: string;
   sourceLanguage?: string;
   targetLanguage: string;
@@ -69,7 +73,7 @@ export interface ReadAheadStartRequest {
 
 export type ReadAheadStatusCode = Exclude<ReadAheadStatus, undefined> | 'unsupported';
 
-export type SessionErrorAction = 'switch_to_groq' | 'switch_to_local';
+export type SessionErrorAction = 'switch_to_groq' | 'switch_to_local' | 'use_recognizer';
 
 const READ_AHEAD_STATUS_ERRORS: Partial<Record<ReadAheadStatusCode, string>> = {
   captions_loading: 'read_ahead_captions_loading',
@@ -425,7 +429,11 @@ export class CaptureSessionController {
     if (!this.isActiveReadAhead(sessionId, tabId) || this.currentStatus.state !== 'running') {
       return;
     }
-    this.readAheadCue = cue && { ...cue };
+    // Word highlight is the viewer's choice; without it the overlay gets the
+    // plain cue.
+    this.readAheadCue = cue && (this.settings?.wordHighlight || !cue.words
+      ? { ...cue }
+      : { id: cue.id, original: cue.original, translation: cue.translation });
     if (cue) {
       this.captionWindow.upsertOriginal(cue.id, cue.original);
       this.captionWindow.upsertTranslation(cue.id, cue.translation);
@@ -455,10 +463,17 @@ export class CaptureSessionController {
     if (action === 'switch_to_local' && !await this.dependencies.localWhisperUsable?.().catch(() => false)) {
       action = undefined;
     }
-    await this.dependencies.sendToTab(tabId, status
+    let code = status && readAheadErrorCode(status);
+    // A caption track has no word timing: with word highlight on, the notice
+    // says so and offers the recognizer instead (issue #18).
+    if ((status === 'captions_youtube' || status === 'captions_video') && this.settings?.wordHighlight) {
+      code = `${readAheadErrorCode(status)}_no_highlight`;
+      action = 'use_recognizer';
+    }
+    await this.dependencies.sendToTab(tabId, code
       ? {
           type: 'SESSION_ERROR',
-          payload: { code: readAheadErrorCode(status), ...(action ? { action } : {}) },
+          payload: { code, ...(action ? { action } : {}) },
         }
       : { type: 'SESSION_ERROR_CLEAR' });
   }
@@ -684,6 +699,7 @@ function readAheadRequest(
 ): ReadAheadStartRequest {
   const source = settings.geminiSourceLanguage;
   return {
+    preferCaptionTracks: settings.preferCaptionTracks,
     sessionId,
     ...(source && source !== 'auto' ? { sourceLanguage: source } : {}),
     targetLanguage: settings.geminiTargetLanguage,
