@@ -6,6 +6,18 @@ import type { CaptionPair } from './caption-window';
 import type { ReadAheadStatusCode } from './capture-session-controller';
 import type { AppSettings, CaptionAppearance } from './settings';
 import type { OverlayLayout } from './overlay-layout';
+import type { LocalWhisperModel } from '../read-ahead/local-whisper';
+
+// A model download as the popup shows it (chrome.storage.session).
+export interface LocalWhisperDownload {
+  error?: string;
+  loadedMB: number;
+  model: LocalWhisperModel;
+  state: 'done' | 'downloading' | 'failed';
+  totalMB: number;
+  // When the background last heard of it (Date.now()).
+  updatedAt: number;
+}
 
 export type ExtensionMessage =
   | { target: 'offscreen'; type: 'CAPTURE_START'; payload: CaptureStartRequest }
@@ -14,6 +26,33 @@ export type ExtensionMessage =
       target: 'offscreen';
       type: 'CAPTURE_CONFIG_UPDATE';
       payload: { maxLineWidth: number; sessionId: string };
+    }
+  // Local Whisper (issue #15), run in the offscreen document: load (and with
+  // `download`, fetch) a model; recognize one chunk; free the GPU.
+  | {
+      target: 'offscreen';
+      type: 'LOCAL_WHISPER_LOAD';
+      payload: { download: boolean; model: LocalWhisperModel };
+    }
+  | {
+      target: 'offscreen';
+      type: 'LOCAL_WHISPER_TRANSCRIBE';
+      payload: { audioBase64: string; model: LocalWhisperModel; sourceLanguage?: string };
+    }
+  | { target: 'offscreen'; type: 'LOCAL_WHISPER_UNLOAD' }
+  // The offscreen document's download progress, then its end ('done' or
+  // 'failed'), kept by the background for the popup to show. The download is
+  // the offscreen document's: the service worker may be restarted meanwhile.
+  | {
+      target: 'background';
+      type: 'LOCAL_WHISPER_PROGRESS';
+      payload: Omit<LocalWhisperDownload, 'updatedAt'>;
+    }
+  // The popup asks for a model's download, once the viewer agreed to its size.
+  | {
+      target: 'background';
+      type: 'LOCAL_WHISPER_DOWNLOAD';
+      payload: { model: LocalWhisperModel };
     }
   | {
       target: 'background';
@@ -86,11 +125,11 @@ export type ExtensionMessage =
       type: 'READ_AHEAD_STATUS';
       payload: { sessionId: string; status?: ReadAheadStatusCode };
     }
-  // The overlay's "switch to … Whisper" button, after a recognizer's quota ran
-  // out (Gemini → Groq).
+  // The overlay's "switch to … Whisper" button, after a recognizer could not
+  // serve (Gemini → Groq → Local Whisper, Local Whisper → Groq).
   | {
       target: 'background';
       type: 'READ_AHEAD_SWITCH_RECOGNIZER';
-      payload: { recognizer: 'groq' };
+      payload: { recognizer: 'groq' | 'local' };
     }
   | { target: 'background'; type: 'SESSION_STATUS' };

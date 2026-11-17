@@ -570,6 +570,79 @@
     "message": "Chrome's built-in translation cannot translate these languages, and Google's web translation, tried instead, failed too. Choose Groq Whisper again in the popup and allow the connection, or set speech recognition to Gemini (with translation).",
     "description": "Caption overlay error in read-ahead mode, with a suggestion."
   },
+  "recognizerLocal": {
+    "message": "Local Whisper (runs on this computer)",
+    "description": "Read-ahead speech recognition option that runs Whisper on the viewer's computer."
+  },
+  "localWhisperNoWebGpu": {
+    "message": "Chrome on this computer has no WebGPU, so it cannot run Local Whisper.",
+    "description": "Popup hint when WebGPU is unavailable."
+  },
+  "localWhisperModelLabel": {
+    "message": "Local model",
+    "description": "Label of the Local Whisper model choice."
+  },
+  "localWhisperModelTurbo": {
+    "message": "large-v3-turbo ($1 MB, most accurate, recommended)",
+    "description": "Local Whisper model option. $1 is the download size in MB.",
+    "placeholders": {
+      "size": { "content": "$1", "example": "566" }
+    }
+  },
+  "localWhisperModelSmall": {
+    "message": "small ($1 MB, smaller)",
+    "description": "Local Whisper model option. $1 is the download size in MB.",
+    "placeholders": {
+      "size": { "content": "$1", "example": "566" }
+    }
+  },
+  "localWhisperDownload": {
+    "message": "Download the model ($1 MB)",
+    "description": "Button that starts the Local Whisper model download. $1 is the size in MB.",
+    "placeholders": {
+      "size": { "content": "$1", "example": "566" }
+    }
+  },
+  "localWhisperDownloadHint": {
+    "message": "Downloaded once from Hugging Face and kept on this computer; recognition then runs entirely here, with no key and no quota.",
+    "description": "Hint under the Local Whisper download button."
+  },
+  "localWhisperDownloading": {
+    "message": "Downloading… $1 / $2 MB (you can close this window)",
+    "description": "Local Whisper download progress. $1 and $2 are megabytes.",
+    "placeholders": {
+      "loaded": { "content": "$1", "example": "120" },
+      "total": { "content": "$2", "example": "566" }
+    }
+  },
+  "localWhisperReady": {
+    "message": "Model downloaded.",
+    "description": "Local Whisper status when the model is downloaded."
+  },
+  "localWhisperDelete": {
+    "message": "Delete the downloaded model",
+    "description": "Button that deletes the Local Whisper model from this computer."
+  },
+  "localWhisperDeleteFailed": {
+    "message": "Could not delete the model. Try again.",
+    "description": "Popup error when deleting the Local Whisper model fails."
+  },
+  "localWhisperDownloadFailed": {
+    "message": "The download failed. Check your connection and try again.",
+    "description": "Popup error when the Local Whisper download failed."
+  },
+  "localWhisperModelMissing": {
+    "message": "Download the Local Whisper model first.",
+    "description": "Error when starting read-ahead on Local Whisper without its model."
+  },
+  "errorLocalWhisperTimeout": {
+    "message": "Local Whisper did not finish within 7 seconds, so this part was skipped. Switch to the smaller model (small), or to Groq Whisper.",
+    "description": "Caption overlay error when Local Whisper is too slow on this computer."
+  },
+  "switchToLocalWhisper": {
+    "message": "Switch to Local Whisper",
+    "description": "Caption overlay button after Groq Whisper could not serve, when this computer can run Local Whisper."
+  },
   "errorReadAheadLoading": {
     "message": "Reading audio…",
     "description": "Caption overlay status while read-ahead mode holds the video until it has the audio of the next sentence."
@@ -643,7 +716,7 @@
     "description": "Caption overlay button shown with a used-up Gemini quota in read-ahead mode."
   },
   "errorGroqQuotaExceeded": {
-    "message": "Groq's daily quota is used up (about 2,000 requests a day). Switch to Gemini (with translation), or come back tomorrow.",
+    "message": "Groq's daily quota is used up (about 2,000 requests a day). Switch to Local Whisper or Gemini (with translation), or come back tomorrow.",
     "description": "Caption overlay error in read-ahead mode with Groq Whisper."
   },
   "errorReadAheadTranslatorUnsupported": {

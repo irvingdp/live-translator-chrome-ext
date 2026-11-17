@@ -1,8 +1,23 @@
+import { resolve } from 'node:path';
 import { defineConfig } from 'wxt';
+
+// ONNX Runtime's WebAssembly for Local Whisper (issue #15), shipped with the
+// extension: an extension page may not load code from a CDN.
+const ORT_FILES = ['ort-wasm-simd-threaded.asyncify.mjs', 'ort-wasm-simd-threaded.asyncify.wasm'];
 
 export default defineConfig({
   outDir: 'output',
   modules: ['@wxt-dev/module-react'],
+  hooks: {
+    'build:publicAssets': (_wxt, files) => {
+      for (const file of ORT_FILES) {
+        files.push({
+          absoluteSrc: resolve('node_modules/onnxruntime-web/dist', file),
+          relativeDest: `ort/${file}`,
+        });
+      }
+    },
+  },
   manifest: {
     // Resolved from public/_locales at load time. English is the default so a
     // store visitor who reads neither language at least gets one they can
@@ -33,6 +48,12 @@ export default defineConfig({
     ],
     host_permissions: [
       'https://generativelanguage.googleapis.com/*'
-    ]
+    ],
+    // Local Whisper (issue #15) runs ONNX Runtime's WebAssembly in the
+    // offscreen document. MV3's default CSP does not allow compiling it;
+    // 'wasm-unsafe-eval' allows WebAssembly only, not eval or remote code.
+    content_security_policy: {
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    },
   }
 });

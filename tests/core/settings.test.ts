@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  initialRecognizer,
   captionAppearance,
   DEFAULT_SETTINGS,
   migrateStoredSettings,
@@ -139,13 +140,13 @@ describe('normalizeSettings transcriber', () => {
 });
 
 describe('validateSettingsForStart', () => {
-  it('asks both modes for the Gemini key, and only for it', () => {
-    for (const transcriber of ['gemini', 'gemini-read-ahead'] as const) {
-      expect(validateSettingsForStart({ ...DEFAULT_SETTINGS, transcriber }))
-        .toEqual({ geminiApiKey: '請輸入 Gemini API Key' });
-      expect(validateSettingsForStart({ ...DEFAULT_SETTINGS, geminiApiKey: 'gm', transcriber }))
-        .toEqual({});
-    }
+  it('asks live mode for the Gemini key, and read-ahead (Groq by default) for the Groq key', () => {
+    expect(validateSettingsForStart(DEFAULT_SETTINGS)).toEqual({ geminiApiKey: '請輸入 Gemini API Key' });
+    expect(validateSettingsForStart({ ...DEFAULT_SETTINGS, geminiApiKey: 'gm' })).toEqual({});
+    const readAhead = { ...DEFAULT_SETTINGS, transcriber: 'gemini-read-ahead' } as const;
+    expect(validateSettingsForStart(readAhead)).toEqual({ groqApiKey: '請輸入 Groq API Key' });
+    expect(validateSettingsForStart({ ...readAhead, readAheadRecognizer: 'gemini' }))
+      .toEqual({ geminiApiKey: '請輸入 Gemini API Key' });
   });
 });
 
@@ -153,10 +154,17 @@ describe('read-ahead services', () => {
   const readAhead = { ...DEFAULT_SETTINGS, transcriber: 'gemini-read-ahead' } as const;
 
   it('defaults to Gemini recognition, rejecting unknown recognizers', () => {
-    expect(normalizeSettings({}).readAheadRecognizer).toBe('gemini');
-    expect(normalizeSettings({ readAheadRecognizer: 'whisper' as never }).readAheadRecognizer).toBe('gemini');
+    expect(normalizeSettings({}).readAheadRecognizer).toBe('groq');
+    expect(normalizeSettings({ readAheadRecognizer: 'whisper' as never }).readAheadRecognizer).toBe('groq');
     // Cloudflare Whisper was removed before release.
-    expect(normalizeSettings({ readAheadRecognizer: 'cloudflare' as never }).readAheadRecognizer).toBe('gemini');
+    expect(normalizeSettings({ readAheadRecognizer: 'cloudflare' as never }).readAheadRecognizer).toBe('groq');
+  });
+
+  it('starts a viewer who never chose on Local Whisper where WebGPU allows it, else on Groq; a choice stays', () => {
+    expect(initialRecognizer(undefined, true)).toBe('local');
+    expect(initialRecognizer({ transcriber: 'gemini' }, false)).toBe('groq');
+    expect(initialRecognizer({ readAheadRecognizer: 'gemini' }, true)).toBe('gemini');
+    expect(initialRecognizer({ readAheadRecognizer: 'cloudflare' as never }, true)).toBe('local');
   });
 
   it("asks for the keys of the recognizer chosen, and only those (Chrome's translation needs none)", () => {

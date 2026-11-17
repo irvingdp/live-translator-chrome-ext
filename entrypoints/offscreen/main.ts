@@ -4,6 +4,8 @@ import {
   OffscreenCaptureController,
 } from '../../src/audio/offscreen-capture-controller';
 import type { ExtensionMessage } from '../../src/core/messages';
+import { LocalWhisperEngine, samplesFromWavBase64 } from '../../src/read-ahead/local-whisper-engine';
+import { ChunkTranslationError } from '../../src/read-ahead/gemini-chunk-translation';
 import {
   isMessageEnvelope,
   isTrustedExtensionContext,
@@ -29,6 +31,13 @@ const controller = new OffscreenCaptureController({
     });
   },
 });
+
+// Local Whisper (issue #15): created on first use, so live captions never
+// load the library.
+let localWhisper: LocalWhisperEngine | undefined;
+const PROGRESS_INTERVAL_MS = 500;
+const localWhisperEngine = () =>
+  (localWhisper ??= new LocalWhisperEngine(chrome.runtime.getURL('/ort/')));
 
 let keepAliveSessionId: string | undefined;
 let keepAliveTimer: ReturnType<typeof setInterval> | undefined;
@@ -84,6 +93,57 @@ chrome.runtime.onMessage.addListener(
           return { ok: true } as const;
         case 'CAPTURE_STOP':
           await teardownSession(message.payload.sessionId);
+          return { ok: true } as const;
+        case 'LOCAL_WHISPER_LOAD': {
+          const { download, model } = message.payload;
+          if (!download) {
+            await localWhisperEngine().load(model);
+            return { ok: true } as const;
+          }
+          // A download can take many minutes, longer than Chrome lets the
+          // service worker wait on one message: answered at once, it reports
+          // its progress and its end as messages of its own.
+          const report = (payload: Extract<ExtensionMessage, { type: 'LOCAL_WHISPER_PROGRESS' }>['payload']) =>
+            void chrome.runtime.sendMessage<ExtensionMessage>({
+              target: 'background',
+              type: 'LOCAL_WHISPER_PROGRESS',
+              payload,
+            }).catch(() => undefined);
+          let lastReport = 0;
+          void localWhisperEngine().load(model, (progress) => {
+            if (Date.now() - lastReport < PROGRESS_INTERVAL_MS) return;
+            lastReport = Date.now();
+            report({ model, state: 'downloading', ...progress });
+          }).then(
+            () => report({ loadedMB: 0, model, state: 'done', totalMB: 0 }),
+            (error: unknown) => report({
+              error: error instanceof Error ? error.message : String(error),
+              loadedMB: 0,
+              model,
+              state: 'failed',
+              totalMB: 0,
+            }),
+          );
+          return { ok: true } as const;
+        }
+        case 'LOCAL_WHISPER_TRANSCRIBE': {
+          const { audioBase64, model, sourceLanguage } = message.payload;
+          try {
+            const { sentences } = await localWhisperEngine().transcribe(
+              model,
+              samplesFromWavBase64(audioBase64),
+              sourceLanguage,
+            );
+            return { ok: true, sentences } as const;
+          } catch (error) {
+            return {
+              error: error instanceof ChunkTranslationError ? error.code : 'provider_unavailable',
+              ok: false,
+            } as const;
+          }
+        }
+        case 'LOCAL_WHISPER_UNLOAD':
+          await localWhisper?.unload();
           return { ok: true } as const;
         case 'CAPTURE_CONFIG_UPDATE':
           controller.updateMaxLineWidth(

@@ -23,6 +23,7 @@
     "verify:manifest": "node scripts/verify-manifest.mjs output/chrome-mv3/manifest.json"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.3.2",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

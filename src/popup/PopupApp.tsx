@@ -28,6 +28,13 @@ import {
   type TranscriberId,
   validateSettingsForStart,
 } from '../core/settings';
+import type { LocalWhisperDownload } from '../core/messages';
+import {
+  LOCAL_WHISPER_MODEL_IDS,
+  LOCAL_WHISPER_SPECS,
+  downloadInProgress,
+  type LocalWhisperModel,
+} from '../read-ahead/local-whisper';
 import { RatingCard } from './RatingCard';
 
 export interface AuthorizedTab {
@@ -43,7 +50,7 @@ export type ChromeTranslatorStatus =
   | 'unavailable'
   | 'unsupported';
 
-export type OptionalService = 'groq';
+export type OptionalService = 'groq' | 'local';
 
 export interface PopupApi {
   chromeTranslatorStatus(sourceLanguage: string, targetLanguage: string): Promise<ChromeTranslatorStatus>;
@@ -54,6 +61,14 @@ export interface PopupApi {
   // the service is chosen (and again at start, in case it was set up
   // elsewhere).
   requestPermission(service: OptionalService): Promise<boolean>;
+  // Local Whisper (issue #15): whether this computer can run it, whether a
+  // model is downloaded, and its download (run by the background, so it goes
+  // on after the popup closes) and deletion.
+  webGpuAvailable(): Promise<boolean>;
+  localWhisperCached(model: LocalWhisperModel): Promise<boolean>;
+  downloadLocalWhisper(model: LocalWhisperModel): Promise<void>;
+  deleteLocalWhisper(model: LocalWhisperModel): Promise<void>;
+  watchLocalWhisperDownload(onChange: (download: LocalWhisperDownload | undefined) => void): () => void;
   authorizeCurrentTab(): Promise<AuthorizedTab | undefined>;
   extensionVersion(): string;
   loadRatingPrompt(): Promise<RatingPromptState>;
@@ -75,6 +90,9 @@ export function PopupApp({ api }: { api: PopupApi }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [chromeStatus, setChromeStatus] = useState<ChromeTranslatorStatus>();
+  const [webGpu, setWebGpu] = useState<boolean>();
+  const [modelCached, setModelCached] = useState<boolean>();
+  const [download, setDownload] = useState<LocalWhisperDownload>();
   const [revealedSecret, setRevealedSecret] = useState<string>();
   const [ratingVisible, setRatingVisible] = useState(false);
   const saveTail = useRef<Promise<void>>(Promise.resolve());
@@ -124,6 +142,23 @@ export function PopupApp({ api }: { api: PopupApi }) {
       },
     );
   }, [api, updateRatingPrompt]);
+
+  useEffect(() => {
+    void api.webGpuAvailable().catch(() => false).then(setWebGpu);
+    return api.watchLocalWhisperDownload(setDownload);
+  }, [api]);
+
+  // Whether the chosen local model is downloaded; checked again when a
+  // download finishes.
+  const localModel = settings?.localWhisperModel;
+  const downloadState = download?.model === localModel ? download?.state : undefined;
+  useEffect(() => {
+    if (!localModel) return;
+    let current = true;
+    void api.localWhisperCached(localModel).catch(() => false)
+      .then((cached) => { if (current) setModelCached(cached); });
+    return () => { current = false; };
+  }, [api, localModel, downloadState]);
 
   // A Whisper recognizer leaves the translation to a separate service.
   const usesWhisper = settings?.transcriber === 'gemini-read-ahead' &&
@@ -193,6 +228,14 @@ export function PopupApp({ api }: { api: PopupApi }) {
     }
     if (requiredApiKeys(settings).includes('groqApiKey') && !await api.requestPermission('groq')) {
       setMessage(t(PERMISSION_DENIED_MESSAGES.groq));
+      return;
+    }
+    if (
+      settings.transcriber === 'gemini-read-ahead' &&
+      settings.readAheadRecognizer === 'local' &&
+      !await api.localWhisperCached(settings.localWhisperModel).catch(() => false)
+    ) {
+      setMessage(t('localWhisperModelMissing'));
       return;
     }
     // The start click is a user gesture: the moment to download Chrome's
@@ -342,14 +385,39 @@ export function PopupApp({ api }: { api: PopupApi }) {
                 // Asked inside the change's user gesture.
                 void prepareChromeTranslation(settings.geminiSourceLanguage, settings.geminiTargetLanguage);
                 void api.requestPermission(next).then((granted) => {
-                  if (granted) update('readAheadRecognizer', next);
-                  else setMessage(t(PERMISSION_DENIED_MESSAGES[next]));
+                  // Local Whisper only asks for the web fallback's host; it
+                  // works without it, as long as Chrome can translate.
+                  if (granted || next === 'local') update('readAheadRecognizer', next);
+                  else setMessage(t(PERMISSION_DENIED_MESSAGES.groq));
                 });
               }}
             >
               <option value="gemini">{t('recognizerGemini')}</option>
               <option value="groq">Groq Whisper</option>
+              <option value="local" disabled={webGpu === false && recognizer !== 'local'}>
+                {t('recognizerLocal')}
+              </option>
             </select>
+            {webGpu === false && (
+              <p className="field-hint" role="note">{t('localWhisperNoWebGpu')}</p>
+            )}
+            {recognizer === 'local' && (
+              <LocalWhisperPanel
+                cached={modelCached}
+                disabled={running}
+                download={download?.model === settings.localWhisperModel ? download : undefined}
+                model={settings.localWhisperModel}
+                onDelete={() => {
+                  void api.deleteLocalWhisper(settings.localWhisperModel)
+                    .then(() => setModelCached(false), () => setMessage(t('localWhisperDeleteFailed')));
+                }}
+                onDownload={() => {
+                  void api.downloadLocalWhisper(settings.localWhisperModel)
+                    .catch((error: unknown) => setMessage(error instanceof Error ? error.message : String(error)));
+                }}
+                onModel={(model) => update('localWhisperModel', model)}
+              />
+            )}
             <p className="field-hint" role="note">{t('recognizerCaptionTrackHint')}</p>
             {/* With a Whisper recognizer Chrome's built-in Translator
                 translates, and where it cannot, Google's web translation
@@ -547,7 +615,73 @@ const MISSING_KEY_MESSAGES = {
 
 const PERMISSION_DENIED_MESSAGES = {
   groq: 'groqPermissionDenied',
-} as const satisfies Record<OptionalService, MessageKey>;
+} as const satisfies Record<'groq', MessageKey>;
+
+// Local Whisper's model: which one, whether it is downloaded, and the download
+// (shown with its size before anything is fetched) or deletion.
+function LocalWhisperPanel({
+  cached,
+  disabled,
+  download,
+  model,
+  onDelete,
+  onDownload,
+  onModel,
+}: {
+  cached: boolean | undefined;
+  disabled: boolean;
+  download: LocalWhisperDownload | undefined;
+  model: LocalWhisperModel;
+  onDelete(): void;
+  onDownload(): void;
+  onModel(model: LocalWhisperModel): void;
+}) {
+  const spec = LOCAL_WHISPER_SPECS[model];
+  const downloading = downloadInProgress(download, Date.now());
+  // A download that stopped reporting (the browser or the offscreen document
+  // was closed) counts as failed: it can be started again.
+  const stalled = download?.state === 'downloading' && !downloading;
+  return (
+    <div className="local-whisper">
+      <label htmlFor="local-model">{t('localWhisperModelLabel')}</label>
+      <select
+        id="local-model"
+        disabled={disabled || downloading}
+        value={model}
+        onChange={(event) => onModel(event.target.value as LocalWhisperModel)}
+      >
+        {LOCAL_WHISPER_MODEL_IDS.map((id) => (
+          <option key={id} value={id}>
+            {t(id === 'turbo' ? 'localWhisperModelTurbo' : 'localWhisperModelSmall',
+              String(LOCAL_WHISPER_SPECS[id].downloadMB))}
+          </option>
+        ))}
+      </select>
+      {downloading ? (
+        <p className="field-note" role="status">
+          {t('localWhisperDownloading', String(download?.loadedMB ?? 0), String(download?.totalMB || spec.downloadMB))}
+        </p>
+      ) : cached ? (
+        <p className="field-note" role="status">
+          {t('localWhisperReady')}{' '}
+          <button className="link-button" disabled={disabled} type="button" onClick={onDelete}>
+            {t('localWhisperDelete')}
+          </button>
+        </p>
+      ) : cached === false ? (
+        <>
+          {(download?.state === 'failed' || stalled) && (
+            <p className="field-hint" role="alert">{t('localWhisperDownloadFailed')}</p>
+          )}
+          <button className="secret-submit" disabled={disabled} type="button" onClick={onDownload}>
+            {t('localWhisperDownload', String(spec.downloadMB))}
+          </button>
+          <p className="field-note" role="note">{t('localWhisperDownloadHint')}</p>
+        </>
+      ) : null}
+    </div>
+  );
+}
 
 // The Translator API needs a source language; with auto-detect, English is the
 // pair worth probing (and pre-downloading) in the popup.

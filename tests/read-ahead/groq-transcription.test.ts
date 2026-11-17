@@ -80,7 +80,7 @@ describe('transcribeChunk', () => {
       words: words(['Hello', 0, 0.5], ['there.', 0.5, 1]),
     }));
 
-    const result = await transcribeChunk({ ...request, sourceLanguage: 'zh-Hant' }, fetcher);
+    const result = await transcribeChunk({ ...request, prompt: '以下是繁體中文的句子。', sourceLanguage: 'zh-Hant' }, fetcher);
 
     const [url, init] = fetcher.mock.calls[0]!;
     expect(url).toBe('https://api.groq.com/openai/v1/audio/transcriptions');
@@ -91,6 +91,7 @@ describe('transcribeChunk', () => {
     expect(form.getAll('timestamp_granularities[]')).toEqual(['word', 'segment']);
     // Whisper takes the bare language.
     expect(form.get('language')).toBe('zh');
+    expect(form.get('prompt')).toBe('以下是繁體中文的句子。');
     expect(result).toEqual({
       language: 'en',
       sentences: [expect.objectContaining({ original: 'Hello there.', start: 0 })],

@@ -5,7 +5,8 @@ import {
   isMessageEnvelope,
   isTopFrameContentScript,
 } from '../src/core/message-security';
-import type { ExtensionMessage } from '../src/core/messages';
+import type { ExtensionMessage, LocalWhisperDownload } from '../src/core/messages';
+import type { ChunkSentence } from '../src/read-ahead/gemini-chunk-translation';
 import type { MediaPlaybackResponse } from '../src/core/media-playback';
 import {
   httpsOrigin,
@@ -36,6 +37,15 @@ import {
   GROQ_ORIGIN,
   transcribeChunk,
 } from '../src/read-ahead/groq-transcription';
+import {
+  LOCAL_WHISPER_CACHE,
+  LOCAL_WHISPER_DOWNLOAD_KEY,
+  LOCAL_WHISPER_SPECS,
+  downloadInProgress,
+  isModelCached,
+  type LocalWhisperModel,
+} from '../src/read-ahead/local-whisper';
+import { t } from '../src/core/i18n';
 
 const YOUTUBE_HOSTS = new Set(['www.youtube.com', 'm.youtube.com', 'youtube.com']);
 
@@ -67,7 +77,7 @@ export default defineBackground(() => {
   // page) with that service already selected.
   async function switchReadAheadRecognizer(
     tabId: number,
-    recognizer: 'groq',
+    recognizer: 'groq' | 'local',
   ): Promise<{ ok: true; switched: boolean }> {
     const status = controller.status();
     const stored = await chrome.storage.local.get('settings');
@@ -75,9 +85,12 @@ export default defineBackground(() => {
     if (status.state !== 'running' || status.tabId !== tabId || settings.transcriber !== 'gemini-read-ahead') {
       return { ok: true, switched: false };
     }
-    const ready = settings.groqApiKey.trim() !== '' && await chrome.permissions.contains({
-      origins: [GROQ_ORIGIN],
-    }).catch(() => false);
+    // Groq needs its key and permission; Local Whisper its downloaded model.
+    const ready = recognizer === 'local'
+      ? isModelCached(settings.localWhisperModel, await cachedModelUrls().catch(() => []))
+      : settings.groqApiKey.trim() !== '' && await chrome.permissions.contains({
+        origins: [GROQ_ORIGIN],
+      }).catch(() => false);
     const next = { ...settings, readAheadRecognizer: recognizer };
     await chrome.storage.local.set({ settings: next });
     if (!ready) {
@@ -85,6 +98,7 @@ export default defineBackground(() => {
       await chrome.action.openPopup().catch(() => chrome.runtime.openOptionsPage());
       return { ok: true, switched: false };
     }
+    if (recognizer === 'local') await prepareLocalWhisper(next.localWhisperModel);
     await controller.start(tabId, next);
     await persistActiveSession();
     return { ok: true, switched: true };
@@ -163,12 +177,7 @@ export default defineBackground(() => {
         documentUrls: [offscreenUrl],
       });
       if (existing.length > 0) return;
-      await chrome.offscreen.createDocument({
-        url: 'offscreen.html',
-        reasons: [chrome.offscreen.Reason.USER_MEDIA],
-        justification:
-          'Capture the audio of the tab the user selected to produce live captions',
-      });
+      await createOffscreen();
     },
     getStreamId: (tabId) =>
       chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }),
@@ -205,7 +214,32 @@ export default defineBackground(() => {
     translateChunk: (request) => translateChunk(request),
     translateOnWeb: (request, timeoutMs) =>
       withRequestTimeout((signal) => translateOnWeb(request, signal), timeoutMs),
-    transcribeChunk: (request) => transcribeChunk(request),
+    // WebGPU is exposed to the service worker too (Chrome 124+).
+    localWhisperUsable: async () => {
+      const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
+      return Boolean(await gpu?.requestAdapter().catch(() => null));
+    },
+    transcribeChunk: async (request) => {
+      if (request.provider === 'groq') {
+        const { provider: _provider, ...groq } = request;
+        return transcribeChunk(groq);
+      }
+      // Local Whisper, in the offscreen document (issue #15).
+      const { provider: _provider, ...local } = request;
+      await createOffscreen();
+      const response = await withRequestTimeout(() => chrome.runtime.sendMessage({
+        target: 'offscreen',
+        type: 'LOCAL_WHISPER_TRANSCRIBE',
+        payload: local,
+      } satisfies ExtensionMessage) as Promise<{ error?: string; ok?: boolean; sentences?: ChunkSentence[] }>,
+      CHUNK_REQUEST_TIMEOUT_MS);
+      if (!response?.ok || !Array.isArray(response.sentences)) {
+        throw new ChunkTranslationError(
+          response?.error === 'timeout' ? 'timeout' : 'provider_unavailable',
+        );
+      }
+      return { sentences: response.sentences };
+    },
   });
 
   async function persistAuthorizedTabs(): Promise<void> {
@@ -335,8 +369,91 @@ export default defineBackground(() => {
     return result;
   }
 
+  // The one offscreen document serves both live capture and Local Whisper.
+  async function createOffscreen(): Promise<void> {
+    const existing = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT'],
+      documentUrls: [offscreenUrl],
+    });
+    if (existing.length > 0) return;
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: [chrome.offscreen.Reason.USER_MEDIA, chrome.offscreen.Reason.WORKERS],
+      justification:
+        'Capture the audio of the tab the user selected to produce live captions, ' +
+        'and run the speech recognition model the user downloaded on this computer',
+    });
+  }
+
+  async function cachedModelUrls(): Promise<string[]> {
+    const cache = await caches.open(LOCAL_WHISPER_CACHE);
+    return (await cache.keys()).map((request) => request.url);
+  }
+
+  // Before a read-ahead session on Local Whisper: its model must already be
+  // downloaded (the popup does that, after the viewer agreed to its size), and
+  // is loaded onto the GPU now, so the first chunks do not wait for it.
+  async function prepareLocalWhisper(model: LocalWhisperModel): Promise<void> {
+    if (!isModelCached(model, await cachedModelUrls())) {
+      throw new Error(t('localWhisperModelMissing'));
+    }
+    await createOffscreen();
+    await sendToOffscreen({
+      target: 'offscreen',
+      type: 'LOCAL_WHISPER_LOAD',
+      payload: { download: false, model },
+    });
+  }
+
+  async function storedDownload(): Promise<LocalWhisperDownload | undefined> {
+    const stored = await chrome.storage.session.get(LOCAL_WHISPER_DOWNLOAD_KEY);
+    return stored[LOCAL_WHISPER_DOWNLOAD_KEY] as LocalWhisperDownload | undefined;
+  }
+
+  // Starts a model download in the offscreen document. The download, not this
+  // worker, owns it: its progress and end arrive as LOCAL_WHISPER_PROGRESS,
+  // and the state lives in chrome.storage.session, so a restarted worker
+  // still reports it.
+  async function downloadLocalWhisper(model: LocalWhisperModel): Promise<void> {
+    if (downloadInProgress(await storedDownload(), Date.now())) return;
+    const totalMB = LOCAL_WHISPER_SPECS[model].downloadMB;
+    await chrome.storage.session.set({
+      [LOCAL_WHISPER_DOWNLOAD_KEY]: {
+        loadedMB: 0, model, state: 'downloading', totalMB, updatedAt: Date.now(),
+      } satisfies LocalWhisperDownload,
+    });
+    try {
+      await createOffscreen();
+      await sendToOffscreen({
+        target: 'offscreen',
+        type: 'LOCAL_WHISPER_LOAD',
+        payload: { download: true, model },
+      });
+    } catch (error) {
+      await acceptDownloadProgress({
+        error: error instanceof Error ? error.message : String(error),
+        loadedMB: 0, model, state: 'failed', totalMB,
+      });
+    }
+  }
+
+  async function acceptDownloadProgress(
+    progress: Omit<LocalWhisperDownload, 'updatedAt'>,
+  ): Promise<void> {
+    const totalMB = LOCAL_WHISPER_SPECS[progress.model].downloadMB;
+    const download: LocalWhisperDownload = progress.state === 'done'
+      ? { ...progress, loadedMB: totalMB, totalMB, updatedAt: Date.now() }
+      : { ...progress, totalMB: progress.totalMB || totalMB, updatedAt: Date.now() };
+    await chrome.storage.session.set({ [LOCAL_WHISPER_DOWNLOAD_KEY]: download });
+    if (download.state === 'downloading' || controller.snapshot()) return;
+    // Downloaded for later: free the GPU unless a session is using it.
+    await sendToOffscreen({ target: 'offscreen', type: 'LOCAL_WHISPER_UNLOAD' }).catch(() => undefined);
+    await closeOffscreenIfUnused();
+  }
+
   async function closeOffscreenIfUnused(): Promise<void> {
     if (controller.snapshot()) return;
+    if (downloadInProgress(await storedDownload(), Date.now())) return;
     try {
       const contexts = await chrome.runtime.getContexts({
         contextTypes: ['OFFSCREEN_DOCUMENT'],
@@ -574,10 +691,12 @@ export default defineBackground(() => {
 
   const offscreenMessageTypes = new Set([
     'CAPTION_PAIR_UPDATES',
+    'LOCAL_WHISPER_PROGRESS',
     'CAPTURE_DISCONNECTED',
     'CAPTURE_KEEPALIVE',
   ]);
   const popupMessageTypes = new Set([
+    'LOCAL_WHISPER_DOWNLOAD',
     'SESSION_AUTHORIZE_TAB',
     'SESSION_START',
     'SESSION_STATUS',
@@ -695,7 +814,7 @@ export default defineBackground(() => {
             const tabId = sender.tab?.id;
             if (tabId === undefined) return { error: 'missing_tab', ok: false };
             const { recognizer } = message.payload;
-            if (recognizer !== 'groq') {
+            if (recognizer !== 'groq' && recognizer !== 'local') {
               return { error: 'unsupported_recognizer', ok: false };
             }
             return enqueueLifecycle(() => switchReadAheadRecognizer(tabId, recognizer));
@@ -841,10 +960,14 @@ export default defineBackground(() => {
                     mode: 'floating',
                   });
                 }
-                await controller.start(
-                  message.payload.tabId,
-                  normalizeSettings(message.payload.settings),
-                );
+                const startSettings = normalizeSettings(message.payload.settings);
+                if (
+                  startSettings.transcriber === 'gemini-read-ahead' &&
+                  startSettings.readAheadRecognizer === 'local'
+                ) {
+                  await prepareLocalWhisper(startSettings.localWhisperModel);
+                }
+                await controller.start(message.payload.tabId, startSettings);
                 if (!authorizedTabs.has(message.payload.tabId)) {
                   await authorizeTab(message.payload.tabId).catch(() => false);
                 }
@@ -856,6 +979,16 @@ export default defineBackground(() => {
               await persistActiveSession();
               return { ok: true, status: controller.status() };
             });
+          case 'LOCAL_WHISPER_DOWNLOAD': {
+            const { model } = message.payload;
+            if (!(model in LOCAL_WHISPER_SPECS)) return { error: 'unknown_model', ok: false };
+            // Answered at once: the popup may close long before it is done.
+            void downloadLocalWhisper(model);
+            return { ok: true };
+          }
+          case 'LOCAL_WHISPER_PROGRESS':
+            await acceptDownloadProgress(message.payload);
+            return { ok: true };
           case 'SESSION_AUTHORIZE_TAB':
             return enqueueLifecycle(async () => ({
               authorized: await authorizeTab(message.payload.tabId),

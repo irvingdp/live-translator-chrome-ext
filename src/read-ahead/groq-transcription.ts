@@ -50,6 +50,8 @@ export interface TranscriptionRequest {
   apiKey: string;
   // Base64 WAV, 16 kHz mono PCM16.
   audioBase64: string;
+  // Text Whisper continues from, to steer its style (Traditional Chinese).
+  prompt?: string;
   // A Gemini language code, or undefined to let Whisper detect it.
   sourceLanguage?: string;
 }
@@ -194,6 +196,7 @@ async function requestTranscription(
   form.append('timestamp_granularities[]', 'segment');
   // Whisper takes ISO 639-1; 'zh-Hant' and 'pt-BR' become 'zh' and 'pt'.
   if (request.sourceLanguage) form.append('language', request.sourceLanguage.split('-')[0]!);
+  if (request.prompt) form.append('prompt', request.prompt);
   let response: Response;
   try {
     response = await fetcher(ENDPOINT, {

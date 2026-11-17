@@ -35,6 +35,9 @@ const STALL_MS = 3000;
 const MIN_CHUNK_SECONDS = 10;
 const MAX_CHUNK_SECONDS = 15;
 const HARD_CUT_OVERLAP_SECONDS = 2;
+// A sentence starting this close before the overlap still counts as in it
+// (word timing is about ±0.5 s).
+const OVERLAP_MARGIN_SECONDS = 0.5;
 const MIN_PAUSE_SECONDS = 0.3;
 const FRAME_SECONDS = 0.01;
 const CUE_LINGER_SECONDS = 1;
@@ -85,7 +88,7 @@ export interface DisplayedCue {
 // of audio already read. Shown differently so a long hold says which it is.
 // A failed chunk shows 'failed', or, when the error says why, the reason: which
 // provider failed and how, or that no translator could translate it.
-export const READ_AHEAD_PROVIDERS = ['gemini', 'groq'] as const;
+export const READ_AHEAD_PROVIDERS = ['gemini', 'groq', 'local'] as const;
 export type ReadAheadProvider = (typeof READ_AHEAD_PROVIDERS)[number];
 // Why a provider's request failed (ChunkTranslationErrorCode).
 export const PROVIDER_FAILURE_REASONS = [
@@ -139,6 +142,8 @@ export interface ReadAheadDependencies {
   now(): number;
   source: ReadAheadSource;
   translate(samples: Int16Array): Promise<ChunkSentence[]>;
+  // What became of each recognized sentence, for diagnosing gaps.
+  log?(event: string, details: Record<string, unknown>): void;
 }
 
 interface Chunk {
@@ -567,15 +572,31 @@ export class ReadAheadSession {
       return loud / (to - from) >= MIN_SPOKEN_FRACTION;
     };
     const sorted = [...sentences].sort((a, b) => a.start - b.start);
+    // A hard cut's last HARD_CUT_OVERLAP_SECONDS are read again by the next
+    // chunk, which starts there.
+    const overlapStart = length - HARD_CUT_OVERLAP_SECONDS - OVERLAP_MARGIN_SECONDS;
+    const outcomes: Array<[number, string, string]> = [];
     sorted.forEach((sentence, index) => {
-      // A fragment is only dropped at an edge that cut through speech; the
-      // neighbouring chunk overlaps that edge and carries the whole sentence.
-      if (sentence.cut && index === 0 && startsHard) return;
-      if (sentence.cut && index === sorted.length - 1 && endsHard) return;
       const start = chunk.start + Math.max(0, Math.min(length, sentence.start));
-      if (this.cues.some((cue) => Math.abs(cue.start - start) < DUPLICATE_START_SECONDS)) return;
-      if (!sentence.original && !sentence.translation) return;
-      if (!spoken(sentence.start, Math.max(sentence.start, sentence.end))) return;
+      const drop = (reason: string) => { outcomes.push([+start.toFixed(2), reason, sentence.original.slice(0, 40)]); };
+      // A sentence cut by a hard end is dropped only when it starts inside
+      // the overlap: the next chunk then has it whole. One that started
+      // earlier is kept as far as it goes, or most of it would be lost (the
+      // next chunk sees only its tail).
+      if (sentence.cut && index === sorted.length - 1 && endsHard && sentence.start >= overlapStart) {
+        return drop('cut_at_end');
+      }
+      // A fragment at a hard start is kept only to continue a sentence the
+      // previous chunk kept up to the cut; otherwise it is the tail of speech
+      // before a seek, or of a sentence the previous chunk has whole.
+      if (sentence.cut && index === 0 && startsHard &&
+        !this.cues.some((cue) => cue.start < start && cue.end > start)) {
+        return drop('cut_at_start');
+      }
+      if (this.cues.some((cue) => Math.abs(cue.start - start) < DUPLICATE_START_SECONDS)) return drop('duplicate');
+      if (!sentence.original && !sentence.translation) return drop('empty');
+      if (!spoken(sentence.start, Math.max(sentence.start, sentence.end))) return drop('silence');
+      outcomes.push([+start.toFixed(2), 'kept', sentence.original.slice(0, 40)]);
       this.cues.push({
         end: chunk.start + Math.max(sentence.start, sentence.end) + CUE_LINGER_SECONDS,
         id: `read-ahead-${++this.cueSequence}`,
@@ -585,6 +606,13 @@ export class ReadAheadSession {
       });
     });
     this.cues.sort((a, b) => a.start - b.start);
+    this.dependencies.log?.('chunk', {
+      end: +(chunk.start + length).toFixed(2),
+      endsHard,
+      sentences: outcomes,
+      start: +chunk.start.toFixed(2),
+      startsHard,
+    });
   }
 
   private cueAt(time: number): Cue | undefined {

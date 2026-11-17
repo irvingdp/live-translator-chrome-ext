@@ -5,7 +5,9 @@ import {
   type CaptureSessionDependencies,
   type SessionSettings,
   type TabMessage,
+  whisperPrompt,
 } from '../../src/core/capture-session-controller';
+import { ChunkTranslationError } from '../../src/read-ahead/gemini-chunk-translation';
 
 const settings: SessionSettings = {
   backgroundOpacity: 78,
@@ -13,6 +15,7 @@ const settings: SessionSettings = {
   geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
   groqApiKey: 'groq-key',
+  localWhisperModel: 'turbo',
   maxLineWidth: 90,
   readAheadRecognizer: 'gemini',
   transcriber: 'gemini',
@@ -533,9 +536,48 @@ describe('CaptureSessionController read-ahead mode', () => {
       expect(harness.dependencies.transcribeChunk).toHaveBeenCalledWith({
         apiKey: 'groq-key',
         audioBase64: 'wav',
-        sourceLanguage: undefined,
+        provider: 'groq',
       });
       expect(harness.dependencies.translateChunk).not.toHaveBeenCalled();
+    });
+
+    it('steers Whisper to Traditional Chinese only for speech set as Traditional Chinese', async () => {
+      const harness = createHarness();
+      const sessionId = await startReadAhead(harness, { ...groq, geminiSourceLanguage: 'zh-HK' });
+      vi.mocked(harness.dependencies.transcribeChunk).mockResolvedValue(heard('你好。'));
+      await harness.controller.translateReadAheadChunk(sessionId, 42, 'wav');
+      expect(harness.dependencies.transcribeChunk).toHaveBeenCalledWith(expect.objectContaining({
+        prompt: '以下是繁體中文的句子。',
+        sourceLanguage: 'zh-HK',
+      }));
+      expect(whisperPrompt('en')).toBeUndefined();
+      expect(whisperPrompt(undefined)).toBeUndefined();
+      expect(whisperPrompt('zh-Hans')).toBeUndefined();
+    });
+
+    it('recognizes with Local Whisper on this computer, offering Groq when it is too slow', async () => {
+      const harness = createHarness();
+      const sessionId = await startReadAhead(harness, { localWhisperModel: 'small', readAheadRecognizer: 'local' });
+      vi.mocked(harness.dependencies.transcribeChunk).mockResolvedValue({ sentences: heard('Hello.').sentences });
+
+      await expect(harness.controller.translateReadAheadChunk(sessionId, 42, 'wav')).resolves.toMatchObject({
+        translateInPage: { targetLanguage: 'zh-Hant' },
+      });
+      expect(harness.dependencies.transcribeChunk).toHaveBeenCalledWith({
+        audioBase64: 'wav',
+        model: 'small',
+        provider: 'local',
+      });
+
+      vi.mocked(harness.dependencies.transcribeChunk).mockRejectedValue(new ChunkTranslationError('timeout'));
+      await expect(harness.controller.translateReadAheadChunk(sessionId, 42, 'wav'))
+        .rejects.toMatchObject({ code: 'local_timeout' });
+      vi.mocked(harness.dependencies.sendToTab).mockClear();
+      await harness.controller.acceptReadAheadStatus(sessionId, 42, 'local_timeout');
+      expect(harness.dependencies.sendToTab).toHaveBeenCalledWith(42, {
+        type: 'SESSION_ERROR',
+        payload: { action: 'switch_to_groq', code: 'local_timeout' },
+      });
     });
 
     it('leaves speech already in the target language untranslated', async () => {
@@ -647,6 +689,29 @@ describe('CaptureSessionController read-ahead mode', () => {
       { type: 'SESSION_ERROR', payload: { code: 'gemini_invalid_credentials' } },
       { type: 'SESSION_ERROR', payload: { code: 'read_ahead_page_timeout' } },
       { type: 'SESSION_ERROR', payload: { code: 'read_ahead_web_translation_failed' } },
+    ]);
+  });
+
+  it('offers Local Whisper when Groq cannot serve, only where this computer can run it', async () => {
+    const harness = createHarness();
+    harness.dependencies.localWhisperUsable = vi.fn().mockResolvedValue(true);
+    const sessionId = await startReadAhead(harness, { readAheadRecognizer: 'groq' });
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'groq_timeout');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'groq_rate_limited');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'groq_invalid_credentials');
+
+    const noGpu = createHarness();
+    noGpu.dependencies.localWhisperUsable = vi.fn().mockResolvedValue(false);
+    const other = await startReadAhead(noGpu, { readAheadRecognizer: 'groq' });
+    await noGpu.controller.acceptReadAheadStatus(other, 42, 'groq_timeout');
+
+    expect(vi.mocked(harness.dependencies.sendToTab).mock.calls.map(([, message]) => message)).toEqual([
+      { type: 'SESSION_ERROR', payload: { action: 'switch_to_local', code: 'groq_timeout' } },
+      { type: 'SESSION_ERROR', payload: { action: 'switch_to_local', code: 'groq_rate_limited' } },
+      { type: 'SESSION_ERROR', payload: { code: 'groq_invalid_credentials' } },
+    ]);
+    expect(vi.mocked(noGpu.dependencies.sendToTab).mock.calls.map(([, message]) => message)).toEqual([
+      { type: 'SESSION_ERROR', payload: { code: 'groq_timeout' } },
     ]);
   });
 

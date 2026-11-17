@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PopupApp, type PopupApi } from '../../src/popup/PopupApp';
@@ -21,6 +21,11 @@ function createApi(overrides: Partial<PopupApi> = {}): PopupApi {
     chromeTranslatorStatus: vi.fn().mockResolvedValue('available'),
     prepareChromeTranslator: vi.fn().mockResolvedValue(undefined),
     requestPermission: vi.fn().mockResolvedValue(true),
+    webGpuAvailable: vi.fn().mockResolvedValue(true),
+    localWhisperCached: vi.fn().mockResolvedValue(false),
+    downloadLocalWhisper: vi.fn().mockResolvedValue(undefined),
+    deleteLocalWhisper: vi.fn().mockResolvedValue(undefined),
+    watchLocalWhisperDownload: vi.fn().mockReturnValue(() => undefined),
     ...overrides,
   };
 }
@@ -51,7 +56,7 @@ describe('PopupApp', () => {
     expect(screen.queryByLabelText('翻譯服務')).not.toBeInTheDocument();
   });
 
-  it('asks only for the Gemini API Key, for both modes', async () => {
+  it('asks for the Gemini API Key in live mode, and the default recognizer\'s key in read-ahead', async () => {
     const api = createApi();
     render(<PopupApp api={api} />);
 
@@ -67,8 +72,9 @@ describe('PopupApp', () => {
       target: { value: 'gemini-read-ahead' },
     });
 
-    expect(screen.getByLabelText('Gemini API Key')).toBeVisible();
-    expect(screen.queryByLabelText('Microsoft Translator API Key')).not.toBeInTheDocument();
+    // Read-ahead starts on Groq Whisper (DEFAULT_SETTINGS, no WebGPU).
+    expect(screen.getByLabelText('Groq API Key')).toBeVisible();
+    expect(screen.queryByLabelText('Gemini API Key')).not.toBeInTheDocument();
   });
 
   it('shows an API Key as missing as soon as its textbox is cleared', async () => {
@@ -312,6 +318,7 @@ describe('PopupApp', () => {
     const api = createApi({
       loadSettings: vi.fn().mockResolvedValue({
         ...DEFAULT_SETTINGS,
+        readAheadRecognizer: 'gemini',
         transcriber: 'gemini-read-ahead',
       }),
     });
@@ -344,6 +351,7 @@ describe('PopupApp', () => {
       createApi({
         loadSettings: vi.fn().mockResolvedValue({
           ...DEFAULT_SETTINGS,
+          readAheadRecognizer: 'gemini',
           transcriber: 'gemini-read-ahead',
           ...settings,
         }),
@@ -355,7 +363,7 @@ describe('PopupApp', () => {
 
       const recognizer = await screen.findByLabelText('語音辨識');
       expect([...recognizer.querySelectorAll('option')].map((option) => option.textContent))
-        .toEqual(['Gemini（含翻譯）', 'Groq Whisper']);
+        .toEqual(['Gemini（含翻譯）', 'Groq Whisper', '本地 Whisper（在這台電腦執行）']);
       const translator = screen.getByLabelText('翻譯服務');
       expect(translator).toBeDisabled();
       expect(translator).toHaveValue('gemini');
@@ -452,6 +460,64 @@ describe('PopupApp', () => {
       expect(await screen.findByText(/影片有上傳者提供的字幕時優先使用/)).toBeVisible();
       fireEvent.click(screen.getByRole('switch', { name: '開始即時字幕' }));
       await waitFor(() => expect(api.prepareChromeTranslator).toHaveBeenCalledWith('en', 'zh-Hant'));
+    });
+
+    it('offers Local Whisper with its model, downloading only after the size is shown', async () => {
+      const api = readAheadApi({ readAheadRecognizer: 'local' });
+      render(<PopupApp api={api} />);
+
+      expect(await screen.findByLabelText('本地模型')).toHaveValue('turbo');
+      const download = await screen.findByRole('button', { name: '下載模型（566 MB）' });
+      expect(api.downloadLocalWhisper).not.toHaveBeenCalled();
+      fireEvent.click(download);
+      expect(api.downloadLocalWhisper).toHaveBeenCalledWith('turbo');
+
+      fireEvent.change(screen.getByLabelText('本地模型'), { target: { value: 'small' } });
+      expect(await screen.findByRole('button', { name: '下載模型（325 MB）' })).toBeVisible();
+      // No key is asked for.
+      expect(screen.queryByLabelText('Groq API Key')).not.toBeInTheDocument();
+    });
+
+    it('shows the download, then the downloaded model with a way to delete it', async () => {
+      let report: (download: unknown) => void = () => undefined;
+      const api = readAheadApi({ readAheadRecognizer: 'local' }, {
+        watchLocalWhisperDownload: vi.fn((onChange) => { report = onChange; return () => undefined; }),
+      });
+      render(<PopupApp api={api} />);
+      await screen.findByLabelText('本地模型');
+      act(() => report({ loadedMB: 120, model: 'turbo', state: 'downloading', totalMB: 566, updatedAt: Date.now() }));
+      expect(await screen.findByText(/下載中… 120 \/ 566 MB/)).toBeVisible();
+
+      vi.mocked(api.localWhisperCached).mockResolvedValue(true);
+      act(() => report({ loadedMB: 566, model: 'turbo', state: 'done', totalMB: 566, updatedAt: Date.now() }));
+      fireEvent.click(await screen.findByRole('button', { name: '刪除已下載的模型' }));
+      await waitFor(() => expect(api.deleteLocalWhisper).toHaveBeenCalledWith('turbo'));
+      expect(await screen.findByRole('button', { name: '下載模型（566 MB）' })).toBeVisible();
+    });
+
+    it('offers the download again when a download stopped reporting', async () => {
+      const stalled = { loadedMB: 394, model: 'turbo', state: 'downloading', totalMB: 566, updatedAt: Date.now() - 180_000 };
+      const api = readAheadApi({ readAheadRecognizer: 'local' }, {
+        watchLocalWhisperDownload: vi.fn((onChange) => { onChange(stalled); return () => undefined; }),
+      });
+      render(<PopupApp api={api} />);
+      expect(await screen.findByRole('button', { name: '下載模型（566 MB）' })).toBeVisible();
+      expect(screen.getByText('下載失敗，請檢查網路後重試。')).toBeVisible();
+      expect(screen.queryByText(/下載中…/)).not.toBeInTheDocument();
+    });
+
+    it('will not start Local Whisper before its model is downloaded', async () => {
+      const api = readAheadApi({ readAheadRecognizer: 'local' });
+      render(<PopupApp api={api} />);
+      fireEvent.click(await screen.findByRole('switch', { name: '開始即時字幕' }));
+      expect(await screen.findByText('請先下載本地 Whisper 模型。')).toBeVisible();
+      expect(api.start).not.toHaveBeenCalled();
+    });
+
+    it('cannot choose Local Whisper on a computer without WebGPU, and says why', async () => {
+      render(<PopupApp api={readAheadApi({}, { webGpuAvailable: vi.fn().mockResolvedValue(false) })} />);
+      expect(await screen.findByText(/無法使用 WebGPU/)).toBeVisible();
+      expect(screen.getByRole('option', { name: '本地 Whisper（在這台電腦執行）' })).toBeDisabled();
     });
 
     it('names the missing key and checks the Groq permission before starting', async () => {

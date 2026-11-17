@@ -11,6 +11,7 @@ import type { SessionErrorAction } from '../core/capture-session-controller';
 
 const SESSION_ACTION_KEYS: Record<SessionErrorAction, MessageKey> = {
   switch_to_groq: 'switchToGroqWhisper',
+  switch_to_local: 'switchToLocalWhisper',
 };
 
 const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
@@ -23,6 +24,7 @@ const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
   read_ahead_captions_video: 'noticeReadAheadCaptionsVideo',
   read_ahead_captions_youtube: 'noticeReadAheadCaptionsYouTube',
   read_ahead_failed: 'errorReadAheadFailed',
+  local_timeout: 'errorLocalWhisperTimeout',
   read_ahead_loading: 'errorReadAheadLoading',
   read_ahead_page_timeout: 'errorReadAheadPageTimeout',
   read_ahead_web_translation_failed: 'errorReadAheadWebTranslationFailed',
@@ -36,6 +38,7 @@ const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
 const PROVIDER_NAMES: Record<string, string> = {
   gemini: 'Gemini',
   groq: 'Groq Whisper',
+  local: '本地 Whisper',
 };
 const PROVIDER_REASON_KEYS: Record<string, MessageKey> = {
   invalid_credentials: 'errorProviderInvalidCredentials',
@@ -49,7 +52,7 @@ const PROVIDER_REASON_KEYS: Record<string, MessageKey> = {
 export function sessionErrorText(code: string): string {
   const key = SESSION_ERROR_KEYS[code];
   if (key) return t(key);
-  const [, provider, reason] = /^(gemini|groq)_(.+)$/.exec(code) ?? [];
+  const [, provider, reason] = /^(gemini|groq|local)_(.+)$/.exec(code) ?? [];
   const reasonKey = reason ? PROVIDER_REASON_KEYS[reason] : undefined;
   if (provider && reasonKey) return t(reasonKey, PROVIDER_NAMES[provider]!);
   return t('errorUnknown');

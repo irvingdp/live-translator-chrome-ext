@@ -212,6 +212,12 @@ describe('CaptionOverlay', () => {
     button().click();
     expect(onSessionAction).toHaveBeenCalledTimes(2);
 
+    await vi.waitFor(() => expect(button().disabled).toBe(false));
+    overlay.setSessionError('groq_timeout', 'switch_to_local');
+    expect(button().textContent).toBe('改用本地 Whisper');
+    button().click();
+    expect(onSessionAction).toHaveBeenLastCalledWith('switch_to_local');
+
     overlay.clearSessionError();
     expect(button().hidden).toBe(true);
   });
@@ -564,7 +570,7 @@ describe('CaptionOverlay', () => {
     overlay.show(appearance, layout);
     overlay.setSessionError('groq_quota_exceeded');
     expect(shadow()?.querySelector('.status-message')?.textContent).toBe(
-      'Groq 今日額度已用完（每天約 2000 次）。建議：改用「Gemini（含翻譯）」，或明天再用。',
+      'Groq 今日額度已用完（每天約 2000 次）。建議：改用本地 Whisper 或「Gemini（含翻譯）」，或明天再用。',
     );
 
     overlay.clearSessionError();
@@ -722,6 +728,9 @@ describe('sessionErrorText', () => {
     expect(sessionErrorText('groq_invalid_credentials')).toMatch(/^Groq Whisper 拒絕了你的金鑰/);
     expect(sessionErrorText('gemini_timeout')).toMatch(/^Gemini 在 7 秒內沒有回應/);
     expect(sessionErrorText('read_ahead_web_translation_failed')).toMatch(/Google 網頁翻譯也失敗/);
+    expect(sessionErrorText('groq_timeout')).toMatch(/^Groq Whisper 在 7 秒內沒有回應/);
+    expect(sessionErrorText('local_timeout')).toMatch(/^本地 Whisper 在 7 秒內沒有辨識完.*small/);
+    expect(sessionErrorText('local_provider_unavailable')).toMatch(/^本地 Whisper 暫時無法使用/);
     expect(sessionErrorText('groq_quota_exceeded')).toMatch(/每天約 2000 次/);
     expect(sessionErrorText('something_else')).toBe('字幕服務發生未知錯誤，請重新啟動');
   });

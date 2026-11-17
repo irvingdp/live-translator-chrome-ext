@@ -165,11 +165,11 @@ export default defineUnlistedScript(() => {
     console.error(fullscreenDebugPrefix, 'fullscreenerror', debugState(event));
   };
   const overlay = new CaptionOverlay(document, {
-    async onSessionAction() {
+    async onSessionAction(action) {
       await chrome.runtime.sendMessage({
         target: 'background',
         type: 'READ_AHEAD_SWITCH_RECOGNIZER',
-        payload: { recognizer: 'groq' },
+        payload: { recognizer: action === 'switch_to_local' ? 'local' : 'groq' },
       } satisfies import('../src/core/messages').ExtensionMessage);
     },
     onClear() {
