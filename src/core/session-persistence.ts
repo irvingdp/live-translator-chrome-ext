@@ -5,7 +5,7 @@ import type {
 
 export type NonSecretSessionSettings = Omit<
   SessionSettings,
-  'deepgramApiKey' | 'deeplApiKey' | 'geminiApiKey'
+  'deeplApiKey' | 'geminiApiKey'
 >;
 
 export interface PersistedSessionSnapshot {
@@ -18,7 +18,6 @@ export function redactSessionSnapshot(
   snapshot: ActiveSessionSnapshot,
 ): PersistedSessionSnapshot {
   const {
-    deepgramApiKey: _deepgramApiKey,
     deeplApiKey: _deeplApiKey,
     geminiApiKey: _geminiApiKey,
     ...settings

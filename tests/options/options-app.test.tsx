@@ -7,8 +7,8 @@ import type { OptionsApi } from '../../src/options/browser-api';
 function createApi(overrides: Partial<OptionsApi> = {}): OptionsApi {
   return {
     loadKeys: vi.fn().mockResolvedValue({
-      deepgramApiKey: 'dg-existing',
       deeplApiKey: 'dl-existing',
+      geminiApiKey: 'gm-existing',
     }),
     saveKeys: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -16,14 +16,14 @@ function createApi(overrides: Partial<OptionsApi> = {}): OptionsApi {
 }
 
 describe('OptionsApp', () => {
-  it('loads both keys into password fields', async () => {
+  it('loads both keys into password fields, with no Deepgram key', async () => {
     render(<OptionsApp api={createApi()} />);
 
-    expect(await screen.findByLabelText('Deepgram API Key')).toHaveValue(
-      'dg-existing',
+    expect(await screen.findByLabelText('Gemini API Key')).toHaveValue(
+      'gm-existing',
     );
     expect(screen.getByLabelText('DeepL API Key')).toHaveValue('dl-existing');
-    expect(screen.getByLabelText('Deepgram API Key')).toHaveAttribute(
+    expect(screen.getByLabelText('Gemini API Key')).toHaveAttribute(
       'type',
       'password',
     );
@@ -31,17 +31,18 @@ describe('OptionsApp', () => {
       'type',
       'password',
     );
+    expect(screen.queryByLabelText('Deepgram API Key')).not.toBeInTheDocument();
   });
 
   it('reveals only the selected key', async () => {
     render(<OptionsApp api={createApi()} />);
-    await screen.findByLabelText('Deepgram API Key');
+    await screen.findByLabelText('Gemini API Key');
 
     fireEvent.click(
       screen.getByRole('button', { name: '顯示 DeepL API Key' }),
     );
 
-    expect(screen.getByLabelText('Deepgram API Key')).toHaveAttribute(
+    expect(screen.getByLabelText('Gemini API Key')).toHaveAttribute(
       'type',
       'password',
     );
@@ -61,8 +62,8 @@ describe('OptionsApp', () => {
 
     await waitFor(() =>
       expect(api.saveKeys).toHaveBeenCalledWith({
-        deepgramApiKey: 'dg-existing',
         deeplApiKey: 'dl-new',
+        geminiApiKey: 'gm-existing',
       }),
     );
     expect(await screen.findByText('API Key 已儲存')).toBeVisible();

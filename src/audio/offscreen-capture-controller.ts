@@ -1,5 +1,3 @@
-import type { TranscriptEvent } from '../core/transcript-stabilizer';
-import { DeepgramSession } from '../providers/deepgram-session';
 import { GeminiLiveSession } from '../providers/gemini-live-session';
 import { Pcm16Chunker } from './pcm16-chunker';
 
@@ -19,9 +17,10 @@ export interface CaptionPairUpdate {
   translation?: string;
 }
 
-export type CaptureEvent =
-  | { kind: 'pairs'; updates: CaptionPairUpdate[] }
-  | { event: TranscriptEvent; kind: 'transcript' };
+export interface CaptureEvent {
+  kind: 'pairs';
+  updates: CaptionPairUpdate[];
+}
 
 export interface CaptureSession {
   readonly audioChunkMs: number;
@@ -33,18 +32,13 @@ export interface CaptureSession {
   updateMaxLineWidth?(maxLineWidth: number): void;
 }
 
-export type CaptureStartRequest = {
+export interface CaptureStartRequest {
+  apiKey: string;
+  maxLineWidth: number;
   sessionId: string;
   streamId: string;
-} & (
-  | { apiKey: string; language: string; provider: 'deepgram' }
-  | {
-      apiKey: string;
-      maxLineWidth: number;
-      provider: 'gemini';
-      targetLanguage: string;
-    }
-);
+  targetLanguage: string;
+}
 
 export interface OffscreenCaptureDependencies {
   createPipeline(
@@ -206,15 +200,9 @@ interface ActiveCapture {
 export function createCaptureSession(
   request: CaptureStartRequest,
 ): CaptureSession {
-  if (request.provider === 'gemini') {
-    return new GeminiLiveSession({
-      apiKey: request.apiKey,
-      maxLineWidth: request.maxLineWidth,
-      targetLanguage: request.targetLanguage,
-    });
-  }
-  return new DeepgramSession({
+  return new GeminiLiveSession({
     apiKey: request.apiKey,
-    language: request.language,
+    maxLineWidth: request.maxLineWidth,
+    targetLanguage: request.targetLanguage,
   });
 }

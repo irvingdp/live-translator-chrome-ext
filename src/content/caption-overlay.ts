@@ -9,7 +9,6 @@ import {
 import { SETTING_RANGES, type CaptionAppearance } from '../core/settings';
 
 const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
-  deepgram_disconnected: 'errorDeepgramDisconnected',
   gemini_disconnected: 'errorGeminiDisconnected',
   gemini_invalid_credentials: 'errorGeminiInvalidCredentials',
   gemini_quota_exceeded: 'errorGeminiQuotaExceeded',

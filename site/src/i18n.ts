@@ -40,7 +40,7 @@ export const STRINGS: Record<Lang, Strings> = {
     videoLocale: 'en',
     title: 'Bilingual Live Captions — live translated captions for any tab',
     description:
-      'A Chrome extension that shows the original line and its translation, live, over any video tab. Bring your own Gemini or Deepgram + DeepL key.',
+      'A Chrome extension that shows the original line and its translation, live, over any video tab. Bring your own Gemini API key.',
     heroTitle: 'Understand any video, in two languages at once.',
     heroLead:
       'Bilingual Live Captions listens to the tab you pick and shows the original line with its translation right on the video — live, in 78 languages.',
@@ -71,18 +71,18 @@ export const STRINGS: Record<Lang, Strings> = {
       { title: 'Switch it on', body: 'Open a video, click the extension icon, and flip the switch at the top right.' },
     ],
     providersTitle: 'Providers and languages',
-    providerHeaders: ['', 'Gemini live translate 3.5', 'Deepgram Nova-3 + DeepL'],
+    providerHeaders: ['', 'Gemini live translate 3.5', 'Gemini read-ahead'],
     providerRows: [
-      ['API keys', 'One (Google)', 'Two (Deepgram, DeepL)'],
-      ['Languages', '78', '10 common languages'],
-      ['Source language', 'Detected automatically', 'You pick it'],
-      ['Best for', 'Simplest setup, widest coverage', 'Word-by-word source text, tunable line length'],
+      ['API keys', 'One (Google)', 'The same one'],
+      ['Languages', '78', '78'],
+      ['Captions appear', 'Just after the speaker', 'As the speaker starts; the video pauses briefly if a sentence is not ready'],
+      ['Works on', 'Any tab, including live streams', 'YouTube and ordinary HTML5 video'],
     ],
     faqTitle: 'Questions',
     faq: [
       {
         title: 'Does it cost anything?',
-        body: 'The extension is free and open source. Speech and translation are billed by the provider you choose, on your own account — check their pricing.',
+        body: 'The extension is free and open source. Speech and translation are billed by Google to your own Gemini account — a free key is enough to start; check Google’s pricing for more.',
       },
       {
         title: 'Where is my API key stored?',
@@ -106,7 +106,7 @@ export const STRINGS: Record<Lang, Strings> = {
     videoLocale: 'zh-TW',
     title: '雙語即時字幕 Bilingual Live Captions — 任何分頁都能即時翻譯',
     description:
-      'Chrome 擴充功能：在任何影片分頁上即時顯示原文與譯文兩行字幕，使用你自己的 Gemini 或 Deepgram + DeepL 金鑰。',
+      'Chrome 擴充功能：在任何影片分頁上即時顯示原文與譯文兩行字幕，使用你自己的 Gemini API 金鑰。',
     heroTitle: '任何影片，同時用兩種語言看懂。',
     heroLead: '雙語即時字幕會擷取你選的分頁聲音，直接在影片上即時顯示原文與譯文，支援 78 種語言。',
     install: '免費加到 Chrome',
@@ -133,18 +133,18 @@ export const STRINGS: Record<Lang, Strings> = {
       { title: '打開開關', body: '打開影片，點擴充功能圖示，打開右上角的開關。' },
     ],
     providersTitle: '服務與語言',
-    providerHeaders: ['', 'Gemini live translate 3.5', 'Deepgram Nova-3 + DeepL'],
+    providerHeaders: ['', 'Gemini live translate 3.5', 'Gemini 預讀'],
     providerRows: [
-      ['API Key', '一把（Google）', '兩把（Deepgram、DeepL）'],
-      ['語言數', '78 種', '10 種常用語言'],
-      ['來源語言', '自動偵測', '需自行指定'],
-      ['適合', '設定最簡單、語言最多', '想看逐字原文、調整每行長度'],
+      ['API Key', '一把（Google）', '同一把'],
+      ['語言數', '78 種', '78 種'],
+      ['字幕出現時機', '比講者稍晚', '講者開口時；下一句還沒翻好時影片會短暫暫停'],
+      ['適用範圍', '任何分頁，包含直播', 'YouTube 與一般 HTML5 影片'],
     ],
     faqTitle: '常見問題',
     faq: [
       {
         title: '要付費嗎？',
-        body: '擴充功能免費且開源。語音辨識與翻譯由你選的服務商依用量向你的帳號計費，請參考它們的價格。',
+        body: '擴充功能免費且開源。語音辨識與翻譯由 Google 依用量向你的 Gemini 帳號計費，用免費金鑰就能開始，詳細請參考 Google 的價格。',
       },
       {
         title: '我的 API Key 存在哪裡？',

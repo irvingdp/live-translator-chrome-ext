@@ -1,5 +1,5 @@
 import type { CaptionPairUpdate } from '../audio/offscreen-capture-controller';
-import { isWideCharacter, splitIntoSentences } from '../core/caption-chunker';
+import { isWideCharacter, splitIntoSentences } from '../core/sentence-splitter';
 import { t } from '../core/i18n';
 
 export const GEMINI_MODEL = 'models/gemini-3.5-live-translate-preview';

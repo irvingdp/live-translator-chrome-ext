@@ -4,6 +4,7 @@ import { t } from '../core/i18n';
 import { normalizeRatingPrompt, RATING_PROMPT_KEY } from '../core/rating-prompt';
 import type { ExtensionMessage } from '../core/messages';
 import {
+  DEEPGRAM_REMOVED_NOTICE_KEY,
   DEFAULT_SETTINGS,
   normalizeSettings,
   type AppSettings,
@@ -70,4 +71,10 @@ export const browserPopupApi: PopupApi = {
   },
   status: () => control({ target: 'background', type: 'SESSION_STATUS' }),
   stop: () => control({ target: 'background', type: 'SESSION_STOP' }),
+  async takeDeepgramRemovedNotice() {
+    const stored = await chrome.storage.local.get(DEEPGRAM_REMOVED_NOTICE_KEY);
+    if (stored[DEEPGRAM_REMOVED_NOTICE_KEY] !== true) return false;
+    await chrome.storage.local.remove(DEEPGRAM_REMOVED_NOTICE_KEY);
+    return true;
+  },
 };

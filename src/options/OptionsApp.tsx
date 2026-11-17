@@ -4,14 +4,12 @@ import { t } from '../core/i18n';
 import type { ApiKeySettings, OptionsApi } from './browser-api';
 
 const EMPTY_KEYS: ApiKeySettings = {
-  deepgramApiKey: '',
   deeplApiKey: '',
   geminiApiKey: '',
 };
 
 export function OptionsApp({ api }: { api: OptionsApi }) {
   const [keys, setKeys] = useState<ApiKeySettings>();
-  const [showDeepgram, setShowDeepgram] = useState(false);
   const [showDeepl, setShowDeepl] = useState(false);
   const [showGemini, setShowGemini] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -56,19 +54,6 @@ export function OptionsApp({ api }: { api: OptionsApi }) {
 
       <section className="card" aria-labelledby="api-key-heading">
         <h2 id="api-key-heading">{t('providerHeading')}</h2>
-        <SecretField
-          id="deepgram-key"
-          label="Deepgram API Key"
-          onChange={(deepgramApiKey) =>
-            setKeys((current) => ({
-              ...(current ?? EMPTY_KEYS),
-              deepgramApiKey,
-            }))
-          }
-          onToggle={() => setShowDeepgram((value) => !value)}
-          revealed={showDeepgram}
-          value={keys.deepgramApiKey}
-        />
         <SecretField
           id="deepl-key"
           label="DeepL API Key"

@@ -51,9 +51,20 @@ describe('browserPopupApi', () => {
     const set = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('chrome', { storage: { local: { set } } });
 
-    await browserPopupApi.saveSettings({ deepgramApiKey: 'dg' } as never);
+    await browserPopupApi.saveSettings({ geminiApiKey: 'gm' } as never);
 
-    expect(set).toHaveBeenCalledWith({ settings: { deepgramApiKey: 'dg' } });
+    expect(set).toHaveBeenCalledWith({ settings: { geminiApiKey: 'gm' } });
+  });
+
+  it('hands out the Deepgram-removed notice once', async () => {
+    const data: Record<string, unknown> = { deepgramRemovedNotice: true };
+    const get = vi.fn(async (key: string) => ({ [key]: data[key] }));
+    const remove = vi.fn(async (key: string) => { delete data[key]; });
+    vi.stubGlobal('chrome', { storage: { local: { get, remove } } });
+
+    await expect(browserPopupApi.takeDeepgramRemovedNotice()).resolves.toBe(true);
+    await expect(browserPopupApi.takeDeepgramRemovedNotice()).resolves.toBe(false);
+    expect(remove).toHaveBeenCalledOnce();
   });
 
   it('keeps the rating prompt state in local storage', async () => {

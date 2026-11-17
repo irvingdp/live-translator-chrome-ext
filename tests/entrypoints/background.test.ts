@@ -11,19 +11,14 @@ type BackgroundListener = (
 
 const settings: AppSettings = {
   backgroundOpacity: 78,
-  deepgramApiKey: 'deepgram-key',
   deeplApiKey: 'deepl-key:fx',
   geminiApiKey: 'gemini-key',
   geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
   maxLineWidth: 90,
-  minLineWidth: 40,
   originalFontSize: 24,
   originalTextColor: '#ffffff',
-  sourceLanguage: 'EN',
-  sourceLocale: 'en-US',
-  targetLanguage: 'ZH-HANT',
-  transcriber: 'deepgram',
+  transcriber: 'gemini',
   translationFontSize: 22,
   translationTextColor: '#fde68a',
 };
@@ -247,6 +242,23 @@ describe('background offscreen document lifecycle', () => {
     onRuntimeInstalled({ reason: 'update' } as chrome.runtime.InstalledDetails);
     await Promise.resolve();
     expect(tabsCreate).not.toHaveBeenCalled();
+  });
+
+  it('moves a Deepgram user to Gemini live on update, dropping the Deepgram key', async () => {
+    localStorageData.settings = {
+      ...settings,
+      deepgramApiKey: 'dg-secret',
+      geminiApiKey: '',
+      sourceLocale: 'en-US',
+      transcriber: 'deepgram',
+    };
+
+    onRuntimeInstalled({ reason: 'update' } as chrome.runtime.InstalledDetails);
+
+    await vi.waitFor(() => expect(localStorageData.deepgramRemovedNotice).toBe(true));
+    expect(localStorageData.settings).toMatchObject({ transcriber: 'gemini' });
+    expect(JSON.stringify(localStorageData.settings)).not.toContain('dg-secret');
+    expect(localStorageData.settings).not.toHaveProperty('sourceLocale');
   });
 
   it('restricts local storage before accepting session control', async () => {

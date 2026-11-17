@@ -9,7 +9,6 @@ if ((manifest.content_scripts?.length ?? 0) > 0) {
 }
 
 const expectedProviderHosts = [
-  'https://api.deepgram.com/*',
   'https://api.deepl.com/*',
   'https://api-free.deepl.com/*',
   'https://generativelanguage.googleapis.com/*',

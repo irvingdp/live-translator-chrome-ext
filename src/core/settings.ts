@@ -35,58 +35,32 @@ export function captionAppearance(
   };
 }
 
-// maxLineWidth's floor of 40 is load-bearing: measurement showed the
-// chunker's closed-unit boundaries are stable at widths 40-140 but not below
-// ~30, so this range must not widen.
 export const SETTING_RANGES = {
   backgroundOpacity: { max: 100, min: 0 },
   maxLineWidth: { max: 140, min: 40 },
-  minLineWidth: { max: 120, min: 0 },
   originalFontSize: { max: 36, min: 12 },
   translationFontSize: { max: 36, min: 12 },
 } as const;
 
 export const DEFAULT_SETTINGS: AppSettings = {
   backgroundOpacity: 0,
-  deepgramApiKey: '',
   deeplApiKey: '',
   geminiApiKey: '',
   geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
   maxLineWidth: 90,
-  minLineWidth: 40,
   originalFontSize: 16,
   originalTextColor: '#ffffff',
-  sourceLanguage: 'EN',
-  sourceLocale: 'en-US',
-  targetLanguage: 'ZH-HANT',
   transcriber: 'gemini',
   translationFontSize: 16,
   translationTextColor: '#fde68a',
 };
 
-export const TRANSCRIBER_IDS = ['deepgram', 'gemini', 'gemini-read-ahead'] as const;
+// Deepgram was removed in 1.5.0 (issue #10); a stored 'deepgram' falls back to
+// the default, Gemini live.
+export const TRANSCRIBER_IDS = ['gemini', 'gemini-read-ahead'] as const;
 
 export type TranscriberId = (typeof TRANSCRIBER_IDS)[number];
-
-// Both Gemini modes share the key and the language list. Read-ahead mode is a
-// separate code path (ADR 0001), but the popup treats the two alike.
-export function usesGemini(transcriber: TranscriberId): boolean {
-  return transcriber === 'gemini' || transcriber === 'gemini-read-ahead';
-}
-
-export const LANGUAGE_OPTIONS = [
-  { deepgram: 'en-US', label: 'English', source: 'EN', target: 'EN-US' },
-  { deepgram: 'zh-TW', label: '繁體中文', source: 'ZH', target: 'ZH-HANT' },
-  { deepgram: 'ja', label: '日本語', source: 'JA', target: 'JA' },
-  { deepgram: 'ko', label: '한국어', source: 'KO', target: 'KO' },
-  { deepgram: 'de', label: 'Deutsch', source: 'DE', target: 'DE' },
-  { deepgram: 'fr', label: 'Français', source: 'FR', target: 'FR' },
-  { deepgram: 'es', label: 'Español', source: 'ES', target: 'ES' },
-  { deepgram: 'pt-BR', label: 'Português', source: 'PT', target: 'PT-BR' },
-  { deepgram: 'it', label: 'Italiano', source: 'IT', target: 'IT' },
-  { deepgram: 'nl', label: 'Nederlands', source: 'NL', target: 'NL' },
-] as const;
 
 function stringValue(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
@@ -117,20 +91,11 @@ function clamped(
 }
 
 export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
-  const maxLineWidth = clamped(
-    raw.maxLineWidth,
-    SETTING_RANGES.maxLineWidth,
-    DEFAULT_SETTINGS.maxLineWidth,
-  );
   return {
     backgroundOpacity: clamped(
       raw.backgroundOpacity,
       SETTING_RANGES.backgroundOpacity,
       DEFAULT_SETTINGS.backgroundOpacity,
-    ),
-    deepgramApiKey: stringValue(
-      raw.deepgramApiKey,
-      DEFAULT_SETTINGS.deepgramApiKey,
     ),
     deeplApiKey: stringValue(raw.deeplApiKey, DEFAULT_SETTINGS.deeplApiKey),
     geminiApiKey: stringValue(raw.geminiApiKey, DEFAULT_SETTINGS.geminiApiKey),
@@ -142,17 +107,10 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       raw.geminiTargetLanguage,
       DEFAULT_SETTINGS.geminiTargetLanguage,
     ),
-    maxLineWidth,
-    // A minimum above the maximum would ask the chunker to merge every unit
-    // past the width it is allowed to reach, so the pair is clamped together
-    // rather than each field independently.
-    minLineWidth: Math.min(
-      maxLineWidth,
-      clamped(
-        raw.minLineWidth,
-        SETTING_RANGES.minLineWidth,
-        DEFAULT_SETTINGS.minLineWidth,
-      ),
+    maxLineWidth: clamped(
+      raw.maxLineWidth,
+      SETTING_RANGES.maxLineWidth,
+      DEFAULT_SETTINGS.maxLineWidth,
     ),
     originalFontSize: clamped(
       raw.originalFontSize,
@@ -162,15 +120,6 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
     originalTextColor: colorValue(
       raw.originalTextColor,
       DEFAULT_SETTINGS.originalTextColor,
-    ),
-    sourceLanguage: stringValue(
-      raw.sourceLanguage,
-      DEFAULT_SETTINGS.sourceLanguage,
-    ),
-    sourceLocale: stringValue(raw.sourceLocale, DEFAULT_SETTINGS.sourceLocale),
-    targetLanguage: stringValue(
-      raw.targetLanguage,
-      DEFAULT_SETTINGS.targetLanguage,
     ),
     transcriber: transcriberValue(raw.transcriber),
     translationFontSize: clamped(
@@ -185,25 +134,36 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
   };
 }
 
-type ApiKeyField = 'deepgramApiKey' | 'deeplApiKey' | 'geminiApiKey';
-
-// Gemini Live Translate transcribes and translates in one session, so its
-// mode needs neither of the other two keys.
+// Both modes run on Gemini, so the Gemini key is the only one a start needs.
 export function validateSettingsForStart(
   settings: AppSettings,
-): Partial<Record<ApiKeyField, string>> {
-  const errors: Partial<Record<ApiKeyField, string>> = {};
-  if (usesGemini(settings.transcriber)) {
-    if (!settings.geminiApiKey.trim()) {
-      errors.geminiApiKey = t('needGeminiKeyField');
-    }
-    return errors;
-  }
-  if (!settings.deepgramApiKey.trim()) {
-    errors.deepgramApiKey = t('needDeepgramKeyField');
-  }
-  if (!settings.deeplApiKey.trim()) {
-    errors.deeplApiKey = t('needDeeplKeyField');
-  }
-  return errors;
+): Partial<Record<'geminiApiKey', string>> {
+  return settings.geminiApiKey.trim()
+    ? {}
+    : { geminiApiKey: t('needGeminiKeyField') };
+}
+
+// Storage key of the one-time popup notice set by migrateStoredSettings.
+export const DEEPGRAM_REMOVED_NOTICE_KEY = 'deepgramRemovedNotice';
+
+// Settings stored by a version before 1.5.0 may still select Deepgram, or hold
+// its key and the fields only its mode used. Normalizing drops them; the
+// result says whether the stored copy needs rewriting, and whether a Deepgram
+// user was moved to Gemini live without a Gemini key (the popup then tells
+// them why it is asking for one).
+export function migrateStoredSettings(raw: unknown): {
+  changed: boolean;
+  needsGeminiKeyNotice: boolean;
+  settings: AppSettings;
+} {
+  const stored = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const settings = normalizeSettings(stored as Partial<AppSettings>);
+  const known = new Set(Object.keys(DEFAULT_SETTINGS));
+  const changed = stored.transcriber === 'deepgram' ||
+    Object.keys(stored).some((key) => !known.has(key));
+  return {
+    changed,
+    needsGeminiKeyNotice: stored.transcriber === 'deepgram' && !settings.geminiApiKey.trim(),
+    settings,
+  };
 }

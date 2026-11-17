@@ -7,7 +7,7 @@ A Chrome extension that turns the audio of the current tab into bilingual captio
 ### Caption modes
 
 **Live mode** (即時模式):
-Captions translated from the audio the viewer is hearing right now, so they always trail the speech. Both Deepgram + DeepL and Gemini Live work this way.
+Captions translated from the audio the viewer is hearing right now, so they always trail the speech. Gemini Live works this way (Deepgram + DeepL did too, until it was removed in 1.5.0).
 _Avoid_: Realtime mode, normal mode
 
 **Read-ahead mode** (預讀模式):

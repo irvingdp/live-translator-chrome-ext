@@ -4,7 +4,7 @@
     "description": "Extension name shown in Chrome and on the Web Store."
   },
   "extDescription": {
-    "message": "為任何分頁加上即時雙語字幕：上行原文、下行譯文，使用你自己的 Gemini 或 Deepgram + DeepL 金鑰。",
+    "message": "為任何分頁加上即時雙語字幕：上行原文、下行譯文，使用你自己的 Gemini API 金鑰。",
     "description": "Extension description shown in Chrome and on the Web Store. Must stay under 132 characters."
   },
 
@@ -42,14 +42,6 @@
     "message": "需重試",
     "description": "Popup status pill: the session failed and must be restarted."
   },
-  "statusTranslationFailed": {
-    "message": "翻譯異常",
-    "description": "Popup status pill: captions continue but translation is failing."
-  },
-  "statusTranslationDisabled": {
-    "message": "翻譯已停用",
-    "description": "Popup status pill: translation gave up after repeated failures."
-  },
 
   "providerHeading": {
     "message": "服務提供者",
@@ -58,10 +50,6 @@
   "transcriberLabel": {
     "message": "語音辨識",
     "description": "Label for the dropdown that picks the speech provider."
-  },
-  "translatorLabel": {
-    "message": "翻譯",
-    "description": "Label for the dropdown that picks the translation provider."
   },
   "keysConfigured": {
     "message": "API Key 已設定",
@@ -79,13 +67,6 @@
   "decreaseCaptionFont": { "message": "同時縮小原文與譯文字體", "description": "Caption toolbar action that decreases both font sizes." },
   "increaseCaptionBackground": { "message": "增加字幕背景透明度", "description": "Caption toolbar action that increases background opacity." },
   "decreaseCaptionBackground": { "message": "減少字幕背景透明度", "description": "Caption toolbar action that decreases background opacity." },
-  "providerSignupLink": {
-    "message": "前往申請 API Key：$1",
-    "description": "Link under a provider dropdown. $1 is the provider's sign-up domain.",
-    "placeholders": {
-      "domain": { "content": "$1", "example": "aistudio.google.com" }
-    }
-  },
   "geminiGuideLink": {
     "message": "如何建立 Gemini API Key？",
     "description": "Link from the popup to the first-use Gemini API key guide."
@@ -246,21 +227,9 @@
     "message": "清除字幕",
     "description": "Accessible label for the button that clears the current caption window."
   },
-  "maxLineWidthLabel": {
-    "message": "每行長度上限",
-    "description": "Slider label for the widest a caption row may be cut."
-  },
-  "minLineWidthLabel": {
-    "message": "每行長度下限",
-    "description": "Slider label for the shortest a caption row may stay before merging."
-  },
   "backgroundOpacityLabel": {
     "message": "背景透明度",
     "description": "Slider label for how opaque the caption box background is."
-  },
-  "unitColumns": {
-    "message": " 字寬",
-    "description": "Unit appended to the line-length sliders. Counted in character widths: CJK counts as two. Keep the leading space."
   },
 
   "openSidePanel": {
@@ -299,10 +268,6 @@
     "message": "啟動後，分頁音訊會傳送至 Google Gemini，由 Gemini 同時產生原文與譯文。",
     "description": "Popup footer explaining where audio goes in Gemini mode."
   },
-  "privacyDeepgram": {
-    "message": "啟動後，分頁音訊會傳送至 Deepgram，辨識文字會傳送至 DeepL。",
-    "description": "Popup footer explaining where audio and text go in Deepgram mode."
-  },
 
   "settingsLoadFailed": {
     "message": "無法載入設定，請重新開啟擴充功能。",
@@ -328,10 +293,6 @@
     "message": "請先輸入 Gemini API Key，前往申請: ",
     "description": "Popup error when starting in Gemini mode without a key."
   },
-  "needDeepgramAndDeeplKeys": {
-    "message": "請先輸入 Deepgram 與 DeepL API Key。",
-    "description": "Popup error when starting in Deepgram mode without both keys."
-  },
   "startFailed": {
     "message": "啟動失敗，請檢查 API Key 與目前分頁。",
     "description": "Popup error when starting a session fails for an unknown reason."
@@ -344,14 +305,6 @@
     "message": "請切換到可播放影片的 HTTPS 分頁後再啟動",
     "description": "Error when the active tab cannot be captioned."
   },
-  "needDeepgramKeyField": {
-    "message": "請輸入 Deepgram API Key",
-    "description": "Field-level validation message for the Deepgram key."
-  },
-  "needDeeplKeyField": {
-    "message": "請輸入 DeepL API Key",
-    "description": "Field-level validation message for the DeepL key."
-  },
   "needGeminiKeyField": {
     "message": "請輸入 Gemini API Key",
     "description": "Field-level validation message for the Gemini key."
@@ -362,7 +315,7 @@
     "description": "Heading and document title of the options page."
   },
   "optionsKeyHint": {
-    "message": "可以清除並儲存 Key；只需要填入所選服務提供者的 Key：Deepgram 與 DeepL 搭配使用，Gemini live translate 3.5 則單獨使用。",
+    "message": "可以清除並儲存 Key。兩種字幕模式都只需要 Gemini 的 Key；DeepL 的 Key 是給即將推出的翻譯選項使用。",
     "description": "Explanation under the key fields on the options page."
   },
   "save": {
@@ -415,10 +368,6 @@
   "captionTrackLabel": {
     "message": "雙語即時字幕",
     "description": "Name of the native text track used when a video itself goes fullscreen."
-  },
-  "errorDeepgramDisconnected": {
-    "message": "Deepgram 字幕連線中斷，請重新啟動",
-    "description": "Caption overlay error."
   },
   "errorGeminiDisconnected": {
     "message": "Gemini 字幕連線中斷，請重新啟動",
@@ -614,5 +563,9 @@
   "statusReadAheadUnsupported": {
     "message": "此網站不支援預讀模式，請改用 Gemini live",
     "description": "Popup status when read-ahead mode cannot run on this page."
+  },
+  "deepgramRemovedNeedGeminiKey": {
+    "message": "已不再支援 Deepgram，字幕已改用 Gemini live。請設定 Gemini API 金鑰以繼續使用。",
+    "description": "Popup notice shown once after the update that removed Deepgram, to a Deepgram user who has no Gemini key yet."
   }
 }

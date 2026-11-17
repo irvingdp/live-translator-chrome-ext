@@ -26,7 +26,7 @@ The audio is cut into **chunks** at pauses in speech and sent to the non-Live `g
 
 ## Consequences
 
-- Read-ahead is a third entry in the popup's provider dropdown, next to Gemini live and Deepgram. It shares the Gemini API key, and the live code paths are not touched.
+- Read-ahead is a third entry in the popup's provider dropdown, next to Gemini live and Deepgram (removed in 1.5.0, #10, which left it the second). It shares the Gemini API key, and the live code paths are not touched.
 - The model is fixed to `gemini-flash-lite-latest` and is not user-selectable, because a slow model (e.g. `gemini-3.8-flash` at 245 s per chunk) would hold the player indefinitely.
 - Read-ahead works on YouTube (buffer tap, WebM/Opus audio) and on plain HTML5 video (shadow player). Other MSE sites and other audio formats (fMP4/AAC from hls.js, dash.js) are not supported in v1. On DRM sites, choosing read-ahead shows a notice suggesting Gemini live, and the extension never switches modes on its own.
 - The buffer tap is injected when read-ahead starts, after YouTube has already built its SourceBuffers and appended the audio ahead. It therefore reloads the video at the current position with the player's own `loadVideoById`, so the player appends again through the hook. This avoids a persistent content script and a youtube.com host permission; asking for that permission would disable the extension for existing users until they approve it.

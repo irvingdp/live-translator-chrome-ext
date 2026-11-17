@@ -15,9 +15,13 @@ import {
   saveLayoutForOrigin,
   type OverlayLayout,
 } from '../src/core/overlay-layout';
-import { normalizeSettings, type AppSettings } from '../src/core/settings';
+import {
+  DEEPGRAM_REMOVED_NOTICE_KEY,
+  migrateStoredSettings,
+  normalizeSettings,
+  type AppSettings,
+} from '../src/core/settings';
 import { redactSessionSnapshot } from '../src/core/session-persistence';
-import { createOffscreenTranslationTransport } from '../src/providers/offscreen-translation-transport';
 import {
   ChunkTranslationError,
   translateChunk,
@@ -37,13 +41,26 @@ export default defineBackground(() => {
   const sidePanelPorts = new Set<chrome.runtime.Port>();
   const authorizedTabs = new Map<number, string>();
   const promptedTabs = new Set<number>();
-  const translateOffscreen = createOffscreenTranslationTransport(
-    (message) => chrome.runtime.sendMessage(message),
-  );
   chrome.runtime.onInstalled.addListener(({ reason }) => {
+    if (reason === 'update') {
+      void migrateSettings().catch(() => undefined);
+      return;
+    }
     if (reason !== 'install') return;
     void chrome.tabs.create({ url: onboardingUrl }).catch(() => undefined);
   });
+  // Rewrites settings stored before 1.5.0 (Deepgram's key and fields go; a
+  // Deepgram user lands on Gemini live), so they do not linger in storage.
+  async function migrateSettings(): Promise<void> {
+    const stored = await chrome.storage.local.get('settings');
+    if (!stored.settings) return;
+    const { changed, needsGeminiKeyNotice, settings } = migrateStoredSettings(stored.settings);
+    if (!changed) return;
+    await chrome.storage.local.set({
+      settings,
+      ...(needsGeminiKeyNotice ? { [DEEPGRAM_REMOVED_NOTICE_KEY]: true } : {}),
+    });
+  }
   const sendToOffscreen = async (message: ExtensionMessage) => {
     const response = await chrome.runtime.sendMessage(message) as {
       error?: string;
@@ -133,8 +150,6 @@ export default defineBackground(() => {
       });
     },
     translateChunk: (request) => translateChunk(request),
-    translate: (sessionId, request, signal) =>
-      translateOffscreen(sessionId, request, signal),
   });
 
   async function persistAuthorizedTabs(): Promise<void> {
@@ -505,7 +520,6 @@ export default defineBackground(() => {
     'CAPTION_PAIR_UPDATES',
     'CAPTURE_DISCONNECTED',
     'CAPTURE_KEEPALIVE',
-    'TRANSCRIPT_EVENT',
   ]);
   const popupMessageTypes = new Set([
     'SESSION_AUTHORIZE_TAB',
@@ -574,12 +588,6 @@ export default defineBackground(() => {
       const operation = (async () => {
         await ready;
         switch (message.type) {
-          case 'TRANSCRIPT_EVENT':
-            await controller.acceptTranscript(
-              message.payload.sessionId,
-              message.payload.event,
-            );
-            return { ok: true };
           case 'CAPTION_PAIR_UPDATES':
             await controller.acceptCaptionPairs(
               message.payload.sessionId,
@@ -902,7 +910,6 @@ export default defineBackground(() => {
     controller.applyLayout({
       backgroundOpacity: next.backgroundOpacity,
       maxLineWidth: next.maxLineWidth,
-      minLineWidth: next.minLineWidth,
       originalFontSize: next.originalFontSize,
       originalTextColor: next.originalTextColor,
       translationFontSize: next.translationFontSize,

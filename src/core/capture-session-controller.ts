@@ -2,12 +2,10 @@ import type {
   CaptionPairUpdate,
   CaptureStartRequest,
 } from '../audio/offscreen-capture-controller';
-import type { TranslationRequest } from '../providers/deepl';
 import type {
   ChunkSentence,
   ChunkTranslationRequest,
 } from '../read-ahead/gemini-chunk-translation';
-import { CaptionChunker, type CaptionUnit } from './caption-chunker';
 import { CaptionWindow, type CaptionPair } from './caption-window';
 import type { ExtensionMessage } from './messages';
 import type { OverlayLayout, OverlayPlacement } from './overlay-layout';
@@ -16,28 +14,15 @@ import {
   type CaptionAppearance,
   type TranscriberId,
 } from './settings';
-import {
-  TranscriptStabilizer,
-  type TranscriptEvent,
-} from './transcript-stabilizer';
-import {
-  TranslationCoordinator,
-  type CoordinatedTranslation,
-} from './translation-coordinator';
 
 export interface SessionSettings {
   backgroundOpacity: number;
-  deepgramApiKey: string;
   deeplApiKey: string;
   geminiApiKey: string;
   // Read-ahead mode only; 'auto' lets the model detect it.
   geminiSourceLanguage: string;
   geminiTargetLanguage: string;
   maxLineWidth: number;
-  minLineWidth: number;
-  sourceLanguage: string;
-  sourceLocale: string;
-  targetLanguage: string;
   transcriber: TranscriberId;
   originalFontSize: number;
   originalTextColor: string;
@@ -94,26 +79,6 @@ export type SessionStatus =
   | { error?: string; state: 'running'; tabId: number }
   | { error: string; state: 'error'; tabId: number };
 
-const translationFailureCodes = new Set([
-  'invalid_credentials',
-  'invalid_response',
-  'provider_unavailable',
-  'quota_exceeded',
-  'rate_limited',
-  'translation_disabled',
-]);
-
-function translationFailureCode(error: unknown): string {
-  if (
-    error &&
-    typeof error === 'object' &&
-    'code' in error &&
-    typeof error.code === 'string' &&
-    translationFailureCodes.has(error.code)
-  ) return error.code;
-  return 'translation_failed';
-}
-
 export interface CaptureSessionDependencies {
   ensureContentScript(tabId: number): Promise<void>;
   ensureOffscreen(): Promise<void>;
@@ -125,11 +90,6 @@ export interface CaptureSessionDependencies {
   startReadAhead(tabId: number, request: ReadAheadStartRequest): Promise<void>;
   stopReadAhead(tabId: number, sessionId: string): Promise<void>;
   translateChunk(request: ChunkTranslationRequest): Promise<ChunkSentence[]>;
-  translate(
-    sessionId: string,
-    request: TranslationRequest,
-    signal: AbortSignal,
-  ): Promise<string>;
 }
 
 export interface ActiveSessionSnapshot {
@@ -144,14 +104,7 @@ export class CaptureSessionController {
   private lifecycleTail: Promise<void> = Promise.resolve();
   private settings?: SessionSettings;
   private readonly captionWindow = new CaptionWindow(50);
-  private readonly chunker = new CaptionChunker();
-  private readonly translatedSources = new Map<string, string>();
-  private stabilizer = new TranscriptStabilizer();
   private currentStatus: SessionStatus = { state: 'idle' };
-  private currentTranslationErrorAttemptId?: number;
-  private lastSuccessfulTranslationAttemptId = 0;
-  private translationAttemptSequence = 0;
-  private translationCoordinator?: TranslationCoordinator;
   // Read-ahead shows only the cue the main player is at; the window above
   // keeps every cue reached, for the side panel.
   private readAheadCue?: CaptionPair;
@@ -176,28 +129,14 @@ export class CaptureSessionController {
   }
 
   restore(snapshot: ActiveSessionSnapshot): void {
-    this.translationCoordinator?.dispose();
     this.activeSessionId = snapshot.sessionId;
     this.settings = snapshot.settings;
-    this.stabilizer = new TranscriptStabilizer();
     this.captionWindow.clear();
-    this.translatedSources.clear();
-    this.chunker.clear();
-    this.currentTranslationErrorAttemptId = undefined;
-    this.lastSuccessfulTranslationAttemptId = 0;
-    this.translationAttemptSequence = 0;
-    this.translationCoordinator = this.createTranslationCoordinator(
-      snapshot.sessionId,
-      snapshot.settings,
-    );
     this.currentStatus = { state: 'running', tabId: snapshot.tabId };
   }
 
-  // Units already in the window keep the width they were cut at; recutting
-  // them would renumber ids the overlay is already showing.
   applyLayout(layout: {
     maxLineWidth: number;
-    minLineWidth: number;
     backgroundOpacity?: number;
     originalFontSize?: number;
     originalTextColor?: string;
@@ -272,17 +211,7 @@ export class CaptureSessionController {
     this.activeSessionId = sessionId;
     this.currentStatus = { state: 'starting', tabId };
     this.settings = settings;
-    this.stabilizer = new TranscriptStabilizer();
-    this.currentTranslationErrorAttemptId = undefined;
-    this.lastSuccessfulTranslationAttemptId = 0;
-    this.translationAttemptSequence = 0;
     this.captionWindow.clear();
-    this.translatedSources.clear();
-    this.chunker.clear();
-    this.translationCoordinator = this.createTranslationCoordinator(
-      sessionId,
-      settings,
-    );
     this.readAheadCue = undefined;
     if (isReadAhead(settings)) {
       await this.startReadAheadInternal(tabId, settings, sessionId, generation);
@@ -300,23 +229,13 @@ export class CaptureSessionController {
         await this.dependencies.ensureContentScript(tabId);
       }
       if (generation !== this.generation) return;
-      const payload: CaptureStartRequest =
-        settings.transcriber === 'gemini'
-          ? {
-              apiKey: settings.geminiApiKey,
-              maxLineWidth: this.settings?.maxLineWidth ?? settings.maxLineWidth,
-              provider: 'gemini',
-              sessionId,
-              streamId,
-              targetLanguage: settings.geminiTargetLanguage,
-            }
-          : {
-              apiKey: settings.deepgramApiKey,
-              language: settings.sourceLocale,
-              provider: 'deepgram',
-              sessionId,
-              streamId,
-            };
+      const payload: CaptureStartRequest = {
+        apiKey: settings.geminiApiKey,
+        maxLineWidth: this.settings?.maxLineWidth ?? settings.maxLineWidth,
+        sessionId,
+        streamId,
+        targetLanguage: settings.geminiTargetLanguage,
+      };
       await this.dependencies.sendToOffscreen({
         target: 'offscreen',
         type: 'CAPTURE_START',
@@ -458,53 +377,8 @@ export class CaptureSessionController {
     });
   }
 
-  async acceptTranscript(
-    sessionId: string,
-    event: TranscriptEvent,
-  ): Promise<void> {
-    if (
-      sessionId !== this.activeSessionId ||
-      this.currentStatus.state !== 'running' ||
-      !this.settings ||
-      !this.translationCoordinator
-    ) {
-      return;
-    }
-    const tabId = this.currentStatus.tabId;
-    const generation = this.generation;
-    const update = this.stabilizer.ingest(event);
-    if (!update) return;
-
-    const units = this.chunker.ingest({
-      isFinal: event.isFinal,
-      maxWidth: this.settings.maxLineWidth,
-      minWidth: this.settings.minLineWidth,
-      rawText: update.originalText,
-      segmentId: event.segmentId,
-      stableText: update.stableText,
-    });
-    if (units.length === 0) return;
-
-    for (const unit of units) {
-      this.captionWindow.upsertOriginal(unit.id, unit.displayText);
-    }
-    await this.sendWindow(tabId);
-    if (this.currentStatus.error === 'translation_disabled') return;
-
-    for (const unit of units) {
-      if (!unit.translateText) continue;
-      // A unit is translated while it is still open and re-emitted when it
-      // closes, usually with byte-identical text. Sending it twice spends
-      // provider quota to receive an answer we already have.
-      if (this.translatedSources.get(unit.id) === unit.translateText) continue;
-      this.translatedSources.set(unit.id, unit.translateText);
-      await this.translateUnit(unit, event.revision, tabId, generation);
-    }
-  }
-
-  // The provider already did the transcribing and the translating, so the row
-  // goes straight into the window: no stabilizer, no chunker, no translation
-  // round trip. Everything downstream of the window is shared with Deepgram.
+  // Gemini live already did the transcribing and the translating, so each row
+  // goes straight into the window.
   async acceptCaptionPairs(
     sessionId: string,
     updates: CaptionPairUpdate[],
@@ -561,78 +435,6 @@ export class CaptureSessionController {
     return this.settings ? captionAppearance(this.settings) : undefined;
   }
 
-  private async translateUnit(
-    unit: CaptionUnit,
-    revision: number,
-    tabId: number,
-    generation: number,
-  ): Promise<void> {
-    const attemptId = ++this.translationAttemptSequence;
-    let result: CoordinatedTranslation | undefined;
-    try {
-      result = await this.translationCoordinator!.translate({
-        revision,
-        segmentId: unit.id,
-        text: unit.translateText,
-      });
-    } catch (error) {
-      if (
-        generation === this.generation &&
-        this.currentStatus.state === 'running'
-      ) {
-        const code = translationFailureCode(error);
-        if (
-          attemptId < this.lastSuccessfulTranslationAttemptId ||
-          (this.currentTranslationErrorAttemptId !== undefined &&
-            attemptId < this.currentTranslationErrorAttemptId)
-        ) {
-          return;
-        }
-        const shouldNotify =
-          code !== 'translation_disabled' ||
-          this.currentStatus.error !== 'translation_disabled';
-        this.currentTranslationErrorAttemptId = attemptId;
-        this.currentStatus = {
-          error: code,
-          state: 'running',
-          tabId,
-        };
-        if (shouldNotify) {
-          await this.dependencies.sendToTab(tabId, {
-            type: 'SESSION_ERROR',
-            payload: { code },
-          });
-        }
-      }
-      return;
-    }
-    if (
-      !result ||
-      generation !== this.generation ||
-      this.currentStatus.state !== 'running'
-    ) {
-      return;
-    }
-    this.lastSuccessfulTranslationAttemptId = Math.max(
-      this.lastSuccessfulTranslationAttemptId,
-      attemptId,
-    );
-    const clearsCurrentError =
-      Boolean(this.currentStatus.error) &&
-      this.currentStatus.error !== 'translation_disabled' &&
-      this.currentTranslationErrorAttemptId !== undefined &&
-      attemptId > this.currentTranslationErrorAttemptId;
-    if (clearsCurrentError) {
-      this.currentTranslationErrorAttemptId = undefined;
-      this.currentStatus = { state: 'running', tabId };
-      await this.dependencies.sendToTab(tabId, {
-        type: 'SESSION_ERROR_CLEAR',
-      });
-    }
-    this.captionWindow.upsertTranslation(unit.id, result.text);
-    await this.sendWindow(tabId);
-  }
-
   stop(): Promise<void> {
     return this.stopInternal();
   }
@@ -642,7 +444,6 @@ export class CaptureSessionController {
     const sessionId = this.activeSessionId;
     const readAhead = Boolean(this.settings && isReadAhead(this.settings));
     this.generation += 1;
-    this.translationCoordinator?.dispose();
     try {
       if (sessionId && readAhead && tabId !== undefined) {
         await this.dependencies.stopReadAhead(tabId, sessionId);
@@ -664,12 +465,6 @@ export class CaptureSessionController {
       this.settings = undefined;
       this.activeSessionId = undefined;
       this.captionWindow.clear();
-      this.translatedSources.clear();
-      this.chunker.clear();
-      this.currentTranslationErrorAttemptId = undefined;
-      this.lastSuccessfulTranslationAttemptId = 0;
-      this.translationAttemptSequence = 0;
-      this.translationCoordinator = undefined;
       this.readAheadCue = undefined;
       this.currentStatus = { state: 'idle' };
     }
@@ -681,15 +476,10 @@ export class CaptureSessionController {
       this.currentStatus.state !== 'running'
     ) return;
     const tabId = this.currentStatus.tabId;
-    // A provider that could say why it dropped out gets to; the rest fall back
-    // to a generic "this provider disconnected".
-    const errorCode =
-      code ??
-      (this.settings?.transcriber === 'gemini'
-        ? 'gemini_disconnected'
-        : 'deepgram_disconnected');
+    // Gemini says why it dropped out when it can; otherwise a generic
+    // "disconnected".
+    const errorCode = code ?? 'gemini_disconnected';
     this.generation += 1;
-    this.translationCoordinator?.dispose();
     this.currentStatus = {
       error: errorCode,
       state: 'error',
@@ -731,27 +521,6 @@ export class CaptureSessionController {
         payload: { code: this.currentStatus.error },
       });
     }
-  }
-
-  // Gemini Live Translate returns the translation with the transcript, so its
-  // sessions have no second provider to coordinate.
-  private createTranslationCoordinator(
-    sessionId: string,
-    settings: SessionSettings,
-  ): TranslationCoordinator | undefined {
-    if (settings.transcriber !== 'deepgram') return undefined;
-    return new TranslationCoordinator((text, signal) =>
-      this.dependencies.translate(
-        sessionId,
-        {
-          apiKey: settings.deeplApiKey,
-          sourceLanguage: settings.sourceLanguage,
-          targetLanguage: settings.targetLanguage,
-          text,
-        },
-        signal,
-      ),
-    );
   }
 
   private enqueueLifecycle(operation: () => Promise<void>): Promise<void> {
