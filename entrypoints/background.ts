@@ -18,6 +18,12 @@ import {
 import { normalizeSettings, type AppSettings } from '../src/core/settings';
 import { redactSessionSnapshot } from '../src/core/session-persistence';
 import { createOffscreenTranslationTransport } from '../src/providers/offscreen-translation-transport';
+import {
+  ChunkTranslationError,
+  translateChunk,
+} from '../src/read-ahead/gemini-chunk-translation';
+
+const YOUTUBE_HOSTS = new Set(['www.youtube.com', 'm.youtube.com', 'youtube.com']);
 
 export default defineBackground(() => {
   const activeSessionKey = 'activeSession';
@@ -99,6 +105,34 @@ export default defineBackground(() => {
     getOverlayLayout,
     sendToOffscreen,
     sendToTab: (tabId, message) => chrome.tabs.sendMessage(tabId, message),
+    async startReadAhead(tabId, request) {
+      const tab = await chrome.tabs.get(tabId);
+      const host = tab.url ? new URL(tab.url).hostname : '';
+      // The buffer tap must run in the page's own world to see YouTube's
+      // MediaSource; everything else stays in the isolated world.
+      if (YOUTUBE_HOSTS.has(host)) {
+        await chrome.scripting.executeScript({
+          files: ['read-ahead-tap.js'],
+          target: { tabId },
+          world: 'MAIN',
+        });
+      }
+      await chrome.scripting.executeScript({
+        files: ['read-ahead.js'],
+        target: { tabId },
+      });
+      await chrome.tabs.sendMessage(tabId, {
+        type: 'READ_AHEAD_START',
+        payload: request,
+      });
+    },
+    async stopReadAhead(tabId, sessionId) {
+      await chrome.tabs.sendMessage(tabId, {
+        type: 'READ_AHEAD_STOP',
+        payload: { sessionId },
+      });
+    },
+    translateChunk: (request) => translateChunk(request),
     translate: (sessionId, request, signal) =>
       translateOffscreen(sessionId, request, signal),
   });
@@ -406,7 +440,11 @@ export default defineBackground(() => {
         contextTypes: ['OFFSCREEN_DOCUMENT'],
         documentUrls: [offscreenUrl],
       });
-      if (contexts.length === 0) {
+      // Read-ahead runs in the tab, not the offscreen document, so it
+      // survives this worker being shut down while the video sat paused.
+      const readAhead = (snapshot.settings as { transcriber?: unknown })
+        .transcriber === 'gemini-read-ahead';
+      if (contexts.length === 0 && !readAhead) {
         await chrome.storage.session.remove(activeSessionKey);
         await restoreBrowserFullscreenFallback(snapshot.tabId);
         return;
@@ -476,6 +514,9 @@ export default defineBackground(() => {
     'SESSION_STOP',
   ]);
   const contentMessageTypes = new Set([
+    'READ_AHEAD_CUE',
+    'READ_AHEAD_STATUS',
+    'READ_AHEAD_TRANSLATE',
     'BROWSER_FULLSCREEN_FALLBACK',
     'CLEAR_CAPTIONS',
     'CONTENT_READY',
@@ -565,6 +606,45 @@ export default defineBackground(() => {
               }
               return { ok: true, status };
             });
+          case 'READ_AHEAD_TRANSLATE': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            try {
+              const sentences = await controller.translateReadAheadChunk(
+                message.payload.sessionId,
+                tabId,
+                message.payload.audioBase64,
+              );
+              return { ok: true, sentences };
+            } catch (error) {
+              return {
+                error: error instanceof ChunkTranslationError
+                  ? error.code
+                  : error instanceof Error ? error.message : 'unknown_error',
+                ok: false,
+              };
+            }
+          }
+          case 'READ_AHEAD_CUE': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            await controller.acceptReadAheadCue(
+              message.payload.sessionId,
+              tabId,
+              message.payload.cue,
+            );
+            return { ok: true };
+          }
+          case 'READ_AHEAD_STATUS': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            await controller.acceptReadAheadStatus(
+              message.payload.sessionId,
+              tabId,
+              message.payload.status,
+            );
+            return { ok: true };
+          }
           case 'CONTENT_READY':
             if (sender.tab?.id !== undefined) {
               await controller.handleContentReady(sender.tab.id);

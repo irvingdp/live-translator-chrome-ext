@@ -3,6 +3,10 @@ import type {
   CaptureStartRequest,
 } from '../audio/offscreen-capture-controller';
 import type { TranslationRequest } from '../providers/deepl';
+import type {
+  ChunkSentence,
+  ChunkTranslationRequest,
+} from '../read-ahead/gemini-chunk-translation';
 import { CaptionChunker, type CaptionUnit } from './caption-chunker';
 import { CaptionWindow, type CaptionPair } from './caption-window';
 import type { ExtensionMessage } from './messages';
@@ -26,6 +30,8 @@ export interface SessionSettings {
   deepgramApiKey: string;
   deeplApiKey: string;
   geminiApiKey: string;
+  // Read-ahead mode only; 'auto' lets the model detect it.
+  geminiSourceLanguage: string;
   geminiTargetLanguage: string;
   maxLineWidth: number;
   minLineWidth: number;
@@ -57,7 +63,30 @@ export type TabMessage =
       type: 'SESSION_ERROR';
       payload: { code: string };
     }
-  | { type: 'SESSION_ERROR_CLEAR' };
+  | { type: 'SESSION_ERROR_CLEAR' }
+  | { type: 'READ_AHEAD_START'; payload: ReadAheadStartRequest }
+  | { type: 'READ_AHEAD_STOP'; payload: { sessionId: string } };
+
+export interface ReadAheadStartRequest {
+  sessionId: string;
+  sourceLanguage?: string;
+  targetLanguage: string;
+}
+
+export type ReadAheadStatusCode =
+  | 'failed'
+  | 'loading'
+  | 'quota_exceeded'
+  | 'translating'
+  | 'unsupported';
+
+const READ_AHEAD_STATUS_ERRORS: Record<ReadAheadStatusCode, string> = {
+  failed: 'read_ahead_failed',
+  loading: 'read_ahead_loading',
+  quota_exceeded: 'gemini_quota_exceeded',
+  translating: 'read_ahead_translating',
+  unsupported: 'read_ahead_unsupported',
+};
 
 export type SessionStatus =
   | { state: 'idle' }
@@ -92,6 +121,10 @@ export interface CaptureSessionDependencies {
   getOverlayLayout(tabId: number): Promise<OverlayLayout | undefined>;
   sendToOffscreen(message: ExtensionMessage): Promise<unknown>;
   sendToTab(tabId: number, message: TabMessage): Promise<unknown>;
+  // Read-ahead mode: inject its scripts into the tab and start/stop it there.
+  startReadAhead(tabId: number, request: ReadAheadStartRequest): Promise<void>;
+  stopReadAhead(tabId: number, sessionId: string): Promise<void>;
+  translateChunk(request: ChunkTranslationRequest): Promise<ChunkSentence[]>;
   translate(
     sessionId: string,
     request: TranslationRequest,
@@ -119,6 +152,9 @@ export class CaptureSessionController {
   private lastSuccessfulTranslationAttemptId = 0;
   private translationAttemptSequence = 0;
   private translationCoordinator?: TranslationCoordinator;
+  // Read-ahead shows only the cue the main player is at; the window above
+  // keeps every cue reached, for the side panel.
+  private readAheadCue?: CaptionPair;
 
   constructor(private readonly dependencies: CaptureSessionDependencies) {}
 
@@ -198,7 +234,9 @@ export class CaptureSessionController {
         this.currentStatus.state !== 'running' ||
         this.currentStatus.tabId === tabId ||
         !this.activeSessionId ||
-        !this.settings
+        !this.settings ||
+        // Read-ahead stays on the tab it was started in (v1).
+        isReadAhead(this.settings)
       ) return;
 
       const sourceGeneration = this.generation;
@@ -245,6 +283,11 @@ export class CaptureSessionController {
       sessionId,
       settings,
     );
+    this.readAheadCue = undefined;
+    if (isReadAhead(settings)) {
+      await this.startReadAheadInternal(tabId, settings, sessionId, generation);
+      return;
+    }
     let captureStarted = false;
 
     try {
@@ -319,6 +362,100 @@ export class CaptureSessionController {
       }
       throw error;
     }
+  }
+
+  private async startReadAheadInternal(
+    tabId: number,
+    settings: SessionSettings,
+    sessionId: string,
+    generation: number,
+  ): Promise<void> {
+    try {
+      await this.dependencies.ensureContentScript(tabId);
+      if (generation !== this.generation) return;
+      await this.dependencies.startReadAhead(tabId, readAheadRequest(sessionId, settings));
+      if (generation !== this.generation) {
+        await this.dependencies.stopReadAhead(tabId, sessionId).catch(() => undefined);
+        return;
+      }
+      const layout = await this.dependencies.getOverlayLayout(tabId);
+      await this.dependencies.sendToTab(tabId, {
+        type: 'OVERLAY_SHOW',
+        payload: {
+          appearance: captionAppearance(settings),
+          layout,
+          placement: 'video-bottom',
+        },
+      });
+      this.currentStatus = { state: 'running', tabId };
+    } catch (error) {
+      if (generation === this.generation) {
+        this.currentStatus = {
+          error: error instanceof Error ? error.message : 'capture_start_failed',
+          state: 'error',
+          tabId,
+        };
+      }
+      throw error;
+    }
+  }
+
+  private isActiveReadAhead(sessionId: string, tabId: number): boolean {
+    return sessionId === this.activeSessionId &&
+      Boolean(this.settings && isReadAhead(this.settings)) &&
+      'tabId' in this.currentStatus &&
+      this.currentStatus.tabId === tabId;
+  }
+
+  async acceptReadAheadCue(
+    sessionId: string,
+    tabId: number,
+    cue: CaptionPair | undefined,
+  ): Promise<void> {
+    if (!this.isActiveReadAhead(sessionId, tabId) || this.currentStatus.state !== 'running') {
+      return;
+    }
+    this.readAheadCue = cue && { ...cue };
+    if (cue) {
+      this.captionWindow.upsertOriginal(cue.id, cue.original);
+      this.captionWindow.upsertTranslation(cue.id, cue.translation);
+    }
+    await this.sendWindow(tabId);
+  }
+
+  async acceptReadAheadStatus(
+    sessionId: string,
+    tabId: number,
+    status: ReadAheadStatusCode | undefined,
+  ): Promise<void> {
+    if (!this.isActiveReadAhead(sessionId, tabId)) return;
+    if (status === 'unsupported') {
+      this.currentStatus = { error: READ_AHEAD_STATUS_ERRORS.unsupported, state: 'error', tabId };
+    } else if (this.currentStatus.state === 'running') {
+      this.currentStatus = status
+        ? { error: READ_AHEAD_STATUS_ERRORS[status], state: 'running', tabId }
+        : { state: 'running', tabId };
+    }
+    await this.dependencies.sendToTab(tabId, status
+      ? { type: 'SESSION_ERROR', payload: { code: READ_AHEAD_STATUS_ERRORS[status] } }
+      : { type: 'SESSION_ERROR_CLEAR' });
+  }
+
+  translateReadAheadChunk(
+    sessionId: string,
+    tabId: number,
+    audioBase64: string,
+  ): Promise<ChunkSentence[]> {
+    if (!this.isActiveReadAhead(sessionId, tabId) || !this.settings) {
+      return Promise.reject(new Error('inactive_session'));
+    }
+    const request = readAheadRequest(sessionId, this.settings);
+    return this.dependencies.translateChunk({
+      apiKey: this.settings.geminiApiKey,
+      audioBase64,
+      sourceLanguage: request.sourceLanguage,
+      targetLanguage: request.targetLanguage,
+    });
   }
 
   async acceptTranscript(
@@ -397,9 +534,12 @@ export class CaptureSessionController {
   }
 
   private async sendWindow(tabId: number): Promise<void> {
+    const pairs = this.settings && isReadAhead(this.settings)
+      ? (this.readAheadCue ? [{ ...this.readAheadCue }] : [])
+      : this.captionWindow.pairs();
     await this.dependencies.sendToTab(tabId, {
       type: 'CAPTION_WINDOW',
-      payload: { pairs: this.captionWindow.pairs() },
+      payload: { pairs },
     });
   }
 
@@ -412,6 +552,7 @@ export class CaptureSessionController {
       return false;
     }
     this.captionWindow.clear();
+    this.readAheadCue = undefined;
     await this.sendWindow(tabId);
     return true;
   }
@@ -499,10 +640,13 @@ export class CaptureSessionController {
   private async stopInternal(): Promise<void> {
     const tabId = 'tabId' in this.currentStatus ? this.currentStatus.tabId : undefined;
     const sessionId = this.activeSessionId;
+    const readAhead = Boolean(this.settings && isReadAhead(this.settings));
     this.generation += 1;
     this.translationCoordinator?.dispose();
     try {
-      if (sessionId) {
+      if (sessionId && readAhead && tabId !== undefined) {
+        await this.dependencies.stopReadAhead(tabId, sessionId);
+      } else if (sessionId) {
         await this.dependencies.sendToOffscreen({
           target: 'offscreen',
           type: 'CAPTURE_STOP',
@@ -526,6 +670,7 @@ export class CaptureSessionController {
       this.lastSuccessfulTranslationAttemptId = 0;
       this.translationAttemptSequence = 0;
       this.translationCoordinator = undefined;
+      this.readAheadCue = undefined;
       this.currentStatus = { state: 'idle' };
     }
   }
@@ -567,6 +712,14 @@ export class CaptureSessionController {
       type: 'OVERLAY_SHOW',
       payload: { appearance: captionAppearance(this.settings), layout },
     });
+    // A reload drops read-ahead's scripts with the page; starting again with
+    // the same session id is a no-op where they survived.
+    if (isReadAhead(this.settings) && this.activeSessionId) {
+      await this.dependencies.startReadAhead(
+        tabId,
+        readAheadRequest(this.activeSessionId, this.settings),
+      );
+    }
     await this.sendWindow(tabId);
     if (
       this.currentStatus.state === 'running' &&
@@ -586,7 +739,7 @@ export class CaptureSessionController {
     sessionId: string,
     settings: SessionSettings,
   ): TranslationCoordinator | undefined {
-    if (settings.transcriber === 'gemini') return undefined;
+    if (settings.transcriber !== 'deepgram') return undefined;
     return new TranslationCoordinator((text, signal) =>
       this.dependencies.translate(
         sessionId,
@@ -606,4 +759,20 @@ export class CaptureSessionController {
     this.lifecycleTail = result.catch(() => undefined);
     return result;
   }
+}
+
+function isReadAhead(settings: SessionSettings): boolean {
+  return settings.transcriber === 'gemini-read-ahead';
+}
+
+function readAheadRequest(
+  sessionId: string,
+  settings: SessionSettings,
+): ReadAheadStartRequest {
+  const source = settings.geminiSourceLanguage;
+  return {
+    sessionId,
+    ...(source && source !== 'auto' ? { sourceLanguage: source } : {}),
+    targetLanguage: settings.geminiTargetLanguage,
+  };
 }

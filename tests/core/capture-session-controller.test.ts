@@ -12,6 +12,7 @@ const settings: SessionSettings = {
   deepgramApiKey: 'deepgram-key',
   deeplApiKey: 'deepl-key:fx',
   geminiApiKey: 'gemini-key',
+  geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
   maxLineWidth: 90,
   minLineWidth: 40,
@@ -33,7 +34,10 @@ function createHarness() {
     getOverlayLayout: vi.fn().mockResolvedValue(undefined),
     sendToOffscreen: vi.fn().mockResolvedValue(undefined),
     sendToTab: vi.fn().mockResolvedValue(undefined),
+    startReadAhead: vi.fn().mockResolvedValue(undefined),
+    stopReadAhead: vi.fn().mockResolvedValue(undefined),
     translate: vi.fn().mockResolvedValue('翻譯'),
+    translateChunk: vi.fn().mockResolvedValue([]),
   };
   return {
     controller: new CaptureSessionController(dependencies),
@@ -1193,5 +1197,125 @@ describe('CaptureSessionController', () => {
       ),
     ).toContain('SESSION_ERROR_CLEAR');
     expect(controller.status()).toEqual({ state: 'running', tabId: 42 });
+  });
+});
+
+describe('CaptureSessionController read-ahead mode', () => {
+  const readAhead = { geminiSourceLanguage: 'auto', transcriber: 'gemini-read-ahead' } as const;
+
+  async function startReadAhead(
+    harness: ReturnType<typeof createHarness>,
+    overrides: Partial<SessionSettings> = {},
+  ): Promise<string> {
+    await harness.controller.start(42, { ...settings, ...readAhead, ...overrides });
+    const [, request] = vi.mocked(harness.dependencies.startReadAhead).mock.calls.at(-1)!;
+    vi.mocked(harness.dependencies.sendToTab).mockClear();
+    return request.sessionId;
+  }
+
+  it('starts in the tab without capturing tab audio, leaving the source to the model by default', async () => {
+    const harness = createHarness();
+    await startReadAhead(harness);
+
+    expect(harness.dependencies.ensureOffscreen).not.toHaveBeenCalled();
+    expect(harness.dependencies.getStreamId).not.toHaveBeenCalled();
+    expect(harness.dependencies.sendToOffscreen).not.toHaveBeenCalled();
+    expect(harness.dependencies.startReadAhead).toHaveBeenCalledWith(42, {
+      sessionId: expect.any(String),
+      targetLanguage: 'zh-Hant',
+    });
+    expect(harness.controller.status()).toEqual({ state: 'running', tabId: 42 });
+  });
+
+  it('passes a chosen source language to the tab and to each chunk request with the shared key', async () => {
+    const harness = createHarness();
+    const sessionId = await startReadAhead(harness, { geminiSourceLanguage: 'ja' });
+    expect(vi.mocked(harness.dependencies.startReadAhead).mock.calls[0]![1].sourceLanguage).toBe('ja');
+
+    await harness.controller.translateReadAheadChunk(sessionId, 42, 'UklGRg==');
+    expect(harness.dependencies.translateChunk).toHaveBeenCalledWith({
+      apiKey: 'gemini-key',
+      audioBase64: 'UklGRg==',
+      sourceLanguage: 'ja',
+      targetLanguage: 'zh-Hant',
+    });
+  });
+
+  it('refuses chunk translations from another session or tab', async () => {
+    const harness = createHarness();
+    const sessionId = await startReadAhead(harness);
+    await expect(harness.controller.translateReadAheadChunk('other', 42, 'x')).rejects.toThrow();
+    await expect(harness.controller.translateReadAheadChunk(sessionId, 7, 'x')).rejects.toThrow();
+    expect(harness.dependencies.translateChunk).not.toHaveBeenCalled();
+  });
+
+  it('shows only the current cue on the page but keeps every reached cue for the side panel', async () => {
+    const harness = createHarness();
+    const sessionId = await startReadAhead(harness);
+
+    await harness.controller.acceptReadAheadCue(sessionId, 42, { id: 'c1', original: 'One.', translation: '一。' });
+    await harness.controller.acceptReadAheadCue(sessionId, 42, { id: 'c2', original: 'Two.', translation: '二。' });
+    await harness.controller.acceptReadAheadCue(sessionId, 42, undefined);
+
+    expect(windowsSentTo(harness).map((message) => message.payload.pairs)).toEqual([
+      [{ id: 'c1', original: 'One.', translation: '一。' }],
+      [{ id: 'c2', original: 'Two.', translation: '二。' }],
+      [],
+    ]);
+    expect(harness.controller.captionPairs().map((pair) => pair.id)).toEqual(['c1', 'c2']);
+  });
+
+  it('shows hold and failure statuses on the overlay and clears them', async () => {
+    const harness = createHarness();
+    const sessionId = await startReadAhead(harness);
+
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'loading');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'failed');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'quota_exceeded');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, undefined);
+
+    expect(vi.mocked(harness.dependencies.sendToTab).mock.calls.map(([, message]) => message)).toEqual([
+      { type: 'SESSION_ERROR', payload: { code: 'read_ahead_loading' } },
+      { type: 'SESSION_ERROR', payload: { code: 'read_ahead_failed' } },
+      { type: 'SESSION_ERROR', payload: { code: 'gemini_quota_exceeded' } },
+      { type: 'SESSION_ERROR_CLEAR' },
+    ]);
+    expect(harness.controller.status()).toEqual({ state: 'running', tabId: 42 });
+  });
+
+  it('reports an unsupported page as an error the popup can explain, without switching modes', async () => {
+    const harness = createHarness();
+    const sessionId = await startReadAhead(harness);
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'unsupported');
+    expect(harness.controller.status()).toEqual({
+      error: 'read_ahead_unsupported',
+      state: 'error',
+      tabId: 42,
+    });
+    expect(harness.controller.snapshot()).toBeUndefined();
+  });
+
+  it('stops in the tab rather than in the offscreen document', async () => {
+    const harness = createHarness();
+    const sessionId = await startReadAhead(harness);
+    await harness.controller.stop();
+    expect(harness.dependencies.stopReadAhead).toHaveBeenCalledWith(42, sessionId);
+    expect(harness.dependencies.sendToOffscreen).not.toHaveBeenCalled();
+    expect(harness.controller.status()).toEqual({ state: 'idle' });
+  });
+
+  it('restarts read-ahead in the tab after the page reloads', async () => {
+    const harness = createHarness();
+    const sessionId = await startReadAhead(harness);
+    await harness.controller.handleContentReady(42);
+    expect(harness.dependencies.startReadAhead).toHaveBeenLastCalledWith(42, expect.objectContaining({ sessionId }));
+  });
+
+  it('stays on its tab instead of following another one', async () => {
+    const harness = createHarness();
+    await startReadAhead(harness);
+    await harness.controller.transfer(7);
+    expect(harness.controller.status()).toEqual({ state: 'running', tabId: 42 });
+    expect(harness.dependencies.startReadAhead).toHaveBeenCalledTimes(1);
   });
 });

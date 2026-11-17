@@ -19,6 +19,10 @@ const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
   provider_unavailable: 'errorProviderUnavailable',
   quota_exceeded: 'errorQuotaExceeded',
   rate_limited: 'errorRateLimited',
+  read_ahead_failed: 'errorReadAheadFailed',
+  read_ahead_loading: 'errorReadAheadLoading',
+  read_ahead_translating: 'errorReadAheadTranslating',
+  read_ahead_unsupported: 'errorReadAheadUnsupported',
   translation_disabled: 'errorTranslationDisabled',
   translation_failed: 'errorTranslationFailed',
 };
