@@ -132,6 +132,14 @@ describe('normalizeSettings transcriber', () => {
       normalizeSettings({ transcriber: 'whisper' as never }).transcriber,
     ).toBe(DEFAULT_SETTINGS.transcriber);
   });
+
+  it('keeps read-ahead mode, and gives settings saved before it an auto-detected source', () => {
+    expect(normalizeSettings({ transcriber: 'gemini-read-ahead' }).transcriber)
+      .toBe('gemini-read-ahead');
+    // Settings stored by an older version have no read-ahead source language.
+    expect(normalizeSettings({ transcriber: 'gemini' }).geminiSourceLanguage).toBe('auto');
+    expect(normalizeSettings({ geminiSourceLanguage: 'ja' }).geminiSourceLanguage).toBe('ja');
+  });
 });
 
 describe('validateSettingsForStart', () => {
@@ -170,5 +178,11 @@ describe('validateSettingsForStart', () => {
         transcriber: 'gemini',
       }),
     ).toEqual({});
+  });
+
+  it('asks read-ahead mode for the same Gemini key', () => {
+    expect(
+      validateSettingsForStart({ ...DEFAULT_SETTINGS, transcriber: 'gemini-read-ahead' }),
+    ).toEqual({ geminiApiKey: '請輸入 Gemini API Key' });
   });
 });

@@ -590,5 +590,29 @@
   "feedbackIssueOther": {
     "message": "其他",
     "description": "Feedback drop-down option that reveals a free-text box."
+  },
+  "transcriberReadAhead": {
+    "message": "Gemini 預讀",
+    "description": "Provider dropdown option for read-ahead mode, which translates upcoming audio so captions appear as the speech starts."
+  },
+  "errorReadAheadLoading": {
+    "message": "讀取音訊中…",
+    "description": "Caption overlay status while read-ahead mode holds the video until it has the audio of the next sentence."
+  },
+  "errorReadAheadTranslating": {
+    "message": "翻譯中…",
+    "description": "Caption overlay status while read-ahead mode holds the video until the next sentence, whose audio it already has, is translated."
+  },
+  "errorReadAheadFailed": {
+    "message": "翻譯失敗",
+    "description": "Caption overlay status over a stretch of media read-ahead mode could not translate."
+  },
+  "errorReadAheadUnsupported": {
+    "message": "此網站不支援預讀模式，請改用 Gemini live",
+    "description": "Caption overlay notice when read-ahead mode cannot run on this page (DRM, live stream, unsupported player)."
+  },
+  "statusReadAheadUnsupported": {
+    "message": "此網站不支援預讀模式，請改用 Gemini live",
+    "description": "Popup status when read-ahead mode cannot run on this page."
   }
 }

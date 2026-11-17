@@ -24,6 +24,7 @@ import {
   SETTING_RANGES,
   type AppSettings,
   type TranscriberId,
+  usesGemini,
   validateSettingsForStart,
 } from '../core/settings';
 import { RatingCard } from './RatingCard';
@@ -135,7 +136,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
 
     if (Object.keys(validateSettingsForStart(settings)).length > 0) {
       setMessage(
-        settings.transcriber === 'gemini'
+        usesGemini(settings.transcriber)
           ? t('needGeminiKey')
           : t('needDeepgramAndDeeplKeys'),
       );
@@ -178,7 +179,8 @@ export function PopupApp({ api }: { api: PopupApi }) {
 
   const running = status.state === 'running' || status.state === 'starting';
   const transcriber = settings.transcriber;
-  const isGemini = transcriber === 'gemini';
+  const isGemini = usesGemini(transcriber);
+  const isReadAhead = transcriber === 'gemini-read-ahead';
   const closeRating = () => setRatingVisible(false);
   return (
     <main className="popup">
@@ -257,6 +259,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
           }
         >
           <option value="gemini">Gemini live translate 3.5</option>
+          <option value="gemini-read-ahead">{t('transcriberReadAhead')}</option>
           <option value="deepgram">Deepgram Nova-3</option>
         </select>
         {isGemini ? <GeminiGuideLink /> : <ProviderLink provider={transcriber} />}
@@ -322,14 +325,23 @@ export function PopupApp({ api }: { api: PopupApi }) {
         <h2 id="language-heading">{t('languageHeading')}</h2>
         <div>
           <label htmlFor="source-language">{t('sourceLanguageLabel')}</label>
-          {/* Gemini detects the source itself and offers no field to set it, so
-              the picker shows what it can recognise without pretending the
-              choice is ours to make. */}
+          {/* Gemini live detects the source itself and offers no field to set
+              it, so the picker shows what it can recognise without pretending
+              the choice is ours to make. Read-ahead puts the language in its
+              prompt, so there the choice is real (auto by default). */}
           <select
             id="source-language"
-            disabled={running || isGemini}
-            value={isGemini ? GEMINI_AUTO_SOURCE : settings.sourceLocale}
+            disabled={running || (isGemini && !isReadAhead)}
+            value={
+              isReadAhead
+                ? settings.geminiSourceLanguage
+                : isGemini ? GEMINI_AUTO_SOURCE : settings.sourceLocale
+            }
             onChange={(event) => {
+              if (isReadAhead) {
+                update('geminiSourceLanguage', event.target.value);
+                return;
+              }
               const option = LANGUAGE_OPTIONS.find(
                 (item) => item.deepgram === event.target.value,
               );
@@ -493,6 +505,7 @@ function statusMessageKey(status: SessionStatus): MessageKey {
   const error = 'error' in status ? status.error : undefined;
   if (error === 'translation_failed') return 'statusTranslationFailed';
   if (error === 'translation_disabled') return 'statusTranslationDisabled';
+  if (error === 'read_ahead_unsupported') return 'statusReadAheadUnsupported';
   if (status.state === 'running') return 'statusRunning';
   if (status.state === 'starting') return 'statusStarting';
   if (status.state === 'error') return 'statusRetry';

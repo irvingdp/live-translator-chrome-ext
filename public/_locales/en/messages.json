@@ -590,5 +590,29 @@
   "feedbackIssueOther": {
     "message": "Other",
     "description": "Feedback drop-down option that reveals a free-text box."
+  },
+  "transcriberReadAhead": {
+    "message": "Gemini read-ahead",
+    "description": "Provider dropdown option for read-ahead mode, which translates upcoming audio so captions appear as the speech starts."
+  },
+  "errorReadAheadLoading": {
+    "message": "Reading audio…",
+    "description": "Caption overlay status while read-ahead mode holds the video until it has the audio of the next sentence."
+  },
+  "errorReadAheadTranslating": {
+    "message": "Translating…",
+    "description": "Caption overlay status while read-ahead mode holds the video until the next sentence, whose audio it already has, is translated."
+  },
+  "errorReadAheadFailed": {
+    "message": "Translation failed",
+    "description": "Caption overlay status over a stretch of media read-ahead mode could not translate."
+  },
+  "errorReadAheadUnsupported": {
+    "message": "This site does not support read-ahead mode. Use Gemini live instead.",
+    "description": "Caption overlay notice when read-ahead mode cannot run on this page (DRM, live stream, unsupported player)."
+  },
+  "statusReadAheadUnsupported": {
+    "message": "Read-ahead is not supported here. Use Gemini live instead.",
+    "description": "Popup status when read-ahead mode cannot run on this page."
   }
 }

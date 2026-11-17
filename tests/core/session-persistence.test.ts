@@ -13,6 +13,7 @@ describe('session persistence', () => {
         deepgramApiKey: 'deepgram-secret',
         deeplApiKey: 'deepl-secret',
         geminiApiKey: 'gemini-secret',
+        geminiSourceLanguage: 'auto',
         geminiTargetLanguage: 'zh-Hant',
         maxLineWidth: 90,
         minLineWidth: 40,
@@ -35,6 +36,7 @@ describe('session persistence', () => {
       tabId: 42,
       settings: {
         backgroundOpacity: 78,
+        geminiSourceLanguage: 'auto',
         geminiTargetLanguage: 'zh-Hant',
         maxLineWidth: 90,
         minLineWidth: 40,

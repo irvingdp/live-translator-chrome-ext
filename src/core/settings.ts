@@ -51,6 +51,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   deepgramApiKey: '',
   deeplApiKey: '',
   geminiApiKey: '',
+  geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
   maxLineWidth: 90,
   minLineWidth: 40,
@@ -64,9 +65,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
   translationTextColor: '#fde68a',
 };
 
-export const TRANSCRIBER_IDS = ['deepgram', 'gemini'] as const;
+export const TRANSCRIBER_IDS = ['deepgram', 'gemini', 'gemini-read-ahead'] as const;
 
 export type TranscriberId = (typeof TRANSCRIBER_IDS)[number];
+
+// Both Gemini modes share the key and the language list. Read-ahead mode is a
+// separate code path (ADR 0001), but the popup treats the two alike.
+export function usesGemini(transcriber: TranscriberId): boolean {
+  return transcriber === 'gemini' || transcriber === 'gemini-read-ahead';
+}
 
 export const LANGUAGE_OPTIONS = [
   { deepgram: 'en-US', label: 'English', source: 'EN', target: 'EN-US' },
@@ -127,6 +134,10 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
     ),
     deeplApiKey: stringValue(raw.deeplApiKey, DEFAULT_SETTINGS.deeplApiKey),
     geminiApiKey: stringValue(raw.geminiApiKey, DEFAULT_SETTINGS.geminiApiKey),
+    geminiSourceLanguage: stringValue(
+      raw.geminiSourceLanguage,
+      DEFAULT_SETTINGS.geminiSourceLanguage,
+    ),
     geminiTargetLanguage: stringValue(
       raw.geminiTargetLanguage,
       DEFAULT_SETTINGS.geminiTargetLanguage,
@@ -182,7 +193,7 @@ export function validateSettingsForStart(
   settings: AppSettings,
 ): Partial<Record<ApiKeyField, string>> {
   const errors: Partial<Record<ApiKeyField, string>> = {};
-  if (settings.transcriber === 'gemini') {
+  if (usesGemini(settings.transcriber)) {
     if (!settings.geminiApiKey.trim()) {
       errors.geminiApiKey = t('needGeminiKeyField');
     }

@@ -62,7 +62,7 @@ describe('PopupApp', () => {
       [...transcriber.querySelectorAll('option')].map(
         (option) => option.textContent,
       ),
-    ).toEqual(['Gemini live translate 3.5', 'Deepgram Nova-3']);
+    ).toEqual(['Gemini live translate 3.5', 'Gemini 預讀', 'Deepgram Nova-3']);
     expect(transcriber).toHaveValue('gemini');
   });
 
@@ -440,6 +440,52 @@ describe('PopupApp', () => {
         }),
       ),
     );
+  });
+
+  it('lets read-ahead mode pick a source language, auto-detect by default, with the shared Gemini key', async () => {
+    const api = createApi({
+      loadSettings: vi.fn().mockResolvedValue({
+        ...DEFAULT_SETTINGS,
+        transcriber: 'gemini-read-ahead',
+      }),
+    });
+    render(<PopupApp api={api} />);
+
+    const source = await screen.findByLabelText('來源語言');
+    expect(screen.getByLabelText('Gemini API Key')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Deepgram API Key')).not.toBeInTheDocument();
+    expect(source).toBeEnabled();
+    expect(source).toHaveValue('auto');
+    expect([...screen.getByLabelText('目標語言').querySelectorAll('option')].length)
+      .toBeGreaterThan(70);
+
+    fireEvent.change(source, { target: { value: 'ja' } });
+    await waitFor(() =>
+      expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ geminiSourceLanguage: 'ja', transcriber: 'gemini-read-ahead' }),
+      ),
+    );
+  });
+
+  it('tells the viewer to use Gemini live when read-ahead cannot run on the page', async () => {
+    render(
+      <PopupApp
+        api={createApi({
+          loadSettings: vi.fn().mockResolvedValue({
+            ...DEFAULT_SETTINGS,
+            geminiApiKey: 'gm',
+            transcriber: 'gemini-read-ahead',
+          }),
+          status: vi.fn().mockResolvedValue({
+            error: 'read_ahead_unsupported',
+            state: 'error',
+            tabId: 42,
+          }),
+        })}
+      />,
+    );
+
+    expect(await screen.findByText('此網站不支援預讀模式，請改用 Gemini live')).toBeVisible();
   });
 
   it('needs only the Gemini key once Gemini is the chosen provider', async () => {

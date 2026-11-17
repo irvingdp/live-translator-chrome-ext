@@ -3,6 +3,8 @@ import type {
   CaptureStartRequest,
 } from '../audio/offscreen-capture-controller';
 import type { TranslationRequest } from '../providers/deepl';
+import type { CaptionPair } from './caption-window';
+import type { ReadAheadStatusCode } from './capture-session-controller';
 import type { AppSettings, CaptionAppearance } from './settings';
 import type { OverlayLayout } from './overlay-layout';
 import type { TranscriptEvent } from './transcript-stabilizer';
@@ -75,4 +77,19 @@ export type ExtensionMessage =
       payload: { tabId: number };
     }
   | { target: 'background'; type: 'SESSION_STOP' }
+  | {
+      target: 'background';
+      type: 'READ_AHEAD_TRANSLATE';
+      payload: { audioBase64: string; sessionId: string };
+    }
+  | {
+      target: 'background';
+      type: 'READ_AHEAD_CUE';
+      payload: { cue?: CaptionPair; sessionId: string };
+    }
+  | {
+      target: 'background';
+      type: 'READ_AHEAD_STATUS';
+      payload: { sessionId: string; status?: ReadAheadStatusCode };
+    }
   | { target: 'background'; type: 'SESSION_STATUS' };
