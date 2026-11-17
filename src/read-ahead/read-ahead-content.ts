@@ -6,13 +6,20 @@ import type { ReadAheadStartRequest, TabMessage } from '../core/capture-session-
 import type { ExtensionMessage } from '../core/messages';
 import { findLargestVisibleVideo } from '../content/media-locator';
 import type { ChunkSentence } from './gemini-chunk-translation';
-import { encodeWav, toBase64 } from './gemini-chunk-translation';
+import {
+  CHUNK_REQUEST_TIMEOUT_MS,
+  encodeWav,
+  toBase64,
+  withDeadline,
+} from './gemini-chunk-translation';
 import {
   ReadAheadSession,
+  SAMPLE_RATE,
   type MainPlayer,
   type ReadAheadStatus,
   type ReadAheadSource,
 } from './read-ahead-session';
+import { ChromeTranslation } from './chrome-translation';
 import { ShadowPlayerSource } from './shadow-player-source';
 import {
   TAP_MESSAGE_SOURCE,
@@ -21,6 +28,16 @@ import {
 } from './youtube-buffer-tap';
 
 const INSTALL_KEY = '__bilingualReadAheadInstalled';
+const LOG_PREFIX = '[Bilingual Captions][read-ahead]';
+// The background answers within CHUNK_REQUEST_TIMEOUT_MS (its requests time
+// out); this covers the message round trip on top. Whatever the cause, a
+// chunk that is not back by then fails rather than holding the viewer.
+const PAGE_DEADLINE_MS = CHUNK_REQUEST_TIMEOUT_MS + 1_500;
+// The least time a translation step gets, however late the background was.
+const MIN_PAGE_TRANSLATION_MS = 1_000;
+// Chrome's on-device Translator answers in milliseconds; past this it is
+// stuck, and the web fallback gets the rest of the budget.
+const CHROME_TRANSLATION_MS = 3_000;
 const TICK_MS = 100;
 
 type ReadAheadWindow = Window & { [INSTALL_KEY]?: boolean };
@@ -48,6 +65,8 @@ export function installReadAhead(document: Document): void {
   let watchdog: number | undefined;
 
   const youtube = isYouTube(view.location);
+  // Kept for the page's lifetime: translators are cached per language pair.
+  const chromeTranslation = ChromeTranslation.fromWindow(view);
 
   const findMainVideo = (): HTMLVideoElement | undefined =>
     (youtube ? document.querySelector<HTMLVideoElement>('#movie_player video') : null) ??
@@ -65,6 +84,36 @@ export function installReadAhead(document: Document): void {
   const postToTap = (enabled: boolean) => {
     const message: ContentToTapMessage = { enabled, source: TAP_MESSAGE_SOURCE, type: 'enable' };
     view.postMessage(message, view.location.origin);
+  };
+
+  const translateOnWeb = async (
+    sentences: ChunkSentence[],
+    languages: { sourceLanguage?: string; targetLanguage: string },
+    timeoutMs: number,
+  ): Promise<ChunkSentence[]> => {
+    const sessionId = request?.sessionId;
+    if (!sessionId) throw new Error('inactive_session');
+    const response = await withDeadline(send({
+      target: 'background',
+      type: 'READ_AHEAD_WEB_TRANSLATE',
+      payload: {
+        sessionId,
+        ...languages,
+        texts: sentences.map((sentence) => sentence.original),
+        timeoutMs,
+      },
+    }), timeoutMs + 500, 'web_translation_timeout') as {
+      error?: string;
+      ok?: boolean;
+      translations?: string[];
+    } | undefined;
+    if (!response?.ok || !Array.isArray(response.translations)) {
+      throw new Error(`web_translation_${response?.error ?? 'failed'}`);
+    }
+    return sentences.map((sentence, index) => ({
+      ...sentence,
+      translation: response.translations![index] ?? '',
+    }));
   };
 
   const reportStatus = (sessionId: string, status?: ReadAheadStatus | 'unsupported') =>
@@ -136,19 +185,47 @@ export function installReadAhead(document: Document): void {
       now: () => Date.now(),
       source,
       async translate(samples): Promise<ChunkSentence[]> {
-        const response = await send({
-          target: 'background',
-          type: 'READ_AHEAD_TRANSLATE',
-          payload: { audioBase64: toBase64(encodeWav(samples)), sessionId },
-        }) as {
-          error?: string;
-          ok?: boolean;
-          sentences?: ChunkSentence[];
-        } | undefined;
-        if (!response?.ok || !Array.isArray(response.sentences)) {
-          throw new Error(response?.error ?? 'translation_failed');
+        const started = Date.now();
+        try {
+          const response = await withDeadline(send({
+            target: 'background',
+            type: 'READ_AHEAD_TRANSLATE',
+            payload: { audioBase64: toBase64(encodeWav(samples)), sessionId },
+          }), PAGE_DEADLINE_MS, 'background_timeout') as {
+            error?: string;
+            ok?: boolean;
+            sentences?: ChunkSentence[];
+            translateInPage?: { sourceLanguage?: string; targetLanguage: string };
+          } | undefined;
+          if (!response?.ok || !Array.isArray(response.sentences)) {
+            throw new Error(response?.error ?? 'translation_failed');
+          }
+          if (!response.translateInPage) return response.sentences;
+          const languages = response.translateInPage;
+          const remaining = () =>
+            Math.max(MIN_PAGE_TRANSLATION_MS, PAGE_DEADLINE_MS - (Date.now() - started));
+          try {
+            return await withDeadline(
+              chromeTranslation.translate(response.sentences, languages),
+              Math.min(CHROME_TRANSLATION_MS, remaining()),
+              'translator_timeout',
+            );
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : '';
+            if (reason !== 'translator_unsupported' && reason !== 'translator_timeout') throw error;
+            // The on-device Translator cannot do it here: Google's web
+            // translation, through the background (ADR 0002).
+            return await translateOnWeb(response.sentences, languages, remaining());
+          }
+        } catch (error) {
+          // Logged so a failing chunk can be diagnosed from the page console.
+          console.warn(LOG_PREFIX, 'chunk failed', {
+            ms: Date.now() - started,
+            reason: error instanceof Error ? error.message : String(error),
+            seconds: +(samples.length / SAMPLE_RATE).toFixed(1),
+          });
+          throw error;
         }
-        return response.sentences;
       },
     });
 

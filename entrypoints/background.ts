@@ -23,9 +23,24 @@ import {
 } from '../src/core/settings';
 import { redactSessionSnapshot } from '../src/core/session-persistence';
 import {
+  ReadAheadChunkError,
+  type WhisperRecognition,
+} from '../src/core/capture-session-controller';
+import {
+  CHUNK_REQUEST_TIMEOUT_MS,
   ChunkTranslationError,
   translateChunk,
+  withRequestTimeout,
 } from '../src/read-ahead/gemini-chunk-translation';
+import { translateOnWeb } from '../src/read-ahead/web-translation';
+import {
+  GROQ_ORIGIN,
+  transcribeChunk,
+} from '../src/read-ahead/groq-transcription';
+import {
+  CLOUDFLARE_ORIGIN,
+  transcribeWithCloudflare,
+} from '../src/read-ahead/cloudflare-transcription';
 
 const YOUTUBE_HOSTS = new Set(['www.youtube.com', 'm.youtube.com', 'youtube.com']);
 
@@ -49,6 +64,52 @@ export default defineBackground(() => {
     if (reason !== 'install') return;
     void chrome.tabs.create({ url: onboardingUrl }).catch(() => undefined);
   });
+  // The overlay's button after a recognizer's quota ran out (issue #11):
+  // switch read-ahead's recognizer to the next Whisper service. With its key
+  // and host permission in place the running session restarts on it, from
+  // where the viewer is. Otherwise they can only be set up in the popup: the
+  // captions stop, and the popup opens (or, where Chrome refuses, the options
+  // page) with that service already selected.
+  async function switchReadAheadRecognizer(
+    tabId: number,
+    recognizer: 'cloudflare' | 'groq',
+  ): Promise<{ ok: true; switched: boolean }> {
+    const status = controller.status();
+    const stored = await chrome.storage.local.get('settings');
+    const settings = normalizeSettings((stored.settings as Partial<AppSettings> | undefined) ?? {});
+    if (status.state !== 'running' || status.tabId !== tabId || settings.transcriber !== 'gemini-read-ahead') {
+      return { ok: true, switched: false };
+    }
+    const configured = recognizer === 'cloudflare'
+      ? settings.cloudflareAccountId.trim() !== '' && settings.cloudflareApiToken.trim() !== ''
+      : settings.groqApiKey.trim() !== '';
+    const ready = configured && await chrome.permissions.contains({
+      origins: [recognizer === 'cloudflare' ? CLOUDFLARE_ORIGIN : GROQ_ORIGIN],
+    }).catch(() => false);
+    const next = { ...settings, readAheadRecognizer: recognizer };
+    await chrome.storage.local.set({ settings: next });
+    if (!ready) {
+      await stopSession();
+      await chrome.action.openPopup().catch(() => chrome.runtime.openOptionsPage());
+      return { ok: true, switched: false };
+    }
+    await controller.start(tabId, next);
+    await persistActiveSession();
+    return { ok: true, switched: true };
+  }
+
+  // Stops captions the way the popup's switch does. Callers hold the lifecycle.
+  async function stopSession(): Promise<void> {
+    const statusBeforeStop = controller.status();
+    if ('tabId' in statusBeforeStop) {
+      await restoreBrowserFullscreenFallback(statusBeforeStop.tabId);
+    }
+    await controller.stop();
+    await chrome.storage.session.remove(activeSessionKey);
+    await clearAllAutoFollowBadges();
+    await closeOffscreenIfUnused();
+  }
+
   // Rewrites settings stored before 1.5.0 (Deepgram's key and fields go; a
   // Deepgram user lands on Gemini live), so they do not linger in storage.
   async function migrateSettings(): Promise<void> {
@@ -150,6 +211,12 @@ export default defineBackground(() => {
       });
     },
     translateChunk: (request) => translateChunk(request),
+    translateOnWeb: (request, timeoutMs) =>
+      withRequestTimeout((signal) => translateOnWeb(request, signal), timeoutMs),
+    transcribeChunk: ({ provider, ...request }) =>
+      provider === 'cloudflare'
+        ? transcribeWithCloudflare(request as Omit<Extract<WhisperRecognition, { provider: 'cloudflare' }>, 'provider'>)
+        : transcribeChunk(request as Omit<Extract<WhisperRecognition, { provider: 'groq' }>, 'provider'>),
   });
 
   async function persistAuthorizedTabs(): Promise<void> {
@@ -530,7 +597,9 @@ export default defineBackground(() => {
   const contentMessageTypes = new Set([
     'READ_AHEAD_CUE',
     'READ_AHEAD_STATUS',
+    'READ_AHEAD_SWITCH_RECOGNIZER',
     'READ_AHEAD_TRANSLATE',
+    'READ_AHEAD_WEB_TRANSLATE',
     'BROWSER_FULLSCREEN_FALLBACK',
     'CLEAR_CAPTIONS',
     'CONTENT_READY',
@@ -618,16 +687,49 @@ export default defineBackground(() => {
             const tabId = sender.tab?.id;
             if (tabId === undefined) return { error: 'missing_tab', ok: false };
             try {
-              const sentences = await controller.translateReadAheadChunk(
+              const result = await controller.translateReadAheadChunk(
                 message.payload.sessionId,
                 tabId,
                 message.payload.audioBase64,
               );
-              return { ok: true, sentences };
+              return { ok: true, ...result };
             } catch (error) {
               return {
-                error: error instanceof ChunkTranslationError
+                error: error instanceof ReadAheadChunkError || error instanceof ChunkTranslationError
                   ? error.code
+                  : error instanceof Error ? error.message : 'unknown_error',
+                ok: false,
+              };
+            }
+          }
+          case 'READ_AHEAD_SWITCH_RECOGNIZER': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            const { recognizer } = message.payload;
+            if (recognizer !== 'groq' && recognizer !== 'cloudflare') {
+              return { error: 'unsupported_recognizer', ok: false };
+            }
+            return enqueueLifecycle(() => switchReadAheadRecognizer(tabId, recognizer));
+          }
+          case 'READ_AHEAD_WEB_TRANSLATE': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            const { sessionId, sourceLanguage, targetLanguage, texts, timeoutMs } = message.payload;
+            if (!Array.isArray(texts) || texts.some((text) => typeof text !== 'string')) {
+              return { error: 'invalid_request', ok: false };
+            }
+            try {
+              const translations = await controller.translateReadAheadTexts(
+                sessionId,
+                tabId,
+                { ...(sourceLanguage ? { sourceLanguage } : {}), targetLanguage, texts },
+                // The page's budget, never more than one request's.
+                Math.min(CHUNK_REQUEST_TIMEOUT_MS, Math.max(500, Number(timeoutMs) || 0)),
+              );
+              return { ok: true, translations };
+            } catch (error) {
+              return {
+                error: error instanceof ChunkTranslationError ? error.code
                   : error instanceof Error ? error.message : 'unknown_error',
                 ok: false,
               };
@@ -772,16 +874,8 @@ export default defineBackground(() => {
             }));
           case 'SESSION_STOP':
             return enqueueLifecycle(async () => {
-              const statusBeforeStop = controller.status();
-              if ('tabId' in statusBeforeStop) {
-                await restoreBrowserFullscreenFallback(statusBeforeStop.tabId);
-              }
-              await controller.stop();
-              const status = controller.status();
-              await chrome.storage.session.remove(activeSessionKey);
-              await clearAllAutoFollowBadges();
-              await closeOffscreenIfUnused();
-              return { ok: true, status };
+              await stopSession();
+              return { ok: true, status: controller.status() };
             });
           case 'SESSION_STATUS':
             return { ok: true, status: controller.status() };

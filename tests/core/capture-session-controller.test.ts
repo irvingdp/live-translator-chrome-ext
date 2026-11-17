@@ -9,11 +9,14 @@ import {
 
 const settings: SessionSettings = {
   backgroundOpacity: 78,
-  deeplApiKey: 'deepl-key:fx',
+  cloudflareAccountId: 'cf-account',
+  cloudflareApiToken: 'cf-secret',
   geminiApiKey: 'gemini-key',
   geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
+  groqApiKey: 'groq-key',
   maxLineWidth: 90,
+  readAheadRecognizer: 'gemini',
   transcriber: 'gemini',
   originalFontSize: 24,
   originalTextColor: '#ffffff',
@@ -32,6 +35,8 @@ function createHarness() {
     startReadAhead: vi.fn().mockResolvedValue(undefined),
     stopReadAhead: vi.fn().mockResolvedValue(undefined),
     translateChunk: vi.fn().mockResolvedValue([]),
+    transcribeChunk: vi.fn().mockResolvedValue({ sentences: [] }),
+    translateOnWeb: vi.fn().mockResolvedValue([]),
   };
   return {
     controller: new CaptureSessionController(dependencies),
@@ -509,6 +514,127 @@ describe('CaptureSessionController read-ahead mode', () => {
     expect(harness.dependencies.translateChunk).not.toHaveBeenCalled();
   });
 
+  describe('with Groq Whisper', () => {
+    const groq = { readAheadRecognizer: 'groq' } as const;
+    const heard = (...originals: string[]) => ({
+      language: 'en',
+      sentences: originals.map((original, index) => ({
+        cut: false, end: index + 1, original, sameLanguage: false, start: index, translation: '',
+      })),
+    });
+
+    it("hands the page what Groq heard to translate with Chrome's built-in Translator", async () => {
+      const harness = createHarness();
+      const sessionId = await startReadAhead(harness, groq);
+      vi.mocked(harness.dependencies.transcribeChunk).mockResolvedValue(heard('Hello.'));
+
+      await expect(harness.controller.translateReadAheadChunk(sessionId, 42, 'wav')).resolves.toEqual({
+        sentences: [expect.objectContaining({ original: 'Hello.', translation: '' })],
+        translateInPage: { sourceLanguage: 'en', targetLanguage: 'zh-Hant' },
+      });
+      expect(harness.dependencies.transcribeChunk).toHaveBeenCalledWith({
+        apiKey: 'groq-key',
+        audioBase64: 'wav',
+        provider: 'groq',
+        sourceLanguage: undefined,
+      });
+      expect(harness.dependencies.translateChunk).not.toHaveBeenCalled();
+    });
+
+    it('leaves speech already in the target language untranslated', async () => {
+      const harness = createHarness();
+      const sessionId = await startReadAhead(harness, { ...groq, geminiTargetLanguage: 'en' });
+      vi.mocked(harness.dependencies.transcribeChunk).mockResolvedValue(heard('Hello.'));
+
+      const { sentences, translateInPage } = await harness.controller.translateReadAheadChunk(sessionId, 42, 'wav');
+
+      expect(sentences[0]).toMatchObject({ sameLanguage: true, translation: '' });
+      expect(translateInPage).toBeUndefined();
+    });
+
+    it('names the provider whose quota ran out', async () => {
+      const harness = createHarness();
+      const sessionId = await startReadAhead(harness, groq);
+      vi.mocked(harness.dependencies.transcribeChunk)
+        .mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'quota_exceeded' }));
+      await expect(harness.controller.translateReadAheadChunk(sessionId, 42, 'wav'))
+        .rejects.toMatchObject({ code: 'groq_quota_exceeded' });
+    });
+
+    it('recognizes with Cloudflare Whisper when chosen, naming its quota', async () => {
+      const harness = createHarness();
+      const sessionId = await startReadAhead(harness, { readAheadRecognizer: 'cloudflare' });
+      vi.mocked(harness.dependencies.transcribeChunk).mockResolvedValue(heard('Hello.'));
+
+      await expect(harness.controller.translateReadAheadChunk(sessionId, 42, 'wav')).resolves
+        .toMatchObject({ translateInPage: { sourceLanguage: 'en', targetLanguage: 'zh-Hant' } });
+      expect(harness.dependencies.transcribeChunk).toHaveBeenCalledWith({
+        accountId: 'cf-account',
+        apiToken: 'cf-secret',
+        audioBase64: 'wav',
+        provider: 'cloudflare',
+        sourceLanguage: undefined,
+      });
+
+      vi.mocked(harness.dependencies.transcribeChunk)
+        .mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'quota_exceeded' }));
+      await expect(harness.controller.translateReadAheadChunk(sessionId, 42, 'wav'))
+        .rejects.toMatchObject({ code: 'cloudflare_quota_exceeded' });
+    });
+
+    it("translates the page's fallback sentences on the web, only for the active session's tab", async () => {
+      const harness = createHarness();
+      const sessionId = await startReadAhead(harness, groq);
+      vi.mocked(harness.dependencies.translateOnWeb).mockResolvedValue(['你好。']);
+      const texts = { sourceLanguage: 'en', targetLanguage: 'zh-Hant', texts: ['Hello.'] };
+
+      await expect(harness.controller.translateReadAheadTexts(sessionId, 42, texts, 5_000))
+        .resolves.toEqual(['你好。']);
+      expect(harness.dependencies.translateOnWeb).toHaveBeenCalledWith(texts, 5_000);
+      await expect(harness.controller.translateReadAheadTexts(sessionId, 7, texts, 5_000)).rejects.toThrow();
+      await expect(harness.controller.translateReadAheadTexts('other', 42, texts, 5_000)).rejects.toThrow();
+    });
+
+    it('tags a Gemini failure as Gemini', async () => {
+      const harness = createHarness();
+      const sessionId = await startReadAhead(harness);
+      vi.mocked(harness.dependencies.translateChunk)
+        .mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'quota_exceeded' }));
+      await expect(harness.controller.translateReadAheadChunk(sessionId, 42, 'wav'))
+        .rejects.toMatchObject({ code: 'gemini_quota_exceeded' });
+    });
+
+    it('offers the switch to Cloudflare when Groq runs out', async () => {
+      const harness = createHarness();
+      const sessionId = await startReadAhead(harness, groq);
+      await harness.controller.acceptReadAheadStatus(sessionId, 42, 'groq_quota_exceeded');
+      expect(harness.dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
+        type: 'SESSION_ERROR',
+        payload: { action: 'switch_to_cloudflare', code: 'groq_quota_exceeded' },
+      });
+    });
+
+    it('offers nothing further when Cloudflare runs out', async () => {
+      const harness = createHarness();
+      const sessionId = await startReadAhead(harness, { readAheadRecognizer: 'cloudflare' });
+      await harness.controller.acceptReadAheadStatus(sessionId, 42, 'cloudflare_quota_exceeded');
+      expect(harness.dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
+        type: 'SESSION_ERROR',
+        payload: { code: 'cloudflare_quota_exceeded' },
+      });
+    });
+
+    it('offers no switch to Groq when Groq is already doing the recognizing', async () => {
+      const harness = createHarness();
+      const sessionId = await startReadAhead(harness, groq);
+      await harness.controller.acceptReadAheadStatus(sessionId, 42, 'gemini_quota_exceeded');
+      expect(harness.dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
+        type: 'SESSION_ERROR',
+        payload: { code: 'gemini_quota_exceeded' },
+      });
+    });
+  });
+
   it('shows only the current cue on the page but keeps every reached cue for the side panel', async () => {
     const harness = createHarness();
     const sessionId = await startReadAhead(harness);
@@ -531,13 +657,20 @@ describe('CaptureSessionController read-ahead mode', () => {
 
     await harness.controller.acceptReadAheadStatus(sessionId, 42, 'loading');
     await harness.controller.acceptReadAheadStatus(sessionId, 42, 'failed');
-    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'quota_exceeded');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'gemini_quota_exceeded');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'groq_quota_exceeded');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'cloudflare_quota_exceeded');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'translator_unsupported');
     await harness.controller.acceptReadAheadStatus(sessionId, 42, undefined);
 
     expect(vi.mocked(harness.dependencies.sendToTab).mock.calls.map(([, message]) => message)).toEqual([
       { type: 'SESSION_ERROR', payload: { code: 'read_ahead_loading' } },
       { type: 'SESSION_ERROR', payload: { code: 'read_ahead_failed' } },
-      { type: 'SESSION_ERROR', payload: { code: 'gemini_quota_exceeded' } },
+      // A used-up Gemini quota offers the switch to Groq Whisper.
+      { type: 'SESSION_ERROR', payload: { action: 'switch_to_groq', code: 'gemini_quota_exceeded' } },
+      { type: 'SESSION_ERROR', payload: { code: 'groq_quota_exceeded' } },
+      { type: 'SESSION_ERROR', payload: { code: 'cloudflare_quota_exceeded' } },
+      { type: 'SESSION_ERROR', payload: { code: 'read_ahead_translator_unsupported' } },
       { type: 'SESSION_ERROR_CLEAR' },
     ]);
     expect(harness.controller.status()).toEqual({ state: 'running', tabId: 42 });

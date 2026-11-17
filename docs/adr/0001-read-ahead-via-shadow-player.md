@@ -11,6 +11,8 @@ Live captions always trail the speech, because `chrome.tabCapture` only hears wh
 
 The audio is cut into **chunks** at pauses in speech and sent to the non-Live `generateContent` API (`gemini-flash-lite-latest`). A JSON schema asks for `{start, end, original, translation, cut}` per sentence. Each **cue** is pinned to chunk start + `start`. The main player may not play into media time that has no translation yet. Instead it **holds**: it pauses, shows "讀取音訊中…" while it waits for audio or "翻譯中…" while it waits for the translation, and resumes on its own.
 
+Since 1.5.0 Gemini is one of two choices for this step: [ADR 0002](0002-read-ahead-recognition-and-translation-chosen-separately.md) adds Groq and Cloudflare Whisper for recognition, with Chrome's built-in Translator for translation.
+
 ## Considered Options
 
 - **Gemini Live (`gemini-3.5-live-translate-preview`) fed ahead-of-time audio**: rejected. A 2026-11-15 spike showed it never fills `startOffset`/`endOffset`, and `wordTimestamp` is refused ("not supported in BidiGenerateContent"), so cue times could only be guessed from arrival time.
@@ -26,7 +28,7 @@ The audio is cut into **chunks** at pauses in speech and sent to the non-Live `g
 
 ## Consequences
 
-- Read-ahead is a third entry in the popup's provider dropdown, next to Gemini live and Deepgram (removed in 1.5.0, #10, which left it the second). It shares the Gemini API key, and the live code paths are not touched.
+- Read-ahead is a third entry in the popup's provider dropdown, next to Gemini live and Deepgram (removed in 1.5.0, #10, which left it the second). It shares the Gemini API key (with Gemini recognition; see ADR 0002), and the live code paths are not touched.
 - The model is fixed to `gemini-flash-lite-latest` and is not user-selectable, because a slow model (e.g. `gemini-3.8-flash` at 245 s per chunk) would hold the player indefinitely.
 - Read-ahead works on YouTube (buffer tap, WebM/Opus audio) and on plain HTML5 video (shadow player). Other MSE sites and other audio formats (fMP4/AAC from hls.js, dash.js) are not supported in v1. On DRM sites, choosing read-ahead shows a notice suggesting Gemini live, and the extension never switches modes on its own.
 - The buffer tap is injected when read-ahead starts, after YouTube has already built its SourceBuffers and appended the audio ahead. It therefore reloads the video at the current position with the player's own `loadVideoById`, so the player appends again through the hook. This avoids a persistent content script and a youtube.com host permission; asking for that permission would disable the extension for existing users until they approve it.

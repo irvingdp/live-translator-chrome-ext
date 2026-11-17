@@ -7,6 +7,7 @@ import {
   READ_AHEAD_MODEL,
   toBase64,
   translateChunk,
+  withDeadline,
 } from '../../src/read-ahead/gemini-chunk-translation';
 
 function geminiReply(rows: unknown, status = 200): Response {
@@ -115,5 +116,20 @@ describe('encodeWav', () => {
     expect(view.getInt16(44, true)).toBe(1);
     expect(view.getInt16(46, true)).toBe(-2);
     expect(toBase64(wav.subarray(0, 4))).toBe('UklGRg==');
+  });
+});
+
+describe('withDeadline', () => {
+  it('rejects with the given code when a step never settles, and passes a settled one through', async () => {
+    vi.useFakeTimers();
+    try {
+      const hung = withDeadline(new Promise(() => undefined), 1_000, 'translator_timeout')
+        .catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await hung).toMatchObject({ message: 'translator_timeout' });
+      await expect(withDeadline(Promise.resolve('ok'), 1_000, 'x')).resolves.toBe('ok');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

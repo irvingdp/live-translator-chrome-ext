@@ -5,8 +5,10 @@ import {
 } from '../core/settings';
 
 export interface ApiKeySettings {
-  deeplApiKey: string;
+  cloudflareAccountId: string;
+  cloudflareApiToken: string;
   geminiApiKey: string;
+  groqApiKey: string;
 }
 
 export interface OptionsApi {
@@ -23,8 +25,18 @@ async function loadSettings(): Promise<AppSettings> {
 
 export const browserOptionsApi: OptionsApi = {
   async loadKeys() {
-    const { deeplApiKey, geminiApiKey } = await loadSettings();
-    return { deeplApiKey, geminiApiKey };
+    const {
+      cloudflareAccountId,
+      cloudflareApiToken,
+      geminiApiKey,
+      groqApiKey,
+    } = await loadSettings();
+    return {
+      cloudflareAccountId,
+      cloudflareApiToken,
+      geminiApiKey,
+      groqApiKey,
+    };
   },
   async saveKeys(keys) {
     const current = await loadSettings();

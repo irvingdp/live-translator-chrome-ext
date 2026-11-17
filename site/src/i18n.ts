@@ -71,9 +71,9 @@ export const STRINGS: Record<Lang, Strings> = {
       { title: 'Switch it on', body: 'Open a video, click the extension icon, and flip the switch at the top right.' },
     ],
     providersTitle: 'Providers and languages',
-    providerHeaders: ['', 'Gemini live translate 3.5', 'Gemini read-ahead'],
+    providerHeaders: ['', 'Live audio (Gemini live translate 3.5)', 'Read-ahead'],
     providerRows: [
-      ['API keys', 'One (Google)', 'The same one'],
+      ['API keys', 'One (Google)', 'The same one, or Groq or Cloudflare'],
       ['Languages', '78', '78'],
       ['Captions appear', 'Just after the speaker', 'As the speaker starts; the video pauses briefly if a sentence is not ready'],
       ['Works on', 'Any tab, including live streams', 'YouTube and ordinary HTML5 video'],
@@ -133,9 +133,9 @@ export const STRINGS: Record<Lang, Strings> = {
       { title: '打開開關', body: '打開影片，點擴充功能圖示，打開右上角的開關。' },
     ],
     providersTitle: '服務與語言',
-    providerHeaders: ['', 'Gemini live translate 3.5', 'Gemini 預讀'],
+    providerHeaders: ['', '即時音訊模式（Gemini live translate 3.5）', '預讀模式'],
     providerRows: [
-      ['API Key', '一把（Google）', '同一把'],
+      ['API Key', '一把（Google）', '同一把；或 Groq、Cloudflare'],
       ['語言數', '78 種', '78 種'],
       ['字幕出現時機', '比講者稍晚', '講者開口時；下一句還沒翻好時影片會短暫暫停'],
       ['適用範圍', '任何分頁，包含直播', 'YouTube 與一般 HTML5 影片'],

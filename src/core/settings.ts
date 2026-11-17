@@ -44,13 +44,16 @@ export const SETTING_RANGES = {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   backgroundOpacity: 0,
-  deeplApiKey: '',
+  cloudflareAccountId: '',
+  cloudflareApiToken: '',
   geminiApiKey: '',
   geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
+  groqApiKey: '',
   maxLineWidth: 90,
   originalFontSize: 16,
   originalTextColor: '#ffffff',
+  readAheadRecognizer: 'gemini',
   transcriber: 'gemini',
   translationFontSize: 16,
   translationTextColor: '#fde68a',
@@ -61,6 +64,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export const TRANSCRIBER_IDS = ['gemini', 'gemini-read-ahead'] as const;
 
 export type TranscriberId = (typeof TRANSCRIBER_IDS)[number];
+
+// Read-ahead mode picks its speech recognition (issue #11). Gemini also
+// translates; with a Whisper service Chrome's built-in Translator translates.
+export const READ_AHEAD_RECOGNIZERS = ['gemini', 'groq', 'cloudflare'] as const;
+export type ReadAheadRecognizer = (typeof READ_AHEAD_RECOGNIZERS)[number];
+
+function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback;
+}
 
 function stringValue(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
@@ -97,7 +109,8 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       SETTING_RANGES.backgroundOpacity,
       DEFAULT_SETTINGS.backgroundOpacity,
     ),
-    deeplApiKey: stringValue(raw.deeplApiKey, DEFAULT_SETTINGS.deeplApiKey),
+    cloudflareAccountId: stringValue(raw.cloudflareAccountId, DEFAULT_SETTINGS.cloudflareAccountId),
+    cloudflareApiToken: stringValue(raw.cloudflareApiToken, DEFAULT_SETTINGS.cloudflareApiToken),
     geminiApiKey: stringValue(raw.geminiApiKey, DEFAULT_SETTINGS.geminiApiKey),
     geminiSourceLanguage: stringValue(
       raw.geminiSourceLanguage,
@@ -107,6 +120,7 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       raw.geminiTargetLanguage,
       DEFAULT_SETTINGS.geminiTargetLanguage,
     ),
+    groqApiKey: stringValue(raw.groqApiKey, DEFAULT_SETTINGS.groqApiKey),
     maxLineWidth: clamped(
       raw.maxLineWidth,
       SETTING_RANGES.maxLineWidth,
@@ -121,6 +135,11 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       raw.originalTextColor,
       DEFAULT_SETTINGS.originalTextColor,
     ),
+    readAheadRecognizer: oneOf(
+      raw.readAheadRecognizer,
+      READ_AHEAD_RECOGNIZERS,
+      DEFAULT_SETTINGS.readAheadRecognizer,
+    ),
     transcriber: transcriberValue(raw.transcriber),
     translationFontSize: clamped(
       raw.translationFontSize,
@@ -134,13 +153,37 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
   };
 }
 
-// Both modes run on Gemini, so the Gemini key is the only one a start needs.
+export type ApiKeyField =
+  | 'cloudflareAccountId'
+  | 'cloudflareApiToken'
+  | 'geminiApiKey'
+  | 'groqApiKey';
+
+// The keys the chosen services need, in the order the popup asks for them.
+export function requiredApiKeys(settings: AppSettings): ApiKeyField[] {
+  if (settings.transcriber !== 'gemini-read-ahead' || settings.readAheadRecognizer === 'gemini') {
+    return ['geminiApiKey'];
+  }
+  return settings.readAheadRecognizer === 'cloudflare'
+    ? ['cloudflareAccountId', 'cloudflareApiToken']
+    : ['groqApiKey'];
+}
+
+const MISSING_KEY_MESSAGES = {
+  cloudflareAccountId: 'needCloudflareAccountIdField',
+  cloudflareApiToken: 'needCloudflareTokenField',
+  geminiApiKey: 'needGeminiKeyField',
+  groqApiKey: 'needGroqKeyField',
+} as const;
+
 export function validateSettingsForStart(
   settings: AppSettings,
-): Partial<Record<'geminiApiKey', string>> {
-  return settings.geminiApiKey.trim()
-    ? {}
-    : { geminiApiKey: t('needGeminiKeyField') };
+): Partial<Record<ApiKeyField, string>> {
+  const errors: Partial<Record<ApiKeyField, string>> = {};
+  for (const field of requiredApiKeys(settings)) {
+    if (!settings[field].trim()) errors[field] = t(MISSING_KEY_MESSAGES[field]);
+  }
+  return errors;
 }
 
 // Storage key of the one-time popup notice set by migrateStoredSettings.

@@ -45,6 +45,8 @@ input:focus-visible, select:focus-visible, button:focus-visible { box-shadow: 0 
 select:disabled { cursor: not-allowed; opacity: .65; }
 .provider-link { color: #5eead4; font-size: 12px; margin-top: -2px; text-decoration: none; }
 .provider-link:hover { text-decoration: underline; }
+.field-hint { color: #fcd34d; font-size: 12px; line-height: 1.4; margin: -2px 0 0; }
+.field-note { color: var(--muted); font-size: 11px; line-height: 1.4; margin: 4px 0 0; }
 .field { margin-top: 2px; }
 .secret-row { position: relative; }
 .secret-row input { padding-right: 46px; }

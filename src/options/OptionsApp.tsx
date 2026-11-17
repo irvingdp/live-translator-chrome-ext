@@ -4,14 +4,17 @@ import { t } from '../core/i18n';
 import type { ApiKeySettings, OptionsApi } from './browser-api';
 
 const EMPTY_KEYS: ApiKeySettings = {
-  deeplApiKey: '',
+  cloudflareAccountId: '',
+  cloudflareApiToken: '',
   geminiApiKey: '',
+  groqApiKey: '',
 };
 
 export function OptionsApp({ api }: { api: OptionsApi }) {
   const [keys, setKeys] = useState<ApiKeySettings>();
-  const [showDeepl, setShowDeepl] = useState(false);
   const [showGemini, setShowGemini] = useState(false);
+  const [showGroq, setShowGroq] = useState(false);
+  const [showCloudflare, setShowCloudflare] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -55,19 +58,6 @@ export function OptionsApp({ api }: { api: OptionsApi }) {
       <section className="card" aria-labelledby="api-key-heading">
         <h2 id="api-key-heading">{t('providerHeading')}</h2>
         <SecretField
-          id="deepl-key"
-          label="DeepL API Key"
-          onChange={(deeplApiKey) =>
-            setKeys((current) => ({
-              ...(current ?? EMPTY_KEYS),
-              deeplApiKey,
-            }))
-          }
-          onToggle={() => setShowDeepl((value) => !value)}
-          revealed={showDeepl}
-          value={keys.deeplApiKey}
-        />
-        <SecretField
           id="gemini-key"
           label="Gemini API Key"
           onChange={(geminiApiKey) =>
@@ -79,6 +69,47 @@ export function OptionsApp({ api }: { api: OptionsApi }) {
           onToggle={() => setShowGemini((value) => !value)}
           revealed={showGemini}
           value={keys.geminiApiKey}
+        />
+        <SecretField
+          id="groq-key"
+          label="Groq API Key"
+          onChange={(groqApiKey) =>
+            setKeys((current) => ({
+              ...(current ?? EMPTY_KEYS),
+              groqApiKey,
+            }))
+          }
+          onToggle={() => setShowGroq((value) => !value)}
+          revealed={showGroq}
+          value={keys.groqApiKey}
+        />
+        <div className="field">
+          <label htmlFor="cloudflare-account">{t('cloudflareAccountIdLabel')}</label>
+          <input
+            autoComplete="off"
+            id="cloudflare-account"
+            spellCheck={false}
+            type="text"
+            value={keys.cloudflareAccountId}
+            onChange={(event) => {
+              const cloudflareAccountId = event.target.value.trim();
+              setKeys((current) => ({ ...(current ?? EMPTY_KEYS), cloudflareAccountId }));
+            }}
+          />
+          <p className="privacy">{t('cloudflareAccountIdHint')}</p>
+        </div>
+        <SecretField
+          id="cloudflare-token"
+          label="Cloudflare API Token"
+          onChange={(cloudflareApiToken) =>
+            setKeys((current) => ({
+              ...(current ?? EMPTY_KEYS),
+              cloudflareApiToken,
+            }))
+          }
+          onToggle={() => setShowCloudflare((value) => !value)}
+          revealed={showCloudflare}
+          value={keys.cloudflareApiToken}
         />
         <p className="privacy">{t('optionsKeyHint')}</p>
       </section>

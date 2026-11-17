@@ -315,7 +315,7 @@
     "description": "Heading and document title of the options page."
   },
   "optionsKeyHint": {
-    "message": "You can clear a key and save. Both caption modes need only the Gemini key; the DeepL key is for an upcoming translation option.",
+    "message": "You can clear a key and save. Only the keys your choices need are used: Gemini for Gemini live and for read-ahead with Gemini; Groq, or Cloudflare's account ID and token, for read-ahead with their Whisper (translated by Chrome's built-in translation, which needs no key).",
     "description": "Explanation under the key fields on the options page."
   },
   "save": {
@@ -383,34 +383,6 @@
   },
   "errorGeminiUnavailable": {
     "message": "Gemini is unavailable right now.",
-    "description": "Caption overlay error."
-  },
-  "errorInvalidCredentials": {
-    "message": "That DeepL API key was rejected. Update it on the settings page.",
-    "description": "Caption overlay error."
-  },
-  "errorInvalidResponse": {
-    "message": "DeepL returned something unreadable.",
-    "description": "Caption overlay error."
-  },
-  "errorProviderUnavailable": {
-    "message": "DeepL is unavailable right now.",
-    "description": "Caption overlay error."
-  },
-  "errorQuotaExceeded": {
-    "message": "This month's DeepL translation quota is used up.",
-    "description": "Caption overlay error."
-  },
-  "errorRateLimited": {
-    "message": "Too many requests to DeepL. Please wait a moment.",
-    "description": "Caption overlay error."
-  },
-  "errorTranslationDisabled": {
-    "message": "DeepL failed 5 times in a row; translation is off for this session.",
-    "description": "Caption overlay error."
-  },
-  "errorTranslationFailed": {
-    "message": "DeepL translation failed. The original captions continue.",
     "description": "Caption overlay error."
   },
   "errorUnknown": {
@@ -541,7 +513,7 @@
     "description": "Feedback drop-down option that reveals a free-text box."
   },
   "transcriberReadAhead": {
-    "message": "Gemini read-ahead",
+    "message": "Read-ahead",
     "description": "Provider dropdown option for read-ahead mode, which translates upcoming audio so captions appear as the speech starts."
   },
   "errorReadAheadLoading": {
@@ -567,5 +539,104 @@
   "deepgramRemovedNeedGeminiKey": {
     "message": "Deepgram is no longer supported, so captions now use Gemini live. Set a Gemini API key to continue.",
     "description": "Popup notice shown once after the update that removed Deepgram, to a Deepgram user who has no Gemini key yet."
+  },
+  "captionModeLabel": {
+    "message": "Translation mode",
+    "description": "Label for the dropdown that picks Gemini live or read-ahead mode."
+  },
+  "recognizerGemini": {
+    "message": "Gemini (translates too)",
+    "description": "Read-ahead speech recognition option: Gemini, which also translates."
+  },
+  "translatorLabel": {
+    "message": "Translation service",
+    "description": "Label for the read-ahead translation dropdown."
+  },
+  "translatorChrome": {
+    "message": "Chrome's built-in translation",
+    "description": "Read-ahead translation option: Chrome's on-device Translator."
+  },
+  "needGroqKey": {
+    "message": "Enter your Groq API key first.",
+    "description": "Popup error when starting read-ahead with Groq Whisper without a key."
+  },
+  "needGroqKeyField": {
+    "message": "Enter a Groq API key",
+    "description": "Field-level validation message for the Groq key."
+  },
+  "groqPermissionDenied": {
+    "message": "Groq Whisper needs permission to reach api.groq.com.",
+    "description": "Popup message when the user declines the Groq host permission."
+  },
+  "switchToGroqWhisper": {
+    "message": "Switch to Groq Whisper",
+    "description": "Caption overlay button shown with a used-up Gemini quota in read-ahead mode."
+  },
+  "errorGroqQuotaExceeded": {
+    "message": "Today's Groq quota is used up.",
+    "description": "Caption overlay error in read-ahead mode with Groq Whisper."
+  },
+  "errorReadAheadTranslatorUnsupported": {
+    "message": "Chrome's built-in translation cannot translate this language. Choose Gemini (translates too) for speech recognition instead.",
+    "description": "Caption overlay error when Chrome translation cannot translate the language pair."
+  },
+  "providerSignupLink": {
+    "message": "Get an API key: $1",
+    "description": "Link under a provider dropdown. $1 is the provider's sign-up domain.",
+    "placeholders": {
+      "domain": { "content": "$1", "example": "console.groq.com" }
+    }
+  },
+  "transcriberLive": {
+    "message": "Live audio",
+    "description": "Translation mode option: Gemini live translate, which captions the tab audio as it plays."
+  },
+  "needCloudflareAccountId": {
+    "message": "Enter your Cloudflare account ID first.",
+    "description": "Popup error when starting read-ahead with Cloudflare Whisper without an account ID."
+  },
+  "needCloudflareToken": {
+    "message": "Enter your Cloudflare API token first.",
+    "description": "Popup error when starting read-ahead with Cloudflare Whisper without a token."
+  },
+  "needCloudflareAccountIdField": {
+    "message": "Enter a Cloudflare account ID",
+    "description": "Field-level validation message for the Cloudflare account ID."
+  },
+  "needCloudflareTokenField": {
+    "message": "Enter a Cloudflare API token",
+    "description": "Field-level validation message for the Cloudflare API token."
+  },
+  "cloudflarePermissionDenied": {
+    "message": "Cloudflare Whisper needs permission to reach api.cloudflare.com.",
+    "description": "Popup message when the user declines the Cloudflare host permission."
+  },
+  "cloudflareAccountIdLabel": {
+    "message": "Cloudflare account ID",
+    "description": "Label of the Cloudflare account ID field."
+  },
+  "cloudflareAccountIdHint": {
+    "message": "On the Workers AI page of the Cloudflare dashboard, under \"Use REST API\". The token needs the Workers AI permission.",
+    "description": "Hint under the Cloudflare account ID field."
+  },
+  "errorCloudflareQuotaExceeded": {
+    "message": "Today's Cloudflare quota is used up.",
+    "description": "Caption overlay error in read-ahead mode with Cloudflare Whisper."
+  },
+  "switchToCloudflareWhisper": {
+    "message": "Switch to Cloudflare Whisper",
+    "description": "Caption overlay button shown with a used-up Groq quota in read-ahead mode."
+  },
+  "translatorWebFallback": {
+    "message": "Google web translation (automatic)",
+    "description": "Read-ahead translation shown when Chrome's built-in Translator cannot be used and the web fallback takes over."
+  },
+  "translatorWebFallbackHintComputer": {
+    "message": "This computer cannot run Chrome's built-in translation, so Google's web translation is used instead. It is not an official API and may stop working.",
+    "description": "Popup hint when the built-in Translator is missing and the web fallback is used."
+  },
+  "translatorWebFallbackHintLanguage": {
+    "message": "Chrome's built-in translation cannot translate these languages, so Google's web translation is used instead. It is not an official API and may stop working.",
+    "description": "Popup hint when the built-in Translator cannot do the language pair and the web fallback is used."
   }
 }

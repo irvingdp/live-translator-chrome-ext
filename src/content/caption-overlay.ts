@@ -7,23 +7,25 @@ import {
   type OverlayPlacement,
 } from '../core/overlay-layout';
 import { SETTING_RANGES, type CaptionAppearance } from '../core/settings';
+import type { SessionErrorAction } from '../core/capture-session-controller';
+
+const SESSION_ACTION_KEYS: Record<SessionErrorAction, MessageKey> = {
+  switch_to_cloudflare: 'switchToCloudflareWhisper',
+  switch_to_groq: 'switchToGroqWhisper',
+};
 
 const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
+  cloudflare_quota_exceeded: 'errorCloudflareQuotaExceeded',
   gemini_disconnected: 'errorGeminiDisconnected',
   gemini_invalid_credentials: 'errorGeminiInvalidCredentials',
   gemini_quota_exceeded: 'errorGeminiQuotaExceeded',
   gemini_unavailable: 'errorGeminiUnavailable',
-  invalid_credentials: 'errorInvalidCredentials',
-  invalid_response: 'errorInvalidResponse',
-  provider_unavailable: 'errorProviderUnavailable',
-  quota_exceeded: 'errorQuotaExceeded',
-  rate_limited: 'errorRateLimited',
+  groq_quota_exceeded: 'errorGroqQuotaExceeded',
   read_ahead_failed: 'errorReadAheadFailed',
   read_ahead_loading: 'errorReadAheadLoading',
   read_ahead_translating: 'errorReadAheadTranslating',
+  read_ahead_translator_unsupported: 'errorReadAheadTranslatorUnsupported',
   read_ahead_unsupported: 'errorReadAheadUnsupported',
-  translation_disabled: 'errorTranslationDisabled',
-  translation_failed: 'errorTranslationFailed',
 };
 
 const VIEWPORT_MARGIN = 8;
@@ -190,6 +192,9 @@ const OVERLAY_CSS = `
   .translation { color: var(--caption-translation-color, #fde68a); font-size: var(--caption-translation-size, 16px); font-weight: 550; margin-top: 3px; overflow-wrap: break-word; text-shadow: 0 1px 2px #000; }
   .status-message { color: #fca5a5; flex: 0 0 auto; font-size: 16px; font-weight: 600; margin-top: 5px; overflow-wrap: anywhere; pointer-events: none; text-shadow: 0 1px 2px #000; }
   .original:empty, .translation:empty, .status-message:empty { display: none; }
+  .status-action { align-self: flex-start; background: rgba(17, 24, 39, 0.9); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 6px; color: #fff; cursor: pointer; font: 600 14px system-ui, sans-serif; margin-top: 6px; padding: 4px 10px; pointer-events: auto; }
+  .status-action:hover { background: rgba(55, 65, 81, 0.95); }
+  .status-action[hidden] { display: none; }
   .caption-toolbar {
     align-items: center;
     background: linear-gradient(to bottom, rgba(17, 24, 39, 0.96), rgba(17, 24, 39, 0.86));
@@ -312,6 +317,7 @@ export interface CaptionOverlayCallbacks {
   onClear?(): Promise<void> | void;
   onLayoutChanged?(layout: OverlayLayout): void;
   onOpenSidePanel?(layout: OverlayLayout): Promise<void> | void;
+  onSessionAction?(action: SessionErrorAction): Promise<void> | void;
 }
 
 export class CaptionOverlay {
@@ -335,6 +341,8 @@ export class CaptionOverlay {
   private resizeObserver?: ResizeObserver;
   private statusElement?: HTMLElement;
   private statusTextValue = '';
+  private statusActionElement?: HTMLButtonElement;
+  private statusAction?: SessionErrorAction;
   private trackElement?: HTMLElement;
   private transitionSuspended = false;
   private viewportElement?: HTMLElement;
@@ -428,11 +436,13 @@ export class CaptionOverlay {
     this.host = undefined;
     this.captionsElement = undefined;
     this.statusElement = undefined;
+    this.statusActionElement = undefined;
     this.trackElement = undefined;
     this.viewportElement = undefined;
     this.pairElements.clear();
     this.pairs = [];
     this.statusTextValue = '';
+    this.statusAction = undefined;
   }
 
   suspendForFullscreenTransition(): void {
@@ -554,9 +564,11 @@ export class CaptionOverlay {
     this.updateVisiblePairs();
   }
 
-  setSessionError(code: string): void {
+  setSessionError(code: string, action?: SessionErrorAction): void {
     this.statusTextValue = t(SESSION_ERROR_KEYS[code] ?? 'errorUnknown');
     if (this.statusElement) this.statusElement.textContent = this.statusTextValue;
+    this.statusAction = action;
+    this.syncStatusAction();
     this.syncNativeCue();
     this.updateVisiblePairs();
   }
@@ -564,8 +576,17 @@ export class CaptionOverlay {
   clearSessionError(): void {
     this.statusTextValue = '';
     if (this.statusElement) this.statusElement.textContent = '';
+    this.statusAction = undefined;
+    this.syncStatusAction();
     this.syncNativeCue();
     this.updateVisiblePairs();
+  }
+
+  private syncStatusAction(): void {
+    const button = this.statusActionElement;
+    if (!button) return;
+    button.hidden = !this.statusAction;
+    button.textContent = this.statusAction ? t(SESSION_ACTION_KEYS[this.statusAction]) : '';
   }
 
   position(): void {
@@ -1080,7 +1101,18 @@ export class CaptionOverlay {
     const status = this.document.createElement('div');
     status.className = 'status-message';
     status.textContent = this.statusTextValue;
-    body.append(viewport, status);
+    const statusAction = this.document.createElement('button');
+    statusAction.className = 'status-action';
+    statusAction.type = 'button';
+    statusAction.addEventListener('click', () => {
+      const action = this.statusAction;
+      if (!action) return;
+      statusAction.disabled = true;
+      void Promise.resolve(this.callbacks.onSessionAction?.(action))
+        .catch(() => undefined)
+        .finally(() => { statusAction.disabled = false; });
+    });
+    body.append(viewport, status, statusAction);
     captions.append(toolbar, body);
     for (const direction of ['nw', 'ne', 'se', 'sw'] as const) {
       const handle = this.document.createElement('span');
@@ -1095,6 +1127,8 @@ export class CaptionOverlay {
     this.host = host;
     this.captionsElement = captions;
     this.statusElement = status;
+    this.statusActionElement = statusAction;
+    this.syncStatusAction();
     this.trackElement = track;
     this.viewportElement = viewport;
     this.document.addEventListener('pointermove', this.trackPointerProximity, {

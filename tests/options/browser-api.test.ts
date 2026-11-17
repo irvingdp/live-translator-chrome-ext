@@ -10,15 +10,16 @@ describe('browserOptionsApi', () => {
     const get = vi.fn().mockResolvedValue({
       settings: {
         ...DEFAULT_SETTINGS,
-        deeplApiKey: 'dl-existing',
         geminiApiKey: 'gm-existing',
       },
     });
     vi.stubGlobal('chrome', { storage: { local: { get, set: vi.fn() } } });
 
     await expect(browserOptionsApi.loadKeys()).resolves.toEqual({
-      deeplApiKey: 'dl-existing',
+      cloudflareAccountId: '',
+      cloudflareApiToken: '',
       geminiApiKey: 'gm-existing',
+      groqApiKey: '',
     });
     expect(get).toHaveBeenCalledWith('settings');
   });
@@ -35,15 +36,19 @@ describe('browserOptionsApi', () => {
     vi.stubGlobal('chrome', { storage: { local: { get, set } } });
 
     await browserOptionsApi.saveKeys({
-      deeplApiKey: 'dl-new',
+      cloudflareAccountId: 'cf-new',
+      cloudflareApiToken: 'cft-new',
       geminiApiKey: 'gm-new',
+      groqApiKey: 'gq-new',
     });
 
     expect(set).toHaveBeenCalledWith({
       settings: {
         ...existing,
-        deeplApiKey: 'dl-new',
+        cloudflareAccountId: 'cf-new',
+        cloudflareApiToken: 'cft-new',
         geminiApiKey: 'gm-new',
+        groqApiKey: 'gq-new',
       },
     });
   });
