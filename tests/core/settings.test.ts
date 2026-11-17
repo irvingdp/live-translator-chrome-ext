@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   captionAppearance,
   DEFAULT_SETTINGS,
+  migrateStoredSettings,
   normalizeSettings,
   validateSettingsForStart,
 } from '../../src/core/settings';
@@ -41,21 +42,15 @@ describe('normalizeSettings', () => {
   it('preserves supported user settings', () => {
     expect(
       normalizeSettings({
-        deepgramApiKey: 'dg',
         deeplApiKey: 'dl',
+        geminiTargetLanguage: 'ja',
         originalFontSize: 30,
-        sourceLanguage: 'JA',
-        sourceLocale: 'ja',
-        targetLanguage: 'EN-US',
         translationFontSize: 26,
       }),
     ).toMatchObject({
-      deepgramApiKey: 'dg',
       deeplApiKey: 'dl',
+      geminiTargetLanguage: 'ja',
       originalFontSize: 30,
-      sourceLanguage: 'JA',
-      sourceLocale: 'ja',
-      targetLanguage: 'EN-US',
       translationFontSize: 26,
     });
   });
@@ -124,9 +119,9 @@ describe('normalizeSettings', () => {
 
 describe('normalizeSettings transcriber', () => {
   it('keeps a supported provider and rejects anything else', () => {
-    expect(normalizeSettings({ transcriber: 'deepgram' }).transcriber).toBe(
-      'deepgram',
-    );
+    expect(normalizeSettings({ transcriber: 'gemini' }).transcriber).toBe('gemini');
+    // Deepgram was removed in 1.5.0.
+    expect(normalizeSettings({ transcriber: 'deepgram' as never }).transcriber).toBe('gemini');
     // An unknown value would reach the offscreen dispatcher and start nothing.
     expect(
       normalizeSettings({ transcriber: 'whisper' as never }).transcriber,
@@ -143,46 +138,54 @@ describe('normalizeSettings transcriber', () => {
 });
 
 describe('validateSettingsForStart', () => {
-  const deepgramDefaults = {
+  it('asks both modes for the Gemini key, and only for it', () => {
+    for (const transcriber of ['gemini', 'gemini-read-ahead'] as const) {
+      expect(validateSettingsForStart({ ...DEFAULT_SETTINGS, transcriber }))
+        .toEqual({ geminiApiKey: '請輸入 Gemini API Key' });
+      expect(validateSettingsForStart({ ...DEFAULT_SETTINGS, geminiApiKey: 'gm', transcriber }))
+        .toEqual({});
+    }
+  });
+});
+
+describe('migrateStoredSettings', () => {
+  // As a 1.4.x Deepgram user had them stored.
+  const deepgramUser = {
     ...DEFAULT_SETTINGS,
+    deepgramApiKey: 'dg-secret',
+    minLineWidth: 40,
+    sourceLanguage: 'EN',
+    sourceLocale: 'en-US',
+    targetLanguage: 'ZH-HANT',
     transcriber: 'deepgram',
-  } as const;
+  };
 
-  it('reports both missing BYOK credentials next to their fields', () => {
-    expect(validateSettingsForStart(deepgramDefaults)).toEqual({
-      deepgramApiKey: '請輸入 Deepgram API Key',
-      deeplApiKey: '請輸入 DeepL API Key',
+  it('moves a Deepgram user to Gemini live and drops Deepgram key and fields', () => {
+    const result = migrateStoredSettings({ ...deepgramUser, deeplApiKey: 'dl', originalFontSize: 30 });
+    expect(result.changed).toBe(true);
+    expect(result.settings).toEqual({
+      ...DEFAULT_SETTINGS,
+      deeplApiKey: 'dl',
+      originalFontSize: 30,
+      transcriber: 'gemini',
     });
+    expect(JSON.stringify(result.settings)).not.toContain('dg-secret');
   });
 
-  it('returns no errors when both credentials are present', () => {
-    expect(
-      validateSettingsForStart({
-        ...deepgramDefaults,
-        deepgramApiKey: 'dg',
-        deeplApiKey: 'dl',
-      }),
-    ).toEqual({});
+  it('asks for a Gemini key only when the moved user has none', () => {
+    expect(migrateStoredSettings(deepgramUser).needsGeminiKeyNotice).toBe(true);
+    expect(migrateStoredSettings({ ...deepgramUser, geminiApiKey: 'gm' }).needsGeminiKeyNotice)
+      .toBe(false);
   });
 
-  // The Gemini path replaces both other providers, so asking for their keys
-  // would block a session that has everything it needs.
-  it('asks only for the Gemini key when Gemini does both jobs', () => {
-    expect(
-      validateSettingsForStart({ ...DEFAULT_SETTINGS, transcriber: 'gemini' }),
-    ).toEqual({ geminiApiKey: '請輸入 Gemini API Key' });
-    expect(
-      validateSettingsForStart({
-        ...DEFAULT_SETTINGS,
-        geminiApiKey: 'gm',
-        transcriber: 'gemini',
-      }),
-    ).toEqual({});
+  it('drops a leftover Deepgram key from a Gemini user without a notice', () => {
+    const result = migrateStoredSettings({ ...DEFAULT_SETTINGS, deepgramApiKey: 'dg' });
+    expect(result).toMatchObject({ changed: true, needsGeminiKeyNotice: false });
+    expect(result.settings).toEqual(DEFAULT_SETTINGS);
   });
 
-  it('asks read-ahead mode for the same Gemini key', () => {
-    expect(
-      validateSettingsForStart({ ...DEFAULT_SETTINGS, transcriber: 'gemini-read-ahead' }),
-    ).toEqual({ geminiApiKey: '請輸入 Gemini API Key' });
+  it('leaves settings that are already current alone', () => {
+    expect(migrateStoredSettings({ ...DEFAULT_SETTINGS, transcriber: 'gemini-read-ahead' }))
+      .toMatchObject({ changed: false, needsGeminiKeyNotice: false });
   });
 });

@@ -1,7 +1,6 @@
 // The languages Gemini Live Translate accepts as `targetLanguageCode`, taken
 // from https://ai.google.dev/gemini-api/docs/live-api/live-translate. Codes are
-// BCP-47 and unrelated to the Deepgram/DeepL codes in LANGUAGE_OPTIONS, so the
-// two lists stay separate rather than growing a fourth column.
+// BCP-47; read-ahead mode uses the same list.
 export const GEMINI_LANGUAGE_OPTIONS = [
   // The four the extension is most likely to be pointed at come first; the rest
   // follow Google's own alphabetical-by-English-name order.

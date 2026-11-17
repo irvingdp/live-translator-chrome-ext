@@ -48,8 +48,8 @@ const COPY = LOCALE === 'zh_TW'
       floatingHeading: '拖到哪裡，都由你決定',
       optionsBody: '使用自己的 API 金鑰。資料只保存在這台裝置的 Chrome 本機儲存空間，<span class="accent">不會傳送到我們的伺服器</span>。',
       optionsHeading: '你的金鑰，留在你的裝置',
-      popupDeepgramBody: '字體大小、文字顏色、背景透明度與斷句長度，都能在<span class="accent">字幕運作期間即時調整</span>。',
-      popupDeepgramHeading: '不中斷字幕，也能隨時微調',
+      popupStyleBody: '字體大小、文字顏色與背景透明度，都能在<span class="accent">字幕運作期間即時調整</span>。',
+      popupStyleHeading: '不中斷字幕，也能隨時微調',
       popupGeminiBody: '一組 Google API 金鑰，一條連線同時取得原文與翻譯，支援 <span class="accent">78 種語言</span>。',
       popupGeminiHeading: '選擇服務，開始即時翻譯',
       sidebarBody: '把字幕釘到 Chrome 側邊欄，閱讀完整雙語紀錄，並自動跟隨最新內容。',
@@ -60,8 +60,8 @@ const COPY = LOCALE === 'zh_TW'
       floatingHeading: 'Move it. Resize it. Make captions yours.',
       optionsBody: 'Bring your own key. It is stored in local Chrome storage on this device and <span class="accent">never sent to us</span> — there is no server.',
       optionsHeading: 'Your keys stay<br>on your machine',
-      popupDeepgramBody: 'Font sizes, text colors, opacity and line length — all of it <span class="accent">updates while captions run</span>.',
-      popupDeepgramHeading: 'Tune the captions<br>without stopping',
+      popupStyleBody: 'Font sizes, text colors and opacity — all of it <span class="accent">updates while captions run</span>.',
+      popupStyleHeading: 'Tune the captions<br>without stopping',
       popupGeminiBody: 'One Google API key. A single connection returns the original speech and its translation together, in <span class="accent">78 languages</span>.',
       popupGeminiHeading: 'Pick a provider,<br>pick a language',
       sidebarBody: 'Pin captions to Chrome’s Side Panel for readable bilingual history that automatically follows the latest line.',
@@ -217,8 +217,8 @@ try {
         x: 0,
         y: top,
       },
-      // The Deepgram popup is taller than the viewport, and a clip is capped
-      // at the viewport unless the whole page is captured.
+      // The popup with its settings open is taller than the viewport, and a
+      // clip is capped at the viewport unless the whole page is captured.
       fullPage: true,
     });
     return buffer.toString('base64');
@@ -361,8 +361,8 @@ try {
   });
 
   await shell('screenshot-4-caption-style.png', {
-    body: COPY.popupDeepgramBody,
-    heading: COPY.popupDeepgramHeading,
+    body: COPY.popupStyleBody,
+    heading: COPY.popupStyleHeading,
     shot: await panelShot(
       extPage,
       'section[aria-labelledby="size-heading"]',

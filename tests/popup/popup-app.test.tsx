@@ -17,20 +17,9 @@ function createApi(overrides: Partial<PopupApi> = {}): PopupApi {
     start: vi.fn().mockResolvedValue({ state: 'running', tabId: 42 }),
     status: vi.fn().mockResolvedValue({ state: 'idle' }),
     stop: vi.fn().mockResolvedValue({ state: 'idle' }),
+    takeDeepgramRemovedNotice: vi.fn().mockResolvedValue(false),
     ...overrides,
   };
-}
-
-// Gemini is the default provider, so anything about the Deepgram + DeepL pair
-// has to say so rather than lean on the defaults.
-function createDeepgramApi(settings: Record<string, unknown> = {}): PopupApi {
-  return createApi({
-    loadSettings: vi.fn().mockResolvedValue({
-      ...DEFAULT_SETTINGS,
-      transcriber: 'deepgram',
-      ...settings,
-    }),
-  });
 }
 
 describe('PopupApp', () => {
@@ -43,16 +32,6 @@ describe('PopupApp', () => {
     expect(api.authorizeCurrentTab).toHaveBeenCalledOnce();
   });
 
-  it('offers no translator we are not actually shipping', async () => {
-    render(<PopupApp api={createDeepgramApi()} />);
-
-    const translator = await screen.findByLabelText('翻譯');
-
-    expect(
-      [...translator.querySelectorAll('option')].map((option) => option.textContent),
-    ).toEqual(['DeepL API']);
-  });
-
   it('offers only the transcribers that actually work', async () => {
     render(<PopupApp api={createApi()} />);
 
@@ -62,11 +41,11 @@ describe('PopupApp', () => {
       [...transcriber.querySelectorAll('option')].map(
         (option) => option.textContent,
       ),
-    ).toEqual(['Gemini live translate 3.5', 'Gemini 預讀', 'Deepgram Nova-3']);
+    ).toEqual(['Gemini live translate 3.5', 'Gemini 預讀']);
     expect(transcriber).toHaveValue('gemini');
   });
 
-  it('shows only the API Key required by the selected transcriber', async () => {
+  it('asks only for the Gemini API Key, for both modes', async () => {
     const api = createApi();
     render(<PopupApp api={api} />);
 
@@ -79,44 +58,11 @@ describe('PopupApp', () => {
     expect(screen.queryByLabelText('DeepL API Key')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('語音辨識'), {
-      target: { value: 'deepgram' },
+      target: { value: 'gemini-read-ahead' },
     });
 
-    expect(screen.queryByLabelText('Gemini API Key')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Deepgram API Key')).toBeVisible();
-    expect(screen.getByLabelText('DeepL API Key')).toBeVisible();
-  });
-
-  it('shows configured status when both stored keys are non-empty', async () => {
-    render(
-      <PopupApp
-        api={createDeepgramApi({ deepgramApiKey: 'dg', deeplApiKey: 'dl' })}
-      />,
-    );
-
-    expect(await screen.findAllByText('API Key 已設定')).toHaveLength(2);
-    expect(screen.getByLabelText('Deepgram API Key')).toHaveValue('dg');
-    expect(screen.getByLabelText('DeepL API Key')).toHaveValue('dl');
-  });
-
-  it('keeps configured API Keys masked until individually revealed', async () => {
-    render(
-      <PopupApp
-        api={createDeepgramApi({ deepgramApiKey: 'dg', deeplApiKey: 'dl' })}
-      />,
-    );
-    await screen.findAllByText('API Key 已設定');
-
-    fireEvent.click(screen.getByRole('button', {
-      name: '顯示 Deepgram API Key',
-    }));
-
-    expect(screen.getByLabelText('Deepgram API Key')).toHaveValue('dg');
-    expect(screen.getByLabelText('Deepgram API Key')).toHaveAttribute(
-      'type',
-      'text',
-    );
-    expect(screen.getByLabelText('DeepL API Key')).toHaveAttribute('type', 'password');
+    expect(screen.getByLabelText('Gemini API Key')).toBeVisible();
+    expect(screen.queryByLabelText('DeepL API Key')).not.toBeInTheDocument();
   });
 
   it('shows an API Key as missing as soon as its textbox is cleared', async () => {
@@ -179,23 +125,10 @@ describe('PopupApp', () => {
     expect(api.start).not.toHaveBeenCalled();
   });
 
-  it('blocks startup with guidance when an API Key is missing', async () => {
-    const api = createDeepgramApi();
-    render(<PopupApp api={api} />);
-    expect(await screen.findAllByText('API Key 尚未設定')).toHaveLength(2);
-
-    fireEvent.click(screen.getByRole('switch', { name: '開始即時字幕' }));
-
-    expect(
-      await screen.findByText(
-        '請先輸入 Deepgram 與 DeepL API Key。',
-      ),
-    ).toBeVisible();
-    expect(api.start).not.toHaveBeenCalled();
-  });
-
   it('starts with normalized settings and changes the CTA to stop', async () => {
-    const api = createDeepgramApi({ deepgramApiKey: 'dg', deeplApiKey: 'dl' });
+    const api = createApi({
+      loadSettings: vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS, geminiApiKey: 'gm' }),
+    });
     render(<PopupApp api={api} />);
 
     fireEvent.click(
@@ -262,32 +195,6 @@ describe('PopupApp', () => {
     }));
   });
 
-  it('shows a translation warning while capture remains active', async () => {
-    render(<PopupApp api={createApi({
-      status: vi.fn().mockResolvedValue({
-        error: 'translation_failed',
-        state: 'running',
-        tabId: 42,
-      }),
-    })} />);
-
-    expect(await screen.findByText('翻譯異常')).toBeVisible();
-    expect(screen.getByRole('switch', { name: '停止字幕' })).toBeChecked();
-  });
-
-  it('shows translation disabled while capture remains active', async () => {
-    render(<PopupApp api={createApi({
-      status: vi.fn().mockResolvedValue({
-        error: 'translation_disabled',
-        state: 'running',
-        tabId: 42,
-      }),
-    })} />);
-
-    expect(await screen.findByText('翻譯已停用')).toBeVisible();
-    expect(screen.getByRole('switch', { name: '停止字幕' })).toBeChecked();
-  });
-
   it('serializes settings writes so an older save cannot finish last', async () => {
     let releaseFirst!: () => void;
     const saveSettings = vi
@@ -330,22 +237,11 @@ describe('PopupApp', () => {
     expect(translation).toHaveValue('18');
   });
 
-  it('saves each layout setting when its slider moves', async () => {
-    // The line-width sliders only exist for the provider that chunks its own
-    // rows.
-    const api = createDeepgramApi();
+  it('saves the background opacity when its slider moves', async () => {
+    const api = createApi();
     render(<PopupApp api={api} />);
 
-    fireEvent.change(await screen.findByLabelText('每行長度上限'), {
-      target: { value: '60' },
-    });
-    await waitFor(() =>
-      expect(api.saveSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ maxLineWidth: 60 }),
-      ),
-    );
-
-    fireEvent.change(screen.getByLabelText('背景透明度'), {
+    fireEvent.change(await screen.findByLabelText('背景透明度'), {
       target: { value: '30' },
     });
     await waitFor(() =>
@@ -353,43 +249,9 @@ describe('PopupApp', () => {
         expect.objectContaining({ backgroundOpacity: 30 }),
       ),
     );
-
   });
 
-  it('stops the minimum line width slider at the current maximum', async () => {
-    const api = createDeepgramApi();
-    render(<PopupApp api={api} />);
-
-    const minimum = await screen.findByLabelText('每行長度下限');
-    // Anything past the maximum is clamped away on save, so a handle that can
-    // be dragged there only springs back.
-    expect(minimum).toHaveAttribute('max', String(DEFAULT_SETTINGS.maxLineWidth));
-
-    fireEvent.change(screen.getByLabelText('每行長度上限'), {
-      target: { value: '50' },
-    });
-
-    await waitFor(() => expect(minimum).toHaveAttribute('max', '50'));
-  });
-
-  it('links each selected provider to where its API key is issued', async () => {
-    render(<PopupApp api={createDeepgramApi()} />);
-
-    const deepgram = await screen.findByRole('link', {
-      name: /console\.deepgram\.com/,
-    });
-    const deepl = screen.getByRole('link', { name: /www\.deepl\.com/ });
-
-    expect(deepgram).toHaveAttribute('href', 'https://console.deepgram.com/');
-    expect(deepl).toHaveAttribute('href', 'https://www.deepl.com/');
-    // The popup closes when a tab opens, so these must not navigate it.
-    for (const link of [deepgram, deepl]) {
-      expect(link).toHaveAttribute('target', '_blank');
-      expect(link).toHaveAttribute('rel', 'noreferrer');
-    }
-  });
-
-  it('drops the translator step when Gemini already does the translating', async () => {
+  it('links to the Gemini key guide, with no translator or line-width controls', async () => {
     const api = createApi();
     render(<PopupApp api={api} />);
 
@@ -435,8 +297,6 @@ describe('PopupApp', () => {
       expect(api.saveSettings).toHaveBeenCalledWith(
         expect.objectContaining({
           geminiTargetLanguage: 'pt-BR',
-          // The DeepL target is left alone, so switching back restores it.
-          targetLanguage: DEFAULT_SETTINGS.targetLanguage,
         }),
       ),
     );
@@ -504,23 +364,21 @@ describe('PopupApp', () => {
     expect(await screen.findByText('API Key 已設定')).toBeVisible();
   });
 
-  it('removes direct layout controls and still saves minimum line width', async () => {
-    const api = createDeepgramApi();
-    render(<PopupApp api={api} />);
+  it('tells a user moved off Deepgram why it asks for a Gemini key', async () => {
+    render(<PopupApp api={createApi({
+      takeDeepgramRemovedNotice: vi.fn().mockResolvedValue(true),
+    })} />);
 
-    await screen.findByLabelText('每行長度下限');
-    expect(screen.queryByLabelText('顯示行數')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('字幕寬度')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('距底部位置')).not.toBeInTheDocument();
+    const notice = await screen.findByText(/已不再支援 Deepgram，字幕已改用 Gemini live/);
+    expect(within(notice.closest<HTMLElement>('[role="status"]')!).getByRole('link', {
+      name: '如何建立 Gemini API Key？',
+    })).toHaveAttribute('href', 'onboarding.html');
+  });
 
-    fireEvent.change(screen.getByLabelText('每行長度下限'), {
-      target: { value: '25' },
-    });
-    await waitFor(() =>
-      expect(api.saveSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ minLineWidth: 25 }),
-      ),
-    );
+  it('shows no Deepgram notice otherwise', async () => {
+    render(<PopupApp api={createApi()} />);
+    await screen.findByLabelText('Gemini API Key');
+    expect(screen.queryByText(/Deepgram/)).not.toBeInTheDocument();
   });
 
   it('keeps the layout sliders usable while a session runs', async () => {

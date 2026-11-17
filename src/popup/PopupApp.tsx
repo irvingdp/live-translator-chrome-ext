@@ -19,12 +19,10 @@ import {
 } from '../core/gemini-languages';
 import {
   DEFAULT_SETTINGS,
-  LANGUAGE_OPTIONS,
   normalizeSettings,
   SETTING_RANGES,
   type AppSettings,
   type TranscriberId,
-  usesGemini,
   validateSettingsForStart,
 } from '../core/settings';
 import { RatingCard } from './RatingCard';
@@ -45,6 +43,9 @@ export interface PopupApi {
   start(settings: AppSettings): Promise<SessionStatus>;
   status(): Promise<SessionStatus>;
   stop(): Promise<SessionStatus>;
+  // True once after an update moved a Deepgram user to Gemini live without a
+  // Gemini key; reading it clears it.
+  takeDeepgramRemovedNotice(): Promise<boolean>;
 }
 
 export function PopupApp({ api }: { api: PopupApi }) {
@@ -52,7 +53,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
   const [status, setStatus] = useState<SessionStatus>({ state: 'idle' });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [translator, setTranslator] = useState('deepl');
   const [revealedSecret, setRevealedSecret] = useState<string>();
   const [ratingVisible, setRatingVisible] = useState(false);
   const saveTail = useRef<Promise<void>>(Promise.resolve());
@@ -89,10 +89,12 @@ export function PopupApp({ api }: { api: PopupApi }) {
       api.loadSettings(),
       api.status(),
       authorization,
+      api.takeDeepgramRemovedNotice().catch(() => false),
     ]).then(
-      ([loadedSettings, loadedStatus]) => {
+      ([loadedSettings, loadedStatus, _tab, deepgramRemoved]) => {
         setSettings(normalizeSettings(loadedSettings));
         setStatus(loadedStatus);
+        if (deepgramRemoved) setMessage(t('deepgramRemovedNeedGeminiKey'));
       },
       () => {
         setSettings(DEFAULT_SETTINGS);
@@ -135,11 +137,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
     }
 
     if (Object.keys(validateSettingsForStart(settings)).length > 0) {
-      setMessage(
-        usesGemini(settings.transcriber)
-          ? t('needGeminiKey')
-          : t('needDeepgramAndDeeplKeys'),
-      );
+      setMessage(t('needGeminiKey'));
       return;
     }
 
@@ -179,7 +177,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
 
   const running = status.state === 'running' || status.state === 'starting';
   const transcriber = settings.transcriber;
-  const isGemini = usesGemini(transcriber);
   const isReadAhead = transcriber === 'gemini-read-ahead';
   const closeRating = () => setRatingVisible(false);
   return (
@@ -231,7 +228,8 @@ export function PopupApp({ api }: { api: PopupApi }) {
           </button>
           {(message || ('error' in status && status.error)) && (
             <p className="toggle-error" role="status">
-              {message === t('needGeminiKey') ? (
+              {message === t('needGeminiKey') ||
+              message === t('deepgramRemovedNeedGeminiKey') ? (
                 <>
                   {message}
                   <a
@@ -260,65 +258,21 @@ export function PopupApp({ api }: { api: PopupApi }) {
         >
           <option value="gemini">Gemini live translate 3.5</option>
           <option value="gemini-read-ahead">{t('transcriberReadAhead')}</option>
-          <option value="deepgram">Deepgram Nova-3</option>
         </select>
-        {isGemini ? <GeminiGuideLink /> : <ProviderLink provider={transcriber} />}
+        <GeminiGuideLink />
+        <ConfigurableSecretField
+          id="gemini-key"
+          label="Gemini API Key"
+          onSave={(geminiApiKey) => {
+            update('geminiApiKey', geminiApiKey);
+          }}
+          onToggle={() => setRevealedSecret((current) =>
+            current === 'gemini-key' ? undefined : 'gemini-key'
+          )}
+          revealed={revealedSecret === 'gemini-key'}
+          value={settings.geminiApiKey}
+        />
 
-        {isGemini && (
-          <ConfigurableSecretField
-            id="gemini-key"
-            label="Gemini API Key"
-            onSave={(geminiApiKey) => {
-              update('geminiApiKey', geminiApiKey);
-            }}
-            onToggle={() => setRevealedSecret((current) =>
-              current === 'gemini-key' ? undefined : 'gemini-key'
-            )}
-            revealed={revealedSecret === 'gemini-key'}
-            value={settings.geminiApiKey}
-          />
-        )}
-
-        {/* Gemini Live Translate returns the translation with the transcript,
-            so there is no second provider left to choose. */}
-        {!isGemini && (
-          <>
-            <label htmlFor="translator">{t('translatorLabel')}</label>
-            <select
-              id="translator"
-              disabled={running}
-              value={translator}
-              onChange={(event) => setTranslator(event.target.value)}
-            >
-              <option value="deepl">DeepL API</option>
-            </select>
-            <ProviderLink provider={translator} />
-            <ConfigurableSecretField
-              id="deepgram-key"
-              label="Deepgram API Key"
-              onSave={(deepgramApiKey) => {
-                update('deepgramApiKey', deepgramApiKey);
-              }}
-              onToggle={() => setRevealedSecret((current) =>
-                current === 'deepgram-key' ? undefined : 'deepgram-key'
-              )}
-              revealed={revealedSecret === 'deepgram-key'}
-              value={settings.deepgramApiKey}
-            />
-            <ConfigurableSecretField
-              id="deepl-key"
-              label="DeepL API Key"
-              onSave={(deeplApiKey) => {
-                update('deeplApiKey', deeplApiKey);
-              }}
-              onToggle={() => setRevealedSecret((current) =>
-                current === 'deepl-key' ? undefined : 'deepl-key'
-              )}
-              revealed={revealedSecret === 'deepl-key'}
-              value={settings.deeplApiKey}
-            />
-          </>
-        )}
       </section>
 
       <section className="card grid" aria-labelledby="language-heading">
@@ -331,39 +285,16 @@ export function PopupApp({ api }: { api: PopupApi }) {
               prompt, so there the choice is real (auto by default). */}
           <select
             id="source-language"
-            disabled={running || (isGemini && !isReadAhead)}
-            value={
-              isReadAhead
-                ? settings.geminiSourceLanguage
-                : isGemini ? GEMINI_AUTO_SOURCE : settings.sourceLocale
-            }
-            onChange={(event) => {
-              if (isReadAhead) {
-                update('geminiSourceLanguage', event.target.value);
-                return;
-              }
-              const option = LANGUAGE_OPTIONS.find(
-                (item) => item.deepgram === event.target.value,
-              );
-              if (!option) return;
-              update('sourceLocale', option.deepgram);
-              update('sourceLanguage', option.source);
-            }}
+            disabled={running || !isReadAhead}
+            value={isReadAhead ? settings.geminiSourceLanguage : GEMINI_AUTO_SOURCE}
+            onChange={(event) => update('geminiSourceLanguage', event.target.value)}
           >
-            {isGemini && (
-              <option value={GEMINI_AUTO_SOURCE}>{t('autoDetect')}</option>
-            )}
-            {isGemini
-              ? GEMINI_LANGUAGE_OPTIONS.map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.label}
-                  </option>
-                ))
-              : LANGUAGE_OPTIONS.map((option) => (
-                  <option key={option.deepgram} value={option.deepgram}>
-                    {option.label}
-                  </option>
-                ))}
+            <option value={GEMINI_AUTO_SOURCE}>{t('autoDetect')}</option>
+            {GEMINI_LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </div>
         <div>
@@ -371,27 +302,14 @@ export function PopupApp({ api }: { api: PopupApi }) {
           <select
             id="target-language"
             disabled={running}
-            value={
-              isGemini ? settings.geminiTargetLanguage : settings.targetLanguage
-            }
-            onChange={(event) =>
-              update(
-                isGemini ? 'geminiTargetLanguage' : 'targetLanguage',
-                event.target.value,
-              )
-            }
+            value={settings.geminiTargetLanguage}
+            onChange={(event) => update('geminiTargetLanguage', event.target.value)}
           >
-            {isGemini
-              ? GEMINI_LANGUAGE_OPTIONS.map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.label}
-                  </option>
-                ))
-              : LANGUAGE_OPTIONS.map((option) => (
-                  <option key={option.target} value={option.target}>
-                    {option.label}
-                  </option>
-                ))}
+            {GEMINI_LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </div>
       </section>
@@ -448,36 +366,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
 
         <section className="card" aria-labelledby="layout-heading">
         <h2 id="layout-heading">{t('layoutHeading')}</h2>
-        {!isGemini && (
-          <>
-            <RangeField
-              id="max-line-width"
-              label={t('maxLineWidthLabel')}
-              max={SETTING_RANGES.maxLineWidth.max}
-              min={SETTING_RANGES.maxLineWidth.min}
-              step={5}
-              unit={t('unitColumns')}
-              value={settings.maxLineWidth}
-              onChange={(value) => update('maxLineWidth', value)}
-            />
-            <RangeField
-              id="min-line-width"
-              label={t('minLineWidthLabel')}
-              // A minimum above the maximum is clamped away on save, so
-              // offering the full range lets the handle be dragged somewhere
-              // it only springs back from.
-              max={Math.min(
-                SETTING_RANGES.minLineWidth.max,
-                settings.maxLineWidth,
-              )}
-              min={SETTING_RANGES.minLineWidth.min}
-              step={5}
-              unit={t('unitColumns')}
-              value={settings.minLineWidth}
-              onChange={(value) => update('minLineWidth', value)}
-            />
-          </>
-        )}
         <RangeField
           id="background-opacity"
           label={t('backgroundOpacityLabel')}
@@ -503,8 +391,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
 // running, so it outranks the plain state.
 function statusMessageKey(status: SessionStatus): MessageKey {
   const error = 'error' in status ? status.error : undefined;
-  if (error === 'translation_failed') return 'statusTranslationFailed';
-  if (error === 'translation_disabled') return 'statusTranslationDisabled';
   if (error === 'read_ahead_unsupported') return 'statusReadAheadUnsupported';
   if (status.state === 'running') return 'statusRunning';
   if (status.state === 'starting') return 'statusStarting';
@@ -512,32 +398,10 @@ function statusMessageKey(status: SessionStatus): MessageKey {
   return 'statusIdle';
 }
 
-// Where to go to sign up for the selected provider. A provider with no entry
-// renders nothing, so a future option cannot ship a dead link.
-const PROVIDER_SIGNUP: Record<string, { href: string; label: string }> = {
-  deepgram: { href: 'https://console.deepgram.com/', label: 'console.deepgram.com' },
-  deepl: { href: 'https://www.deepl.com/', label: 'www.deepl.com' },
-};
-
 function GeminiGuideLink() {
   return (
     <a className="provider-link" href="onboarding.html" target="_blank">
       {t('geminiGuideLink')}
-    </a>
-  );
-}
-
-function ProviderLink({ provider }: { provider: string }) {
-  const signup = PROVIDER_SIGNUP[provider];
-  if (!signup) return null;
-  return (
-    <a
-      className="provider-link"
-      href={signup.href}
-      rel="noreferrer"
-      target="_blank"
-    >
-      {t('providerSignupLink', signup.label)}
     </a>
   );
 }

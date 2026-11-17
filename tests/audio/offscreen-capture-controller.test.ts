@@ -6,7 +6,6 @@ import {
   type CaptureEvent,
   type CaptureSession,
 } from '../../src/audio/offscreen-capture-controller';
-import type { TranscriptEvent } from '../../src/core/transcript-stabilizer';
 
 function createHarness(audioChunkMs = 40) {
   let samplesListener: ((samples: Float32Array) => void) | undefined;
@@ -58,29 +57,29 @@ function createHarness(audioChunkMs = 40) {
     pipeline,
     samples: (samples: Float32Array) => samplesListener?.(samples),
     session,
-    transcript: (event: TranscriptEvent) =>
-      eventListener?.({ event, kind: 'transcript' }),
+    pairs: (updates: CaptureEvent['updates']) =>
+      eventListener?.({ kind: 'pairs', updates }),
     disconnect: (code?: string) => disconnectListener?.(code),
     endPipeline: () => pipelineEndedListener?.(),
   };
 }
 
 describe('OffscreenCaptureController', () => {
-  it('consumes the expiring tab stream ID before waiting for Deepgram', async () => {
+  it('consumes the expiring tab stream ID before waiting for Gemini', async () => {
     const harness = createHarness();
 
     await harness.controller.start({
-      apiKey: 'deepgram-key',
-      language: 'en-US',
-      provider: 'deepgram',
+      apiKey: 'gemini-key',
+      maxLineWidth: 90,
+      targetLanguage: 'zh-Hant',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
 
     expect(harness.createSession).toHaveBeenCalledWith({
-      apiKey: 'deepgram-key',
-      language: 'en-US',
-      provider: 'deepgram',
+      apiKey: 'gemini-key',
+      maxLineWidth: 90,
+      targetLanguage: 'zh-Hant',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -94,30 +93,25 @@ describe('OffscreenCaptureController', () => {
     );
   });
 
-  it('chunks pipeline samples and forwards transcripts to the extension', async () => {
+  it('chunks pipeline samples and forwards caption rows to the extension', async () => {
     const harness = createHarness();
     await harness.controller.start({
-      apiKey: 'deepgram-key',
-      language: 'en-US',
-      provider: 'deepgram',
+      apiKey: 'gemini-key',
+      maxLineWidth: 90,
+      targetLanguage: 'zh-Hant',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
 
     harness.samples(new Float32Array(640).fill(0.5));
-    harness.transcript({
-      isFinal: false,
-      revision: 1,
-      segmentId: 'segment-1',
-      text: 'Hello',
-    });
+    harness.pairs([{ id: 'turn-0#0', original: 'Hello' }]);
 
     expect(harness.session.sendAudio).toHaveBeenCalledWith(
       expect.objectContaining({ byteLength: 1_280 }),
     );
     expect(harness.emitEvent).toHaveBeenCalledWith('session-1', {
-      event: expect.objectContaining({ text: 'Hello' }),
-      kind: 'transcript',
+      kind: 'pairs',
+      updates: [{ id: 'turn-0#0', original: 'Hello' }],
     });
   });
 
@@ -126,7 +120,6 @@ describe('OffscreenCaptureController', () => {
     await harness.controller.start({
       apiKey: 'gemini-key',
       maxLineWidth: 90,
-      provider: 'gemini',
       sessionId: 'session-1',
       streamId: 'tab-stream',
       targetLanguage: 'zh-Hant',
@@ -144,7 +137,6 @@ describe('OffscreenCaptureController', () => {
     await harness.controller.start({
       apiKey: 'gemini-key',
       maxLineWidth: 90,
-      provider: 'gemini',
       sessionId: 'session-1',
       streamId: 'tab-stream',
       targetLanguage: 'zh-Hant',
@@ -165,7 +157,6 @@ describe('OffscreenCaptureController', () => {
     await harness.controller.start({
       apiKey: 'gemini-key',
       maxLineWidth: 90,
-      provider: 'gemini',
       sessionId: 'session-1',
       streamId: 'tab-stream',
       targetLanguage: 'zh-Hant',
@@ -181,9 +172,9 @@ describe('OffscreenCaptureController', () => {
   it('closes every owned resource when capture stops', async () => {
     const harness = createHarness();
     await harness.controller.start({
-      apiKey: 'deepgram-key',
-      language: 'en-US',
-      provider: 'deepgram',
+      apiKey: 'gemini-key',
+      maxLineWidth: 90,
+      targetLanguage: 'zh-Hant',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -198,7 +189,7 @@ describe('OffscreenCaptureController', () => {
     expect(harness.session.close).toHaveBeenCalledOnce();
   });
 
-  it('closes the already-consumed tab stream when stopped during Deepgram connect', async () => {
+  it('closes the already-consumed tab stream when stopped during the provider connect', async () => {
     const harness = createHarness();
     let finishConnect: (() => void) | undefined;
     vi.mocked(harness.session.connect).mockReturnValue(
@@ -208,9 +199,9 @@ describe('OffscreenCaptureController', () => {
     );
 
     const starting = harness.controller.start({
-      apiKey: 'deepgram-key',
-      language: 'en-US',
-      provider: 'deepgram',
+      apiKey: 'gemini-key',
+      maxLineWidth: 90,
+      targetLanguage: 'zh-Hant',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -224,16 +215,16 @@ describe('OffscreenCaptureController', () => {
     expect(harness.session.close).toHaveBeenCalledOnce();
   });
 
-  it('buffers bounded audio until Deepgram finishes connecting', async () => {
+  it('buffers bounded audio until the provider finishes connecting', async () => {
     const harness = createHarness();
     let finishConnect!: () => void;
     vi.mocked(harness.session.connect).mockReturnValue(
       new Promise<void>((resolve) => { finishConnect = resolve; }),
     );
     const starting = harness.controller.start({
-      apiKey: 'deepgram-key',
-      language: 'en-US',
-      provider: 'deepgram',
+      apiKey: 'gemini-key',
+      maxLineWidth: 90,
+      targetLanguage: 'zh-Hant',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -249,7 +240,7 @@ describe('OffscreenCaptureController', () => {
     );
   });
 
-  it('rolls back the session when Deepgram connection fails', async () => {
+  it('rolls back the session when the provider connection fails', async () => {
     const harness = createHarness();
     vi.mocked(harness.session.connect).mockRejectedValue(
       new Error('connection failed'),
@@ -257,9 +248,9 @@ describe('OffscreenCaptureController', () => {
 
     await expect(
       harness.controller.start({
-        apiKey: 'deepgram-key',
-        language: 'en-US',
-        provider: 'deepgram',
+        apiKey: 'gemini-key',
+        maxLineWidth: 90,
+        targetLanguage: 'zh-Hant',
         sessionId: 'session-1',
         streamId: 'tab-stream',
       }),
@@ -276,9 +267,9 @@ describe('OffscreenCaptureController', () => {
 
     await expect(
       harness.controller.start({
-        apiKey: 'deepgram-key',
-        language: 'en-US',
-        provider: 'deepgram',
+        apiKey: 'gemini-key',
+        maxLineWidth: 90,
+        targetLanguage: 'zh-Hant',
         sessionId: 'session-1',
         streamId: 'tab-stream',
       }),
@@ -293,9 +284,9 @@ describe('OffscreenCaptureController', () => {
 
     await expect(
       harness.controller.start({
-        apiKey: 'deepgram-key',
-        language: 'en-US',
-        provider: 'deepgram',
+        apiKey: 'gemini-key',
+        maxLineWidth: 90,
+        targetLanguage: 'zh-Hant',
         sessionId: 'session-1',
         streamId: 'tab-stream',
       }),
@@ -305,15 +296,15 @@ describe('OffscreenCaptureController', () => {
     expect(harness.session.close).toHaveBeenCalledOnce();
   });
 
-  it('closes the Deepgram session even when audio cleanup fails', async () => {
+  it('closes the provider session even when audio cleanup fails', async () => {
     const harness = createHarness();
     vi.mocked(harness.pipeline.close).mockRejectedValue(
       new Error('close failed'),
     );
     await harness.controller.start({
-      apiKey: 'deepgram-key',
-      language: 'en-US',
-      provider: 'deepgram',
+      apiKey: 'gemini-key',
+      maxLineWidth: 90,
+      targetLanguage: 'zh-Hant',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -323,12 +314,12 @@ describe('OffscreenCaptureController', () => {
     expect(harness.session.close).toHaveBeenCalledOnce();
   });
 
-  it('tears down audio and reports an unexpected Deepgram disconnect', async () => {
+  it('tears down audio and reports an unexpected provider disconnect', async () => {
     const harness = createHarness();
     await harness.controller.start({
-      apiKey: 'deepgram-key',
-      language: 'en-US',
-      provider: 'deepgram',
+      apiKey: 'gemini-key',
+      maxLineWidth: 90,
+      targetLanguage: 'zh-Hant',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -347,9 +338,9 @@ describe('OffscreenCaptureController', () => {
   it('tears down and reports disconnect when Chrome ends the captured track', async () => {
     const harness = createHarness();
     await harness.controller.start({
-      apiKey: 'deepgram-key',
-      language: 'en-US',
-      provider: 'deepgram',
+      apiKey: 'gemini-key',
+      maxLineWidth: 90,
+      targetLanguage: 'zh-Hant',
       sessionId: 'session-1',
       streamId: 'tab-stream',
     });
@@ -369,9 +360,9 @@ describe('OffscreenCaptureController', () => {
   it('ignores a stop message from an older session', async () => {
     const harness = createHarness();
     await harness.controller.start({
-      apiKey: 'deepgram-key',
-      language: 'en-US',
-      provider: 'deepgram',
+      apiKey: 'gemini-key',
+      maxLineWidth: 90,
+      targetLanguage: 'zh-Hant',
       sessionId: 'current-session',
       streamId: 'tab-stream',
     });

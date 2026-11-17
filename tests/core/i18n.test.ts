@@ -69,9 +69,7 @@ describe('message catalogues', () => {
 
 describe('t', () => {
   it('resolves a message and fills its substitutions', () => {
-    expect(t('providerSignupLink', 'aistudio.google.com')).toContain(
-      'aistudio.google.com',
-    );
+    expect(t('showSecret', 'Gemini API Key')).toContain('Gemini API Key');
   });
 
   // Better a visible key than the empty string chrome.i18n hands back, which

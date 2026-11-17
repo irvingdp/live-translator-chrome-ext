@@ -10,7 +10,6 @@ describe('browserOptionsApi', () => {
     const get = vi.fn().mockResolvedValue({
       settings: {
         ...DEFAULT_SETTINGS,
-        deepgramApiKey: 'dg-existing',
         deeplApiKey: 'dl-existing',
         geminiApiKey: 'gm-existing',
       },
@@ -18,7 +17,6 @@ describe('browserOptionsApi', () => {
     vi.stubGlobal('chrome', { storage: { local: { get, set: vi.fn() } } });
 
     await expect(browserOptionsApi.loadKeys()).resolves.toEqual({
-      deepgramApiKey: 'dg-existing',
       deeplApiKey: 'dl-existing',
       geminiApiKey: 'gm-existing',
     });
@@ -28,10 +26,8 @@ describe('browserOptionsApi', () => {
   it('merges API Keys without overwriting popup settings', async () => {
     const existing = {
       ...DEFAULT_SETTINGS,
+      geminiTargetLanguage: 'ja',
       originalFontSize: 32,
-      sourceLanguage: 'JA',
-      sourceLocale: 'ja',
-      targetLanguage: 'ZH-HANT',
       translationFontSize: 28,
     };
     const get = vi.fn().mockResolvedValue({ settings: existing });
@@ -39,7 +35,6 @@ describe('browserOptionsApi', () => {
     vi.stubGlobal('chrome', { storage: { local: { get, set } } });
 
     await browserOptionsApi.saveKeys({
-      deepgramApiKey: 'dg-new',
       deeplApiKey: 'dl-new',
       geminiApiKey: 'gm-new',
     });
@@ -47,7 +42,6 @@ describe('browserOptionsApi', () => {
     expect(set).toHaveBeenCalledWith({
       settings: {
         ...existing,
-        deepgramApiKey: 'dg-new',
         deeplApiKey: 'dl-new',
         geminiApiKey: 'gm-new',
       },

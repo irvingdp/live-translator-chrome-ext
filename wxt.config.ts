@@ -23,7 +23,6 @@ export default defineConfig({
       'tabCapture',
     ],
     host_permissions: [
-      'https://api.deepgram.com/*',
       'https://api.deepl.com/*',
       'https://api-free.deepl.com/*',
       'https://generativelanguage.googleapis.com/*'

@@ -4,7 +4,7 @@
     "description": "Extension name shown in Chrome and on the Web Store."
   },
   "extDescription": {
-    "message": "Live bilingual captions for any tab: the original line and its translation, from your own Gemini or Deepgram + DeepL key.",
+    "message": "Live bilingual captions for any tab: the original line and its translation, from your own Gemini API key.",
     "description": "Extension description shown in Chrome and on the Web Store. Must stay under 132 characters."
   },
 
@@ -42,14 +42,6 @@
     "message": "Retry needed",
     "description": "Popup status pill: the session failed and must be restarted."
   },
-  "statusTranslationFailed": {
-    "message": "Translation error",
-    "description": "Popup status pill: captions continue but translation is failing."
-  },
-  "statusTranslationDisabled": {
-    "message": "Translation off",
-    "description": "Popup status pill: translation gave up after repeated failures."
-  },
 
   "providerHeading": {
     "message": "Providers",
@@ -58,10 +50,6 @@
   "transcriberLabel": {
     "message": "Speech recognition",
     "description": "Label for the dropdown that picks the speech provider."
-  },
-  "translatorLabel": {
-    "message": "Translation",
-    "description": "Label for the dropdown that picks the translation provider."
   },
   "keysConfigured": {
     "message": "API key set",
@@ -79,13 +67,6 @@
   "decreaseCaptionFont": { "message": "Decrease original and translation font sizes", "description": "Caption toolbar action that decreases both font sizes." },
   "increaseCaptionBackground": { "message": "Increase caption background opacity", "description": "Caption toolbar action that increases background opacity." },
   "decreaseCaptionBackground": { "message": "Decrease caption background opacity", "description": "Caption toolbar action that decreases background opacity." },
-  "providerSignupLink": {
-    "message": "Get an API key: $1",
-    "description": "Link under a provider dropdown. $1 is the provider's sign-up domain.",
-    "placeholders": {
-      "domain": { "content": "$1", "example": "aistudio.google.com" }
-    }
-  },
   "geminiGuideLink": {
     "message": "How to create a Gemini API key",
     "description": "Link from the popup to the first-use Gemini API key guide."
@@ -246,21 +227,9 @@
     "message": "Clear captions",
     "description": "Accessible label for the button that clears the current caption window."
   },
-  "maxLineWidthLabel": {
-    "message": "Max line length",
-    "description": "Slider label for the widest a caption row may be cut."
-  },
-  "minLineWidthLabel": {
-    "message": "Min line length",
-    "description": "Slider label for the shortest a caption row may stay before merging."
-  },
   "backgroundOpacityLabel": {
     "message": "Background opacity",
     "description": "Slider label for how opaque the caption box background is."
-  },
-  "unitColumns": {
-    "message": " cols",
-    "description": "Unit appended to the line-length sliders. Counted in character widths: CJK counts as two. Keep the leading space."
   },
 
   "openSidePanel": {
@@ -299,10 +268,6 @@
     "message": "Once started, the tab's audio is sent to Google Gemini, which returns both the original text and the translation.",
     "description": "Popup footer explaining where audio goes in Gemini mode."
   },
-  "privacyDeepgram": {
-    "message": "Once started, the tab's audio is sent to Deepgram and the recognised text is sent to DeepL.",
-    "description": "Popup footer explaining where audio and text go in Deepgram mode."
-  },
 
   "settingsLoadFailed": {
     "message": "Could not load settings. Please reopen the extension.",
@@ -328,10 +293,6 @@
     "message": "Enter your Gemini API key first. Get an API Key:",
     "description": "Popup error when starting in Gemini mode without a key."
   },
-  "needDeepgramAndDeeplKeys": {
-    "message": "Enter your Deepgram and DeepL API keys first.",
-    "description": "Popup error when starting in Deepgram mode without both keys."
-  },
   "startFailed": {
     "message": "Could not start. Check your API key and the current tab.",
     "description": "Popup error when starting a session fails for an unknown reason."
@@ -344,14 +305,6 @@
     "message": "Switch to an https tab that can play video, then start",
     "description": "Error when the active tab cannot be captioned."
   },
-  "needDeepgramKeyField": {
-    "message": "Enter a Deepgram API key",
-    "description": "Field-level validation message for the Deepgram key."
-  },
-  "needDeeplKeyField": {
-    "message": "Enter a DeepL API key",
-    "description": "Field-level validation message for the DeepL key."
-  },
   "needGeminiKeyField": {
     "message": "Enter a Gemini API key",
     "description": "Field-level validation message for the Gemini key."
@@ -362,7 +315,7 @@
     "description": "Heading and document title of the options page."
   },
   "optionsKeyHint": {
-    "message": "You can clear a key and save. Only the selected provider's key is needed: Deepgram and DeepL work as a pair, Gemini live translate 3.5 works on its own.",
+    "message": "You can clear a key and save. Both caption modes need only the Gemini key; the DeepL key is for an upcoming translation option.",
     "description": "Explanation under the key fields on the options page."
   },
   "save": {
@@ -415,10 +368,6 @@
   "captionTrackLabel": {
     "message": "Bilingual live captions",
     "description": "Name of the native text track used when a video itself goes fullscreen."
-  },
-  "errorDeepgramDisconnected": {
-    "message": "Deepgram disconnected. Please restart captions.",
-    "description": "Caption overlay error."
   },
   "errorGeminiDisconnected": {
     "message": "Gemini disconnected. Please restart captions.",
@@ -614,5 +563,9 @@
   "statusReadAheadUnsupported": {
     "message": "Read-ahead is not supported here. Use Gemini live instead.",
     "description": "Popup status when read-ahead mode cannot run on this page."
+  },
+  "deepgramRemovedNeedGeminiKey": {
+    "message": "Deepgram is no longer supported, so captions now use Gemini live. Set a Gemini API key to continue.",
+    "description": "Popup notice shown once after the update that removed Deepgram, to a Deepgram user who has no Gemini key yet."
   }
 }

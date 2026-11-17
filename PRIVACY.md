@@ -1,12 +1,12 @@
 # Privacy Policy — Bilingual Live Captions
 
-**Last updated: 2026-10-29**
+**Last updated: 2026-11-17**
 
 ## Summary
 
 This extension has no server, and the developer receives nothing from you unless
-you choose to send feedback. What it does: it sends the audio of a tab you pick to a speech/translation service you
-choose, using **your own API key**, and draws the returned text on screen.
+you choose to send feedback. What it does: it sends the audio of a video you pick to Google Gemini, using
+**your own API key**, and draws the returned text on screen.
 
 ## Data collected by the developer
 
@@ -22,7 +22,7 @@ comment box only if you choose "other"; that is sent **only when you press Send*
 In either case the extension transmits at most:
 
 - your star rating, the choice you made and the comment you typed, if any,
-- the extension version, the provider you use (Gemini or Deepgram + DeepL), and the
+- the extension version, the caption mode you use (Gemini live or Gemini read-ahead), and the
   extension's interface language.
 
 It never includes your email address, tab URL, API keys, audio, or caption text,
@@ -34,17 +34,17 @@ developer (see below).
 
 ## Data that leaves your device
 
-Once you start captions, **the audio of the tab you selected** is sent to the
-provider you chose. The connection goes from your browser straight to that service,
-with no intermediary server:
+Once you start captions, **the audio of the video you selected** is sent to Google
+Gemini. The connection goes from your browser straight to Google, with no
+intermediary server:
 
-| Provider you choose | What is sent | Where it goes |
+| Caption mode | What is sent | Where it goes |
 | --- | --- | --- |
-| Gemini live translate 3.5 (default) | Tab audio | Google (`generativelanguage.googleapis.com`) |
-| Deepgram Nova-3 + DeepL | Tab audio to Deepgram; the recognised text to DeepL | Deepgram (`api.deepgram.com`), DeepL (`api.deepl.com` or `api-free.deepl.com`) |
+| Gemini live translate 3.5 (default) | The tab's audio, as it plays | Google (`generativelanguage.googleapis.com`) |
+| Gemini read-ahead | Audio the page's video player has already loaded, in 10–15 second pieces, a little ahead of what is playing | Google (`generativelanguage.googleapis.com`) |
 
-Audio is captured only after you press start, and only for the one tab you selected.
-Capture stops when you press stop or close that tab. The original and translated
+Audio is read only after you press start, and only for the one tab you selected.
+It stops when you press stop or close that tab. The original and translated
 text is only rendered on screen; it is never written to a file or a log.
 
 ## Data that stays on your device
@@ -70,18 +70,16 @@ agreement with them, not by this extension. Please read:
 
 - Google Gemini API — [terms](https://ai.google.dev/gemini-api/terms),
   [Google Privacy Policy](https://policies.google.com/privacy)
-- Deepgram — [privacy policy](https://deepgram.com/privacy)
-- DeepL — [privacy policy](https://www.deepl.com/privacy)
 
 ## Two things to know before using a free Gemini key
 
-Gemini is the default provider, and Google's free-tier terms differ from the paid
+Both caption modes use Gemini, and Google's free-tier terms differ from the paid
 tier:
 
 1. **Free-tier input is used by Google to improve its products and may be read by
    human reviewers.** Audio captured with a free key should therefore not contain
    confidential, sensitive, or personal information. For such content, use a paid
-   key or switch to Deepgram + DeepL.
+   key.
 2. **The free tier is not available in the EEA, the UK, or Switzerland.** Users
    there need a paid-tier key.
 
@@ -93,7 +91,7 @@ tier:
 | `offscreen` | A Manifest V3 service worker cannot use AudioContext, so audio processing and the provider connection run in an offscreen document |
 | `activeTab`, `scripting` | Inject the caption overlay only into the tab where you pressed start; no script is registered across all websites |
 | `storage` | Save your API keys, caption settings and whether you have rated the extension |
-| `host_permissions` | Limited to the four provider API domains used for the connections above |
+| `host_permissions` | Limited to Google's Gemini API domain used above, and DeepL's two API domains (`api.deepl.com`, `api-free.deepl.com`), reserved for an upcoming translation option and not contacted by this version |
 
 ## Children
 
