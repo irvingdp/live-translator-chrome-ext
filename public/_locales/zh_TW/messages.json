@@ -643,6 +643,34 @@
     "message": "改用本地 Whisper",
     "description": "Caption overlay button after Groq Whisper could not serve, when this computer can run Local Whisper."
   },
+  "useRecognizer": {
+    "message": "改用語音辨識",
+    "description": "Caption overlay button that stops using the video's caption track so read-ahead recognizes speech (with word highlight)."
+  },
+  "noticeReadAheadCaptionsYouTubeNoHighlight": {
+    "message": "使用 YouTube 字幕（不支援逐字標示）",
+    "description": "Caption overlay notice when read-ahead uses a YouTube caption track while word highlight is on."
+  },
+  "noticeReadAheadCaptionsVideoNoHighlight": {
+    "message": "使用影片附帶的字幕（不支援逐字標示）",
+    "description": "Caption overlay notice when read-ahead uses a video's caption track while word highlight is on."
+  },
+  "wordHighlightLabel": {
+    "message": "逐字標示",
+    "description": "Popup switch: mark the original caption word by word as it is spoken (read-ahead)."
+  },
+  "wordHighlightHint": {
+    "message": "講者講到哪個字，原文就標示哪個字。只有用 Groq 或本地 Whisper 辨識時才有。",
+    "description": "Popup note under the word highlight switch."
+  },
+  "wordHighlightGeminiHint": {
+    "message": "Gemini 不支援逐字標示，改用 Groq 或本地 Whisper 才有。",
+    "description": "Popup hint when word highlight is on and the recognizer is Gemini."
+  },
+  "preferCaptionTracksLabel": {
+    "message": "優先使用影片字幕軌",
+    "description": "Popup switch: use the uploader's caption track instead of speech recognition when there is one (read-ahead)."
+  },
   "errorReadAheadLoading": {
     "message": "讀取音訊中…",
     "description": "Caption overlay status while read-ahead mode holds the video until it has the audio of the next sentence."

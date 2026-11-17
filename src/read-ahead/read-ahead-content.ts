@@ -447,6 +447,16 @@ export function installReadAhead(document: Document): void {
   // at most CAPTION_WAIT_MS, then starts on them or on the audio (ADR 0003).
   const start = async (video: HTMLVideoElement, active: ReadAheadStartRequest) => {
     const mediaKey = mediaKeyOf(video);
+    // The viewer turned caption tracks off: recognize, as before ADR 0003.
+    if (!active.preferCaptionTracks) {
+      if (audioUnreachable(video)) {
+        reportStatus(active.sessionId, 'unsupported');
+      } else {
+        reportStatus(active.sessionId);
+        running = startAudio(video, active);
+      }
+      return;
+    }
     starting = mediaKey;
     const wasPlaying = !video.paused;
     if (wasPlaying) video.pause();
@@ -470,6 +480,12 @@ export function installReadAhead(document: Document): void {
   // Starts, or restarts after the viewer moved to another video: a new video
   // starts with an empty cue cache and is looked at for caption tracks again.
   const ensureRunning = () => {
+    // Cut off from the extension (reloaded or updated): no chunk can be
+    // translated any more, so read-ahead stops and lets go of a held video.
+    if (!chrome.runtime?.id) {
+      stop();
+      return;
+    }
     if (!request) return;
     const video = findMainVideo();
     const key = video && mediaKeyOf(video);

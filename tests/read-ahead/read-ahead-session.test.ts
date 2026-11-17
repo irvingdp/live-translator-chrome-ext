@@ -278,6 +278,34 @@ describe('ReadAheadSession', () => {
     expect(t.main.isPaused).toBe(false);
   });
 
+  it('says it is waiting for audio, not a translation, when the chunks end just past the viewer', async () => {
+    const t = setup({ autoTranslate: true });
+    t.session.acceptAudio({ samples: audio([3, 0.5, 1, 0.5]), start: 0 });
+    await t.settle();
+    // The first chunk is cut at the pause, 3.25 s; the rest of the audio is
+    // too short to make the next one. The translated stretch ends 0.1 s ahead.
+    t.at(3.15);
+    expect(t.main.isPaused).toBe(true);
+    expect(t.statuses.at(-1)).toBe('loading');
+  });
+
+  it('gives a cue its words at media time, for word highlight', async () => {
+    const t = setup();
+    t.main.time = 200;
+    t.session.onMainSeeking();
+    t.session.acceptAudio({ samples: audio([2.5, 0.5, 2, 0.5]), start: 199.5 });
+    t.pending[0]!.resolve([{
+      cut: false, end: 2.5, original: 'Hello there.', sameLanguage: false, start: 0.5, translation: '你好。',
+      words: [{ end: 1, start: 0.5, text: 'Hello' }, { end: 2.5, start: 1.25, text: 'there.' }],
+    }]);
+    await t.settle();
+    t.at(200.2);
+    expect(t.lastCue()).toMatchObject({
+      original: 'Hello there.',
+      words: [{ end: 200.5, start: 200, text: 'Hello' }, { end: 202, start: 200.75, text: 'there.' }],
+    });
+  });
+
   it('neither holds nor shows captions while the main player shows an ad', () => {
     const t = setup();
     t.main.ad = true;

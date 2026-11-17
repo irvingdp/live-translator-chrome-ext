@@ -15,6 +15,8 @@ describe('session persistence', () => {
         geminiTargetLanguage: 'zh-Hant',
         groqApiKey: 'groq-secret',
         localWhisperModel: 'turbo',
+        preferCaptionTracks: true,
+        wordHighlight: true,
         maxLineWidth: 90,
         readAheadRecognizer: 'gemini',
         originalFontSize: 24,
@@ -39,10 +41,12 @@ describe('session persistence', () => {
         maxLineWidth: 90,
         originalFontSize: 24,
         originalTextColor: '#ffffff',
+        preferCaptionTracks: true,
         readAheadRecognizer: 'gemini',
         transcriber: 'gemini',
         translationFontSize: 22,
         translationTextColor: '#fde68a',
+        wordHighlight: true,
       },
     });
   });

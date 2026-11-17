@@ -82,6 +82,8 @@ export interface DisplayedCue {
   id: string;
   original: string;
   translation: string;
+  // The original's words at media time, where the recognizer timed them.
+  words?: Array<{ end: number; start: number; text: string }>;
 }
 
 // 'loading': holding for audio; 'translating': holding for the translation
@@ -387,7 +389,8 @@ export class ReadAheadSession {
     this.render(
       this.cueAt(time),
       this.holding
-        ? this.chainEnd(time, true) > time ? 'translating' : 'loading'
+        // Waiting on a chunk being translated, or on audio to make one.
+        ? this.chainEnd(time, true) - time >= HOLD_MARGIN_SECONDS ? 'translating' : 'loading'
         : chunk?.state === 'failed' ? chunk.failure ?? 'failed' : undefined,
     );
   }
@@ -603,6 +606,15 @@ export class ReadAheadSession {
         original: sentence.original,
         start,
         translation: sentence.sameLanguage ? '' : sentence.translation,
+        ...(sentence.words?.length
+          ? {
+              words: sentence.words.map((word) => ({
+                end: chunk.start + Math.min(length, word.end),
+                start: chunk.start + Math.max(0, Math.min(length, word.start)),
+                text: word.text,
+              })),
+            }
+          : {}),
       });
     });
     this.cues.sort((a, b) => a.start - b.start);
@@ -634,6 +646,7 @@ export class ReadAheadSession {
         id: cue.id,
         original: cue.original,
         translation: cue.translation,
+        ...(cue.words ? { words: cue.words } : {}),
       });
     }
     if (status !== this.shownStatus) {

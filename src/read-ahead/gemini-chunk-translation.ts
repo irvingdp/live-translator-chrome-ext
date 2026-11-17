@@ -42,6 +42,9 @@ export interface ChunkSentence {
   sameLanguage: boolean;
   start: number;
   translation: string;
+  // Whisper's words with their times (seconds from the start of the chunk);
+  // Gemini times only whole sentences.
+  words?: Array<{ end: number; start: number; text: string }>;
 }
 
 export interface ChunkTranslationRequest {

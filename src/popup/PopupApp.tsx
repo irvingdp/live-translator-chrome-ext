@@ -392,11 +392,11 @@ export function PopupApp({ api }: { api: PopupApi }) {
                 });
               }}
             >
-              <option value="gemini">{t('recognizerGemini')}</option>
-              <option value="groq">Groq Whisper</option>
               <option value="local" disabled={webGpu === false && recognizer !== 'local'}>
                 {t('recognizerLocal')}
               </option>
+              <option value="groq">Groq Whisper</option>
+              <option value="gemini">{t('recognizerGemini')}</option>
             </select>
             {webGpu === false && (
               <p className="field-hint" role="note">{t('localWhisperNoWebGpu')}</p>
@@ -418,7 +418,25 @@ export function PopupApp({ api }: { api: PopupApi }) {
                 onModel={(model) => update('localWhisperModel', model)}
               />
             )}
-            <p className="field-hint" role="note">{t('recognizerCaptionTrackHint')}</p>
+            <CheckField
+              checked={settings.preferCaptionTracks}
+              disabled={running}
+              hint={t('recognizerCaptionTrackHint')}
+              id="prefer-caption-tracks"
+              label={t('preferCaptionTracksLabel')}
+              onChange={(checked) => update('preferCaptionTracks', checked)}
+            />
+            <CheckField
+              checked={settings.wordHighlight}
+              disabled={running}
+              hint={t('wordHighlightHint')}
+              id="word-highlight"
+              label={t('wordHighlightLabel')}
+              onChange={(checked) => update('wordHighlight', checked)}
+            />
+            {settings.wordHighlight && recognizer === 'gemini' && (
+              <p className="field-hint" role="note">{t('wordHighlightGeminiHint')}</p>
+            )}
             {/* With a Whisper recognizer Chrome's built-in Translator
                 translates, and where it cannot, Google's web translation
                 does, automatically: shown, not offered. */}
@@ -616,6 +634,39 @@ const MISSING_KEY_MESSAGES = {
 const PERMISSION_DENIED_MESSAGES = {
   groq: 'groqPermissionDenied',
 } as const satisfies Record<'groq', MessageKey>;
+
+// A read-ahead on/off choice with what it does underneath.
+function CheckField({
+  checked,
+  disabled,
+  hint,
+  id,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  hint: string;
+  id: string;
+  label: string;
+  onChange(checked: boolean): void;
+}) {
+  return (
+    <div className="check-field">
+      <label className="check-row" htmlFor={id}>
+        <input
+          checked={checked}
+          disabled={disabled}
+          id={id}
+          type="checkbox"
+          onChange={(event) => onChange(event.target.checked)}
+        />
+        {label}
+      </label>
+      <p className="field-note">{hint}</p>
+    </div>
+  );
+}
 
 // Local Whisper's model: which one, whether it is downloaded, and the download
 // (shown with its size before anything is fetched) or deletion.

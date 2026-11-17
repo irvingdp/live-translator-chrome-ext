@@ -363,7 +363,7 @@ describe('PopupApp', () => {
 
       const recognizer = await screen.findByLabelText('語音辨識');
       expect([...recognizer.querySelectorAll('option')].map((option) => option.textContent))
-        .toEqual(['Gemini（含翻譯）', 'Groq Whisper', '本地 Whisper（在這台電腦執行）']);
+        .toEqual(['本地 Whisper（在這台電腦執行）', 'Groq Whisper', 'Gemini（含翻譯）']);
       const translator = screen.getByLabelText('翻譯服務');
       expect(translator).toBeDisabled();
       expect(translator).toHaveValue('gemini');
@@ -458,8 +458,32 @@ describe('PopupApp', () => {
       );
       render(<PopupApp api={api} />);
       expect(await screen.findByText(/影片有上傳者提供的字幕時優先使用/)).toBeVisible();
+      // Gemini times only sentences.
+      expect(screen.getByText('Gemini 不支援逐字標示，改用 Groq 或本地 Whisper 才有。')).toBeVisible();
       fireEvent.click(screen.getByRole('switch', { name: '開始即時字幕' }));
       await waitFor(() => expect(api.prepareChromeTranslator).toHaveBeenCalledWith('en', 'zh-Hant'));
+    });
+
+    it('offers caption tracks and word highlight as read-ahead switches, both on by default', async () => {
+      const api = readAheadApi({ readAheadRecognizer: 'groq' });
+      render(<PopupApp api={api} />);
+      const captions = await screen.findByLabelText('優先使用影片字幕軌');
+      const highlight = screen.getByLabelText('逐字標示');
+      expect(captions).toBeChecked();
+      expect(highlight).toBeChecked();
+      expect(screen.queryByText(/Gemini 不支援逐字標示/)).not.toBeInTheDocument();
+
+      fireEvent.click(highlight);
+      await waitFor(() => expect(api.saveSettings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ wordHighlight: false }),
+      ));
+      fireEvent.click(captions);
+      await waitFor(() => expect(api.saveSettings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ preferCaptionTracks: false }),
+      ));
+
+      fireEvent.change(screen.getByLabelText('翻譯模式'), { target: { value: 'gemini' } });
+      expect(screen.queryByLabelText('逐字標示')).not.toBeInTheDocument();
     });
 
     it('offers Local Whisper with its model, downloading only after the size is shown', async () => {

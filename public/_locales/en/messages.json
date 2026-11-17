@@ -643,6 +643,34 @@
     "message": "Switch to Local Whisper",
     "description": "Caption overlay button after Groq Whisper could not serve, when this computer can run Local Whisper."
   },
+  "useRecognizer": {
+    "message": "Use speech recognition",
+    "description": "Caption overlay button that stops using the video's caption track so read-ahead recognizes speech (with word highlight)."
+  },
+  "noticeReadAheadCaptionsYouTubeNoHighlight": {
+    "message": "Using YouTube's captions (no word highlight)",
+    "description": "Caption overlay notice when read-ahead uses a YouTube caption track while word highlight is on."
+  },
+  "noticeReadAheadCaptionsVideoNoHighlight": {
+    "message": "Using the video's captions (no word highlight)",
+    "description": "Caption overlay notice when read-ahead uses a video's caption track while word highlight is on."
+  },
+  "wordHighlightLabel": {
+    "message": "Word highlight",
+    "description": "Popup switch: mark the original caption word by word as it is spoken (read-ahead)."
+  },
+  "wordHighlightHint": {
+    "message": "Marks each word of the original as it is said. Only with Groq or Local Whisper recognition.",
+    "description": "Popup note under the word highlight switch."
+  },
+  "wordHighlightGeminiHint": {
+    "message": "Gemini has no word highlight; choose Groq or Local Whisper for it.",
+    "description": "Popup hint when word highlight is on and the recognizer is Gemini."
+  },
+  "preferCaptionTracksLabel": {
+    "message": "Prefer the video's caption tracks",
+    "description": "Popup switch: use the uploader's caption track instead of speech recognition when there is one (read-ahead)."
+  },
   "errorReadAheadLoading": {
     "message": "Reading audio…",
     "description": "Caption overlay status while read-ahead mode holds the video until it has the audio of the next sentence."

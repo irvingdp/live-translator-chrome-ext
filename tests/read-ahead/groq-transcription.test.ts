@@ -24,8 +24,16 @@ describe('sentencesFromWords', () => {
       ['And', 0, 1.2], ['like', 1.2, 1.44], ['teacher,', 1.62, 2.62], ['assignments.', 4.72, 5.4],
       ['When', 5.24, 6.14], ['grades.', 7.9, 8.48],
     ))).toEqual([
-      { cut: false, end: 5.4, original: 'And like teacher, assignments.', sameLanguage: false, start: 0, translation: '' },
-      { cut: false, end: 8.48, original: 'When grades.', sameLanguage: false, start: 5.24, translation: '' },
+      expect.objectContaining({ cut: false, end: 5.4, original: 'And like teacher, assignments.', start: 0 }),
+      expect.objectContaining({ cut: false, end: 8.48, original: 'When grades.', start: 5.24 }),
+    ]);
+  });
+
+  it('keeps each word with its time, for word highlight', () => {
+    const [sentence] = sentencesFromWords(words(['  When', 5.24, 6.14], ['grades.', 7.9, 8.48]));
+    expect(sentence!.words).toEqual([
+      { end: 6.14, start: 5.24, text: 'When' },
+      { end: 8.48, start: 7.9, text: 'grades.' },
     ]);
   });
 

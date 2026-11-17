@@ -1,4 +1,5 @@
-import type { CaptionPair } from '../core/caption-window';
+import type { CaptionPair, CaptionWord } from '../core/caption-window';
+import { spaceBetween } from '../core/sentence-splitter';
 import { t, type MessageKey } from '../core/i18n';
 import {
   normalizeOverlayLayout,
@@ -12,6 +13,7 @@ import type { SessionErrorAction } from '../core/capture-session-controller';
 const SESSION_ACTION_KEYS: Record<SessionErrorAction, MessageKey> = {
   switch_to_groq: 'switchToGroqWhisper',
   switch_to_local: 'switchToLocalWhisper',
+  use_recognizer: 'useRecognizer',
 };
 
 const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
@@ -22,7 +24,9 @@ const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
   groq_quota_exceeded: 'errorGroqQuotaExceeded',
   read_ahead_captions_loading: 'errorReadAheadCaptionsLoading',
   read_ahead_captions_video: 'noticeReadAheadCaptionsVideo',
+  read_ahead_captions_video_no_highlight: 'noticeReadAheadCaptionsVideoNoHighlight',
   read_ahead_captions_youtube: 'noticeReadAheadCaptionsYouTube',
+  read_ahead_captions_youtube_no_highlight: 'noticeReadAheadCaptionsYouTubeNoHighlight',
   read_ahead_failed: 'errorReadAheadFailed',
   local_timeout: 'errorLocalWhisperTimeout',
   read_ahead_loading: 'errorReadAheadLoading',
@@ -56,6 +60,19 @@ export function sessionErrorText(code: string): string {
   const reasonKey = reason ? PROVIDER_REASON_KEYS[reason] : undefined;
   if (provider && reasonKey) return t(reasonKey, PROVIDER_NAMES[provider]!);
   return t('errorUnknown');
+}
+
+const HIGHLIGHT_INTERVAL_MS = 80;
+
+// The word being said at `time`: the last one that has started, or -1 before
+// the first. A word stays current through the pause after it.
+export function currentWordIndex(words: CaptionWord[], time: number): number {
+  let current = -1;
+  for (let index = 0; index < words.length; index += 1) {
+    if (words[index]!.start <= time) current = index;
+    else break;
+  }
+  return current;
 }
 
 const VIEWPORT_MARGIN = 8;
@@ -222,6 +239,9 @@ const OVERLAY_CSS = `
   .translation { color: var(--caption-translation-color, #fde68a); font-size: var(--caption-translation-size, 16px); font-weight: 550; margin-top: 3px; overflow-wrap: break-word; text-shadow: 0 1px 2px #000; }
   .status-message { color: #fca5a5; flex: 0 0 auto; font-size: 16px; font-weight: 600; margin-top: 5px; overflow-wrap: anywhere; pointer-events: none; text-shadow: 0 1px 2px #000; }
   .original:empty, .translation:empty, .status-message:empty { display: none; }
+  .word { border-radius: 3px; transition: opacity 120ms linear; }
+  .word[data-state="upcoming"] { opacity: 0.45; }
+  .word[data-state="current"] { background: var(--caption-translation-color, #fde68a); color: #111827; text-shadow: none; }
   .status-action { align-self: flex-start; background: rgba(17, 24, 39, 0.9); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 6px; color: #fff; cursor: pointer; font: 600 14px system-ui, sans-serif; margin-top: 6px; padding: 4px 10px; pointer-events: auto; }
   .status-action:hover { background: rgba(55, 65, 81, 0.95); }
   .status-action[hidden] { display: none; }
@@ -376,6 +396,12 @@ export class CaptionOverlay {
   private trackElement?: HTMLElement;
   private transitionSuspended = false;
   private viewportElement?: HTMLElement;
+  // Word highlight (issue #18): refreshed from the main player's time while
+  // a shown pair has timed words.
+  private highlightTimer?: number;
+  // A notice with a button stays while the pointer is over the captions.
+  private pointerOverCaptions = false;
+  private clearWhenPointerLeaves = false;
   private readonly clearPointerProximity = () => {
     this.captionsElement?.classList.remove('proximity-hover');
   };
@@ -462,6 +488,7 @@ export class CaptionOverlay {
       'blur',
       this.clearPointerProximity,
     );
+    this.stopHighlight();
     this.host?.remove();
     this.host = undefined;
     this.captionsElement = undefined;
@@ -592,9 +619,41 @@ export class CaptionOverlay {
       track.append(element);
     }
     this.updateVisiblePairs();
+    if (pairs.some((pair) => pair.words?.length)) this.startHighlight();
+    else this.stopHighlight();
+  }
+
+  private startHighlight(): void {
+    const view = this.document.defaultView;
+    if (!view) return;
+    this.refreshHighlight();
+    this.highlightTimer ??= view.setInterval(() => this.refreshHighlight(), HIGHLIGHT_INTERVAL_MS);
+  }
+
+  private stopHighlight(): void {
+    if (this.highlightTimer !== undefined) this.document.defaultView?.clearInterval(this.highlightTimer);
+    this.highlightTimer = undefined;
+  }
+
+  // Said words normal, the one being said marked, the rest dimmed.
+  private refreshHighlight(): void {
+    const video = this.document.querySelector<HTMLVideoElement>('#movie_player video') ??
+      findLargestVisibleVideo(this.document);
+    if (!video) return;
+    const time = video.currentTime;
+    for (const pair of this.pairs) {
+      if (!pair.words?.length) continue;
+      const spans = this.pairElements.get(pair.id)?.querySelectorAll<HTMLElement>('.word');
+      if (!spans) continue;
+      const current = currentWordIndex(pair.words, time);
+      spans.forEach((span, index) => {
+        span.dataset.state = index < current ? 'said' : index === current ? 'current' : 'upcoming';
+      });
+    }
   }
 
   setSessionError(code: string, action?: SessionErrorAction): void {
+    this.clearWhenPointerLeaves = false;
     this.statusTextValue = sessionErrorText(code);
     if (this.statusElement) this.statusElement.textContent = this.statusTextValue;
     this.statusAction = action;
@@ -604,6 +663,12 @@ export class CaptionOverlay {
   }
 
   clearSessionError(): void {
+    // A notice offering a button waits while the viewer is reaching for it.
+    if (this.statusAction && this.pointerOverCaptions) {
+      this.clearWhenPointerLeaves = true;
+      return;
+    }
+    this.clearWhenPointerLeaves = false;
     this.statusTextValue = '';
     if (this.statusElement) this.statusElement.textContent = '';
     this.statusAction = undefined;
@@ -997,6 +1062,11 @@ export class CaptionOverlay {
     const captions = this.document.createElement('div');
     captions.className = 'captions';
     captions.addEventListener('pointerleave', this.clearPointerProximity);
+    captions.addEventListener('pointerenter', () => { this.pointerOverCaptions = true; });
+    captions.addEventListener('pointerleave', () => {
+      this.pointerOverCaptions = false;
+      if (this.clearWhenPointerLeaves) this.clearSessionError();
+    });
     captions.addEventListener('pointerdown', (event) => this.beginInteraction(event));
     captions.addEventListener('pointermove', (event) => this.moveInteraction(event));
     captions.addEventListener('pointerup', (event) => this.endInteraction(event));
@@ -1285,7 +1355,11 @@ export class CaptionOverlay {
     for (let index = elements.length - 1; index >= 0; index -= 1) {
       const element = elements[index]!;
       const pairHeight = element.offsetHeight;
-      const fits = pairHeight > 0 && used + pairHeight <= available;
+      // The newest pair always shows, even taller than the captions box (a
+      // long read-ahead sentence): the box keeps its bottom, the translation,
+      // and clips the top of the original. Only older pairs make way.
+      const newest = index === elements.length - 1;
+      const fits = newest || (pairHeight > 0 && used + pairHeight <= available);
       element.dataset.hidden = fits ? 'false' : 'true';
       if (fits) used += pairHeight;
     }
@@ -1307,7 +1381,32 @@ export class CaptionOverlay {
   private writePair(element: HTMLElement, pair: CaptionPair): void {
     const original = element.querySelector('.original');
     const translation = element.querySelector('.translation');
-    if (original) original.textContent = pair.original;
+    if (original) {
+      const words = pair.words ?? [];
+      const rendered = (original as HTMLElement).dataset.words;
+      const key = words.map((word) => word.text).join('\u0001');
+      if (!words.length) {
+        original.textContent = pair.original;
+        delete (original as HTMLElement).dataset.words;
+      } else if (rendered !== key) {
+        // The original line as its words, spaced the way it is written.
+        original.textContent = '';
+        let text = '';
+        for (const word of words) {
+          if (spaceBetween(text, word.text)) {
+            original.append(' ');
+            text += ' ';
+          }
+          const span = this.document.createElement('span');
+          span.className = 'word';
+          span.dataset.state = 'upcoming';
+          span.textContent = word.text;
+          original.append(span);
+          text += word.text;
+        }
+        (original as HTMLElement).dataset.words = key;
+      }
+    }
     if (translation) translation.textContent = pair.translation;
   }
 

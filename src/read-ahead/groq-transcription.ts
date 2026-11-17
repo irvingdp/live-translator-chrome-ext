@@ -4,7 +4,7 @@
 // built-in Translator, else Google's web translation). Whisper gives words,
 // not sentences; the words carry their punctuation, so sentences end at a word
 // that ends one.
-import { isWideCharacter } from '../core/sentence-splitter';
+import { spaceBetween } from '../core/sentence-splitter';
 import {
   CHUNK_REQUEST_TIMEOUT_MS,
   ChunkTranslationError,
@@ -93,14 +93,11 @@ export function joinWords(words: string[]): string {
   for (const word of words) {
     const piece = word.trim();
     if (!piece) continue;
-    const previous = text.at(-1);
-    const next = piece[0]!;
-    text += !previous || (isWideCharacter(previous) && isWideCharacter(next))
-      ? piece
-      : ` ${piece}`;
+    text += spaceBetween(text, piece) ? ` ${piece}` : piece;
   }
   return text;
 }
+
 
 // Times are seconds from the start of the chunk.
 export function sentencesFromWords(words: GroqWord[]): ChunkSentence[] {
@@ -126,6 +123,9 @@ export function sentencesFromWords(words: GroqWord[]): ChunkSentence[] {
         sameLanguage: false,
         start: pending[0]!.start,
         translation: '',
+        words: pending
+          .map((word) => ({ end: Math.max(word.start, word.end), start: word.start, text: word.word.trim() }))
+          .filter((word) => word.text !== ''),
       });
     }
     pending = [];
