@@ -49,7 +49,7 @@ The read-ahead service that turns a chunk's audio into timed sentences: Gemini (
 _Avoid_: Transcriber (the setting's old name for the caption mode), ASR provider
 
 **Local Whisper** (本地 Whisper):
-The recognizer that runs a Whisper model on the viewer's own computer, in the browser: no key and no quota, but the model must be downloaded once and the computer must be fast enough.
+The recognizer that runs a Whisper model on the viewer's own computer, in the browser: no key and no quota, but the model must be downloaded once and the computer must support WebGPU.
 _Avoid_: Offline mode, on-device ASR
 
 **Translator** (翻譯):

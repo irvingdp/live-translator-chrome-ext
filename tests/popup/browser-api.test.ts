@@ -81,4 +81,15 @@ describe('browserPopupApi', () => {
     await browserPopupApi.saveRatingPrompt(state);
     expect(set).toHaveBeenCalledWith({ ratingPrompt: state });
   });
+
+  it("starts a viewer who never chose a recognizer on Local Whisper with WebGPU, else on Groq, keeping a choice", async () => {
+    const load = async (stored: unknown, gpu: boolean) => {
+      vi.stubGlobal('chrome', { storage: { local: { get: vi.fn().mockResolvedValue({ settings: stored }) } } });
+      vi.stubGlobal('navigator', { gpu: { requestAdapter: vi.fn().mockResolvedValue(gpu ? {} : null) } });
+      return (await browserPopupApi.loadSettings()).readAheadRecognizer;
+    };
+    await expect(load(undefined, true)).resolves.toBe('local');
+    await expect(load({ transcriber: 'gemini' }, false)).resolves.toBe('groq');
+    await expect(load({ readAheadRecognizer: 'gemini' }, true)).resolves.toBe('gemini');
+  });
 });

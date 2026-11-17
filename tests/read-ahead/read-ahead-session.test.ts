@@ -219,6 +219,40 @@ describe('ReadAheadSession', () => {
     expect(t.cues.flatMap((cue) => cue ? [cue.original] : [])).toEqual(['whole']);
   });
 
+  it('keeps a long sentence a hard cut went through, and its tail from the next chunk', async () => {
+    // Fast talk with no pause: both chunks are cut hard at 15 s, overlapping 2 s.
+    const t = setup();
+    t.at(0);
+    t.session.acceptAudio({ samples: audio([40]), start: 0 });
+    expect(t.chunkSeconds()).toEqual([15, 15]);
+    const sentence = (start: number, end: number, original: string, cut = false): ChunkSentence =>
+      ({ cut, end, original, sameLanguage: false, start, translation: `譯${original}` });
+    // Chunk 1 (0–15 s): its last sentence started at 5 s, long before the
+    // overlap, and runs past the cut.
+    t.pending[0]!.resolve([sentence(0.5, 4, 'One.'), sentence(5, 15, 'so how can you cycle back', true)]);
+    // Chunk 2 (13–28 s): it sees only that sentence's tail, then more.
+    t.pending[1]!.resolve([sentence(0, 3, 'into the planning stage.', true), sentence(4, 8, 'Three.'), sentence(9, 15, 'and then', true)]);
+    await t.settle();
+    const shown = (time: number) => { t.at(time); return t.lastCue()?.original; };
+    expect(shown(6)).toBe('so how can you cycle back');
+    expect(shown(13.5)).toBe('into the planning stage.');
+    expect(shown(17.5)).toBe('Three.');
+  });
+
+  it('still drops a sentence a hard cut went through when it starts inside the overlap', async () => {
+    const t = setup();
+    t.at(0);
+    t.session.acceptAudio({ samples: audio([40]), start: 0 });
+    const sentence = (start: number, end: number, original: string, cut = false): ChunkSentence =>
+      ({ cut, end, original, sameLanguage: false, start, translation: '' });
+    t.pending[0]!.resolve([sentence(0.5, 12, 'One.'), sentence(13.5, 15, 'half of', true)]);
+    // The next chunk, starting at 13 s, has that sentence whole.
+    t.pending[1]!.resolve([sentence(0.5, 3, 'half of it, whole.'), sentence(4, 15, 'more', true)]);
+    await t.settle();
+    t.at(14);
+    expect(t.lastCue()?.original).toBe('half of it, whole.');
+  });
+
   it('does not resume after the hold when the viewer paused during it', async () => {
     const t = setup();
     t.at(0);

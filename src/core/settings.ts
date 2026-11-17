@@ -1,3 +1,4 @@
+import { LOCAL_WHISPER_MODEL_IDS } from '../read-ahead/local-whisper';
 import type { SessionSettings } from './capture-session-controller';
 import { t } from './i18n';
 
@@ -48,10 +49,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
   groqApiKey: '',
+  localWhisperModel: 'turbo',
   maxLineWidth: 90,
   originalFontSize: 16,
   originalTextColor: '#ffffff',
-  readAheadRecognizer: 'gemini',
+  // Without WebGPU; where the computer has it, the popup starts a viewer who
+  // never chose on Local Whisper instead (initialRecognizer).
+  readAheadRecognizer: 'groq',
   transcriber: 'gemini',
   translationFontSize: 16,
   translationTextColor: '#fde68a',
@@ -64,10 +68,11 @@ export const TRANSCRIBER_IDS = ['gemini', 'gemini-read-ahead'] as const;
 export type TranscriberId = (typeof TRANSCRIBER_IDS)[number];
 
 // Read-ahead mode picks its speech recognition (issue #11). Gemini also
-// translates; with Groq Whisper Chrome's built-in Translator translates.
+// translates; with Groq Whisper or Local Whisper (issue #15) Chrome's
+// built-in Translator translates.
 // Cloudflare Whisper was removed before release (it often missed the 7 s
 // budget); a stored 'cloudflare' falls back to the default.
-export const READ_AHEAD_RECOGNIZERS = ['gemini', 'groq'] as const;
+export const READ_AHEAD_RECOGNIZERS = ['gemini', 'groq', 'local'] as const;
 export type ReadAheadRecognizer = (typeof READ_AHEAD_RECOGNIZERS)[number];
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
@@ -119,6 +124,11 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       DEFAULT_SETTINGS.geminiTargetLanguage,
     ),
     groqApiKey: stringValue(raw.groqApiKey, DEFAULT_SETTINGS.groqApiKey),
+    localWhisperModel: oneOf(
+      raw.localWhisperModel,
+      LOCAL_WHISPER_MODEL_IDS,
+      DEFAULT_SETTINGS.localWhisperModel,
+    ),
     maxLineWidth: clamped(
       raw.maxLineWidth,
       SETTING_RANGES.maxLineWidth,
@@ -158,7 +168,8 @@ export function requiredApiKeys(settings: AppSettings): ApiKeyField[] {
   if (settings.transcriber !== 'gemini-read-ahead' || settings.readAheadRecognizer === 'gemini') {
     return ['geminiApiKey'];
   }
-  return ['groqApiKey'];
+  // Local Whisper needs no key, only its downloaded model.
+  return settings.readAheadRecognizer === 'local' ? [] : ['groqApiKey'];
 }
 
 const MISSING_KEY_MESSAGES = {
@@ -178,6 +189,18 @@ export function validateSettingsForStart(
 
 // Storage key of the one-time popup notice set by migrateStoredSettings.
 export const DEEPGRAM_REMOVED_NOTICE_KEY = 'deepgramRemovedNotice';
+
+// The recognizer for a viewer who has never chosen one: Local Whisper where
+// this computer can run it, else Groq Whisper; both leave the translation to
+// Chrome's built-in Translator. A stored choice is kept.
+export function initialRecognizer(
+  stored: Partial<AppSettings> | undefined,
+  webGpu: boolean,
+): ReadAheadRecognizer {
+  const chosen = stored?.readAheadRecognizer;
+  if (chosen && READ_AHEAD_RECOGNIZERS.includes(chosen)) return chosen;
+  return webGpu ? 'local' : 'groq';
+}
 
 // Settings stored by a version before 1.5.0 may still select Deepgram, or hold
 // its key and the fields only its mode used; a development build may hold

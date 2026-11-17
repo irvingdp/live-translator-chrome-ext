@@ -2,16 +2,23 @@ import type { SessionStatus } from '../core/capture-session-controller';
 import { sendFeedback } from '../core/feedback';
 import { t } from '../core/i18n';
 import { normalizeRatingPrompt, RATING_PROMPT_KEY } from '../core/rating-prompt';
-import type { ExtensionMessage } from '../core/messages';
+import type { ExtensionMessage, LocalWhisperDownload } from '../core/messages';
 import {
   DEEPGRAM_REMOVED_NOTICE_KEY,
   DEFAULT_SETTINGS,
+  initialRecognizer,
   normalizeSettings,
   type AppSettings,
 } from '../core/settings';
 import { chromeLanguageCode, type TranslatorApi } from '../read-ahead/chrome-translation';
 import { GROQ_ORIGIN } from '../read-ahead/groq-transcription';
 import { WEB_TRANSLATION_ORIGINS } from '../read-ahead/web-translation';
+import {
+  LOCAL_WHISPER_CACHE,
+  LOCAL_WHISPER_DOWNLOAD_KEY,
+  isModelCached,
+  modelCacheUrls,
+} from '../read-ahead/local-whisper';
 import type { PopupApi } from './PopupApp';
 
 function translatorApi(): TranslatorApi | undefined {
@@ -51,9 +58,44 @@ export const browserPopupApi: PopupApi = {
   },
   // One prompt for the Whisper service and the web translation it may fall
   // back to (asked for here, since the fallback happens without a gesture).
-  requestPermission: () => chrome.permissions.request({
-    origins: [GROQ_ORIGIN, ...WEB_TRANSLATION_ORIGINS],
+  // Local Whisper reaches no service, only the fallback; its model comes from
+  // Hugging Face, which allows any origin to fetch it.
+  requestPermission: (service) => chrome.permissions.request({
+    origins: service === 'local' ? [...WEB_TRANSLATION_ORIGINS] : [GROQ_ORIGIN, ...WEB_TRANSLATION_ORIGINS],
   }),
+  async webGpuAvailable() {
+    const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
+    return Boolean(await gpu?.requestAdapter().catch(() => null));
+  },
+  async localWhisperCached(model) {
+    const cache = await caches.open(LOCAL_WHISPER_CACHE);
+    return isModelCached(model, (await cache.keys()).map((request) => request.url));
+  },
+  async downloadLocalWhisper(model) {
+    const response = await chrome.runtime.sendMessage({
+      target: 'background',
+      type: 'LOCAL_WHISPER_DOWNLOAD',
+      payload: { model },
+    } satisfies ExtensionMessage) as { error?: string; ok?: boolean } | undefined;
+    if (!response?.ok) throw new Error(response?.error ?? t('backgroundNoResponse'));
+  },
+  async deleteLocalWhisper(model) {
+    const cache = await caches.open(LOCAL_WHISPER_CACHE);
+    const urls = modelCacheUrls(model, (await cache.keys()).map((request) => request.url));
+    await Promise.all(urls.map((url) => cache.delete(url)));
+    await chrome.storage.session.remove(LOCAL_WHISPER_DOWNLOAD_KEY);
+  },
+  watchLocalWhisperDownload(onChange) {
+    void chrome.storage.session.get(LOCAL_WHISPER_DOWNLOAD_KEY)
+      .then((stored) => onChange(stored[LOCAL_WHISPER_DOWNLOAD_KEY] as LocalWhisperDownload | undefined));
+    const listener = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'session' && LOCAL_WHISPER_DOWNLOAD_KEY in changes) {
+        onChange(changes[LOCAL_WHISPER_DOWNLOAD_KEY]!.newValue as LocalWhisperDownload | undefined);
+      }
+    };
+    chrome.storage.onChanged.addListener(listener);
+    return () => chrome.storage.onChanged.removeListener(listener);
+  },
   async authorizeCurrentTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id === undefined) return undefined;
@@ -77,10 +119,12 @@ export const browserPopupApi: PopupApi = {
   },
   sendFeedback: (payload) => sendFeedback(payload),
   async loadSettings() {
-    const stored = await chrome.storage.local.get('settings');
-    return normalizeSettings(
-      (stored.settings as Partial<AppSettings> | undefined) ?? DEFAULT_SETTINGS,
-    );
+    const stored = (await chrome.storage.local.get('settings')).settings as Partial<AppSettings> | undefined;
+    const settings = normalizeSettings(stored ?? DEFAULT_SETTINGS);
+    return {
+      ...settings,
+      readAheadRecognizer: initialRecognizer(stored, await browserPopupApi.webGpuAvailable()),
+    };
   },
   async saveSettings(settings) {
     await chrome.storage.local.set({ settings });

@@ -48,6 +48,7 @@ select:disabled { cursor: not-allowed; opacity: .65; }
 .field-hint { color: #fcd34d; font-size: 12px; line-height: 1.4; margin: -2px 0 0; }
 .field-note { color: var(--muted); font-size: 11px; line-height: 1.4; margin: 4px 0 0; }
 .field { margin-top: 2px; }
+.local-whisper { display: grid; gap: 6px; margin-top: 2px; }
 .secret-row { position: relative; }
 .secret-row input { padding-right: 46px; }
 .secret-row .secret-toggle { align-items: center; background: transparent; border: 0; border-radius: 6px; color: var(--muted); display: inline-flex; height: 34px; justify-content: center; padding: 0; position: absolute; right: 4px; top: 4px; width: 38px; }

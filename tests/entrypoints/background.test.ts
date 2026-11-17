@@ -15,6 +15,7 @@ const settings: AppSettings = {
   geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
   groqApiKey: 'groq-key',
+  localWhisperModel: 'turbo',
   maxLineWidth: 90,
   readAheadRecognizer: 'gemini',
   originalFontSize: 24,
@@ -113,7 +114,7 @@ beforeEach(async () => {
     },
     permissions: { contains: permissionsContains },
     offscreen: {
-      Reason: { USER_MEDIA: 'USER_MEDIA' },
+      Reason: { USER_MEDIA: 'USER_MEDIA', WORKERS: 'WORKERS' },
       closeDocument,
       createDocument,
     },
@@ -268,6 +269,97 @@ describe('background offscreen document lifecycle', () => {
     expect(localStorageData.settings).not.toHaveProperty('sourceLocale');
   });
 
+  describe('Local Whisper', () => {
+    const local = {
+      ...settings,
+      localWhisperModel: 'turbo',
+      readAheadRecognizer: 'local',
+      transcriber: 'gemini-read-ahead',
+    } as const;
+    const fromPopup = { id: 'test', url: 'chrome-extension://test/popup.html' };
+    const turboFiles = ['onnx/encoder_model_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx']
+      .map((file) => `https://huggingface.co/onnx-community/whisper-large-v3-turbo_timestamped/resolve/main/${file}`);
+    const offscreenMessages = () => runtimeSendMessage.mock.calls
+      .map(([message]) => message as ExtensionMessage)
+      .filter((message) => message.target === 'offscreen');
+
+    function stubCache(urls: string[]) {
+      vi.stubGlobal('caches', {
+        open: vi.fn(async () => ({ keys: async () => urls.map((url) => ({ url })) })),
+      });
+    }
+
+    it('will not start before the model is downloaded', async () => {
+      stubCache([]);
+      await expect(dispatch({
+        target: 'background',
+        type: 'SESSION_START',
+        payload: { settings: local, tabId: 42 },
+      })).resolves.toMatchObject({ error: 'localWhisperModelMissing', ok: false });
+      expect(offscreenMessages()).toEqual([]);
+    });
+
+    it('loads the downloaded model in the offscreen document before read-ahead starts, without fetching', async () => {
+      stubCache(turboFiles);
+      await expect(dispatch({
+        target: 'background',
+        type: 'SESSION_START',
+        payload: { settings: local, tabId: 42 },
+      })).resolves.toMatchObject({ ok: true });
+      expect(createDocument).toHaveBeenCalledWith(expect.objectContaining({
+        reasons: ['USER_MEDIA', 'WORKERS'],
+      }));
+      expect(offscreenMessages()).toContainEqual({
+        target: 'offscreen',
+        type: 'LOCAL_WHISPER_LOAD',
+        payload: { download: false, model: 'turbo' },
+      });
+    });
+
+    it("leaves the download to the offscreen document, keeping its progress in session storage", async () => {
+      stubCache([]);
+      await expect(dispatchFrom({
+        target: 'background',
+        type: 'LOCAL_WHISPER_DOWNLOAD',
+        payload: { model: 'small' },
+      }, fromPopup)).resolves.toEqual({ ok: true });
+      await vi.waitFor(() => expect(offscreenMessages()).toEqual([{
+        target: 'offscreen',
+        type: 'LOCAL_WHISPER_LOAD',
+        payload: { download: true, model: 'small' },
+      }]));
+      expect(sessionStorageData.localWhisperDownload).toMatchObject({ model: 'small', state: 'downloading' });
+
+      // Progress and the end come from the offscreen document; no state is
+      // held in this worker, so a restarted one handles them the same way.
+      await dispatch({
+        target: 'background',
+        type: 'LOCAL_WHISPER_PROGRESS',
+        payload: { loadedMB: 120, model: 'small', state: 'downloading', totalMB: 325 },
+      });
+      expect(sessionStorageData.localWhisperDownload).toMatchObject({ loadedMB: 120, state: 'downloading' });
+      expect(closeDocument).not.toHaveBeenCalled();
+
+      await dispatch({
+        target: 'background',
+        type: 'LOCAL_WHISPER_PROGRESS',
+        payload: { loadedMB: 0, model: 'small', state: 'done', totalMB: 0 },
+      });
+      expect(sessionStorageData.localWhisperDownload).toMatchObject({ loadedMB: 325, state: 'done', totalMB: 325 });
+      expect(offscreenMessages().at(-1)).toMatchObject({ type: 'LOCAL_WHISPER_UNLOAD' });
+      expect(closeDocument).toHaveBeenCalled();
+    });
+
+    it('does not start a second download while one is reporting', async () => {
+      sessionStorageData.localWhisperDownload = {
+        loadedMB: 10, model: 'turbo', state: 'downloading', totalMB: 566, updatedAt: Date.now(),
+      };
+      await dispatchFrom({ target: 'background', type: 'LOCAL_WHISPER_DOWNLOAD', payload: { model: 'turbo' } }, fromPopup);
+      await Promise.resolve();
+      expect(offscreenMessages()).toEqual([]);
+    });
+  });
+
   describe('switching read-ahead to Groq Whisper from the overlay', () => {
     const readAhead = { ...settings, transcriber: 'gemini-read-ahead' } as const;
     const fromTab = { frameId: 0, id: 'test', tab: { id: 42 } as chrome.tabs.Tab };
@@ -313,6 +405,40 @@ describe('background offscreen document lifecycle', () => {
       expect(tabsSendMessage).toHaveBeenCalledWith(42, expect.objectContaining({ type: 'READ_AHEAD_STOP' }));
       await expect(dispatch({ target: 'background', type: 'SESSION_STATUS' }))
         .resolves.toMatchObject({ status: { state: 'idle' } });
+    });
+
+    describe('to Local Whisper, after Groq could not serve', () => {
+      const toLocal = { ...switchMessage, payload: { recognizer: 'local' } } as const;
+      const turboFiles = ['onnx/encoder_model_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx']
+        .map((file) => `https://huggingface.co/onnx-community/whisper-large-v3-turbo_timestamped/resolve/main/${file}`);
+      const stubCache = (urls: string[]) => vi.stubGlobal('caches', {
+        open: vi.fn(async () => ({ keys: async () => urls.map((url) => ({ url })) })),
+      });
+
+      it('restarts on Local Whisper, loading its model first, when it is downloaded', async () => {
+        stubCache(turboFiles);
+        await startReadAhead({ groqApiKey: 'gq', readAheadRecognizer: 'groq' });
+
+        await expect(dispatchFrom(toLocal, fromTab)).resolves.toEqual({ ok: true, switched: true });
+
+        expect(localStorageData.settings).toMatchObject({ readAheadRecognizer: 'local' });
+        expect(readAheadStarts()).toHaveLength(2);
+        expect(runtimeSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+          type: 'LOCAL_WHISPER_LOAD',
+          payload: { download: false, model: 'turbo' },
+        }));
+      });
+
+      it('stops and opens the popup on Local Whisper when its model is not downloaded yet', async () => {
+        stubCache([]);
+        await startReadAhead({ groqApiKey: 'gq', readAheadRecognizer: 'groq' });
+
+        await expect(dispatchFrom(toLocal, fromTab)).resolves.toEqual({ ok: true, switched: false });
+
+        expect(actionOpenPopup).toHaveBeenCalledOnce();
+        expect(localStorageData.settings).toMatchObject({ readAheadRecognizer: 'local' });
+        expect(readAheadStarts()).toHaveLength(1);
+      });
     });
 
     it('stops the captions too when the Groq key is set but the permission is not', async () => {

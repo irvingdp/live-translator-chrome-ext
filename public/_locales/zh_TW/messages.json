@@ -570,6 +570,79 @@
     "message": "Chrome 內建翻譯無法翻譯這組語言，改用的 Google 網頁翻譯也失敗了。建議：在 popup 重新選一次 Groq Whisper 並允許連線權限，或把語音辨識改成「Gemini（含翻譯）」。",
     "description": "Caption overlay error in read-ahead mode, with a suggestion."
   },
+  "recognizerLocal": {
+    "message": "本地 Whisper（在這台電腦執行）",
+    "description": "Read-ahead speech recognition option that runs Whisper on the viewer's computer."
+  },
+  "localWhisperNoWebGpu": {
+    "message": "這台電腦的 Chrome 無法使用 WebGPU，不能執行本地 Whisper。",
+    "description": "Popup hint when WebGPU is unavailable."
+  },
+  "localWhisperModelLabel": {
+    "message": "本地模型",
+    "description": "Label of the Local Whisper model choice."
+  },
+  "localWhisperModelTurbo": {
+    "message": "large-v3-turbo（$1 MB，最準，建議）",
+    "description": "Local Whisper model option. $1 is the download size in MB.",
+    "placeholders": {
+      "size": { "content": "$1", "example": "566" }
+    }
+  },
+  "localWhisperModelSmall": {
+    "message": "small（$1 MB，較小）",
+    "description": "Local Whisper model option. $1 is the download size in MB.",
+    "placeholders": {
+      "size": { "content": "$1", "example": "566" }
+    }
+  },
+  "localWhisperDownload": {
+    "message": "下載模型（$1 MB）",
+    "description": "Button that starts the Local Whisper model download. $1 is the size in MB.",
+    "placeholders": {
+      "size": { "content": "$1", "example": "566" }
+    }
+  },
+  "localWhisperDownloadHint": {
+    "message": "從 Hugging Face 下載一次，存在這台電腦；之後辨識完全在本機進行，不需要金鑰、沒有額度。",
+    "description": "Hint under the Local Whisper download button."
+  },
+  "localWhisperDownloading": {
+    "message": "下載中… $1 / $2 MB（可以關閉這個視窗）",
+    "description": "Local Whisper download progress. $1 and $2 are megabytes.",
+    "placeholders": {
+      "loaded": { "content": "$1", "example": "120" },
+      "total": { "content": "$2", "example": "566" }
+    }
+  },
+  "localWhisperReady": {
+    "message": "模型已下載。",
+    "description": "Local Whisper status when the model is downloaded."
+  },
+  "localWhisperDelete": {
+    "message": "刪除已下載的模型",
+    "description": "Button that deletes the Local Whisper model from this computer."
+  },
+  "localWhisperDeleteFailed": {
+    "message": "無法刪除模型，請重試。",
+    "description": "Popup error when deleting the Local Whisper model fails."
+  },
+  "localWhisperDownloadFailed": {
+    "message": "下載失敗，請檢查網路後重試。",
+    "description": "Popup error when the Local Whisper download failed."
+  },
+  "localWhisperModelMissing": {
+    "message": "請先下載本地 Whisper 模型。",
+    "description": "Error when starting read-ahead on Local Whisper without its model."
+  },
+  "errorLocalWhisperTimeout": {
+    "message": "本地 Whisper 在 7 秒內沒有辨識完，已略過這一段。建議：改用較小的模型（small），或改用 Groq Whisper。",
+    "description": "Caption overlay error when Local Whisper is too slow on this computer."
+  },
+  "switchToLocalWhisper": {
+    "message": "改用本地 Whisper",
+    "description": "Caption overlay button after Groq Whisper could not serve, when this computer can run Local Whisper."
+  },
   "errorReadAheadLoading": {
     "message": "讀取音訊中…",
     "description": "Caption overlay status while read-ahead mode holds the video until it has the audio of the next sentence."
@@ -643,7 +716,7 @@
     "description": "Caption overlay button shown with a used-up Gemini quota in read-ahead mode."
   },
   "errorGroqQuotaExceeded": {
-    "message": "Groq 今日額度已用完（每天約 2000 次）。建議：改用「Gemini（含翻譯）」，或明天再用。",
+    "message": "Groq 今日額度已用完（每天約 2000 次）。建議：改用本地 Whisper 或「Gemini（含翻譯）」，或明天再用。",
     "description": "Caption overlay error in read-ahead mode with Groq Whisper."
   },
   "errorReadAheadTranslatorUnsupported": {

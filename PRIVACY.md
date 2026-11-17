@@ -44,7 +44,8 @@ services, with no intermediary server:
 | Read-ahead on a video with uploader captions | Nothing: the captions YouTube's player (or the page's video) already loaded are read in the page; no audio is sent | — |
 | Read-ahead with Gemini | Audio the page's video player has already loaded, in 10–15 second pieces, a little ahead of what is playing | Google (`generativelanguage.googleapis.com`) |
 | Read-ahead with Groq Whisper | The same audio pieces | Groq (`api.groq.com`) |
-| …translated by Chrome's built-in translation | The text Groq recognized, or the uploader's captions when there are none in your language | Nowhere: Chrome translates it on your device |
+| Read-ahead with Local Whisper | Nothing: the audio pieces are recognized on your computer. Only the model is downloaded once, when you press its download button | The model comes from Hugging Face (`huggingface.co`); nothing is sent to it but the download request |
+| …translated by Chrome's built-in translation | The text Groq or Local Whisper recognized, or the uploader's captions when there are none in your language | Nowhere: Chrome translates it on your device |
 | …where Chrome's built-in translation cannot translate | The same text | Google (`translate.googleapis.com`): the web translation behind Google's page translation, used without an account or key |
 
 Audio is read only after you press start, and only for the one tab you selected.
@@ -75,6 +76,7 @@ agreement with them, not by this extension. Please read:
 - Google Gemini API — [terms](https://ai.google.dev/gemini-api/terms),
   [Google Privacy Policy](https://policies.google.com/privacy)
 - Groq — [privacy policy](https://groq.com/privacy-policy/) (read-ahead with Groq Whisper)
+- Hugging Face — [privacy policy](https://huggingface.co/privacy) (Local Whisper's model download)
 - Google — [privacy policy](https://policies.google.com/privacy) (read-ahead's web translation fallback)
 
 ## Two things to know before using a free Gemini key

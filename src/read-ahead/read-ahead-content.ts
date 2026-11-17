@@ -390,6 +390,7 @@ export function installReadAhead(document: Document): void {
       main: mainPlayer(video),
       showCue: showCue(sessionId),
       showStatus: (status) => reportStatus(sessionId, status),
+      log: (event, details) => console.debug(LOG_PREFIX, event, JSON.stringify(details)),
       now: () => Date.now(),
       source,
       async translate(samples): Promise<ChunkSentence[]> {

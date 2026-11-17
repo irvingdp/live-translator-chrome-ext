@@ -8,6 +8,15 @@ if ((manifest.content_scripts?.length ?? 0) > 0) {
   throw new Error('Manifest must not register persistent content scripts');
 }
 
+// Only WebAssembly is allowed beyond 'self' (Local Whisper, ADR 0004): no
+// eval, no remote script.
+const expectedExtensionPagesCsp = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';";
+if (manifest.content_security_policy?.extension_pages !== expectedExtensionPagesCsp) {
+  throw new Error(
+    `Unexpected extension_pages CSP: ${JSON.stringify(manifest.content_security_policy)}`,
+  );
+}
+
 const expectedProviderHosts = [
   'https://generativelanguage.googleapis.com/*',
 ].sort();

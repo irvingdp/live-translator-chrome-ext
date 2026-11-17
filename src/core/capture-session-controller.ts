@@ -1,3 +1,4 @@
+import type { LocalWhisperModel } from '../read-ahead/local-whisper';
 import type {
   CaptionPairUpdate,
   CaptureStartRequest,
@@ -26,6 +27,7 @@ export interface SessionSettings {
   geminiSourceLanguage: string;
   geminiTargetLanguage: string;
   groqApiKey: string;
+  localWhisperModel: LocalWhisperModel;
   maxLineWidth: number;
   readAheadRecognizer: ReadAheadRecognizer;
   transcriber: TranscriberId;
@@ -67,7 +69,7 @@ export interface ReadAheadStartRequest {
 
 export type ReadAheadStatusCode = Exclude<ReadAheadStatus, undefined> | 'unsupported';
 
-export type SessionErrorAction = 'switch_to_groq';
+export type SessionErrorAction = 'switch_to_groq' | 'switch_to_local';
 
 const READ_AHEAD_STATUS_ERRORS: Partial<Record<ReadAheadStatusCode, string>> = {
   captions_loading: 'read_ahead_captions_loading',
@@ -90,11 +92,15 @@ function readAheadErrorCode(status: ReadAheadStatusCode): string {
 }
 
 // The next recognizer offered by a button when one cannot serve now (issue
-// #11): Gemini → Groq Whisper. Only for failures
+// #11): Gemini → Groq Whisper → Local Whisper (where this computer can run
+// it), and Local Whisper back to Groq. Only for failures
 // another service fixes: not a wrong key, or a reply it could not read.
 const SWITCH_ON_FAILURE = new Set(['provider_unavailable', 'quota_exceeded', 'rate_limited', 'timeout']);
 const NEXT_RECOGNIZER: Partial<Record<string, SessionErrorAction>> = {
   gemini: 'switch_to_groq',
+  groq: 'switch_to_local',
+  // A computer too slow for its model can still use Groq.
+  local: 'switch_to_groq',
 };
 
 // What one read-ahead chunk comes back as. With Chrome's built-in Translator
@@ -113,14 +119,31 @@ export class ReadAheadChunkError extends Error {
   }
 }
 
-// Read-ahead recognition through Groq Whisper (ADR 0002).
-export interface WhisperRecognition {
-  apiKey: string;
-  audioBase64: string;
-  sourceLanguage?: string;
+// Read-ahead recognition through Whisper: Groq's (ADR 0002), or on this
+// computer (issue #15).
+export type WhisperRecognition =
+  | {
+      apiKey: string;
+      audioBase64: string;
+      // Text Whisper continues from, to steer it (Traditional Chinese).
+      prompt?: string;
+      provider: 'groq';
+      sourceLanguage?: string;
+    }
+  | { audioBase64: string; model: LocalWhisperModel; provider: 'local'; sourceLanguage?: string };
+
+// Whisper writes Chinese in Simplified characters unless its context is
+// Traditional; a Traditional Chinese prompt makes that likely, not certain.
+// Only for speech the viewer said is Traditional Chinese: before English
+// speech it could pull the transcript into Chinese.
+const TRADITIONAL_CHINESE_PROMPT = '以下是繁體中文的句子。';
+export function whisperPrompt(sourceLanguage: string | undefined): string | undefined {
+  return sourceLanguage === 'zh-Hant' || sourceLanguage === 'zh-HK'
+    ? TRADITIONAL_CHINESE_PROMPT
+    : undefined;
 }
 
-function providerFailure(provider: 'gemini' | 'groq') {
+function providerFailure(provider: 'gemini' | 'groq' | 'local') {
   return (error: unknown): never => {
     const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
       ? error.code
@@ -156,6 +179,8 @@ export interface CaptureSessionDependencies {
   // The fallback when the page's built-in Translator cannot translate:
   // Google's web translation (ADR 0002).
   translateOnWeb(request: WebTranslationRequest, timeoutMs: number): Promise<string[]>;
+  // Whether this computer can run Local Whisper (WebGPU), so it is offered.
+  localWhisperUsable?(): Promise<boolean>;
 }
 
 export interface ActiveSessionSnapshot {
@@ -426,7 +451,10 @@ export class CaptureSessionController {
     const reason = recognizer && status?.startsWith(`${recognizer}_`)
       ? status.slice(recognizer.length + 1)
       : undefined;
-    const action = reason && SWITCH_ON_FAILURE.has(reason) ? NEXT_RECOGNIZER[recognizer!] : undefined;
+    let action = reason && SWITCH_ON_FAILURE.has(reason) ? NEXT_RECOGNIZER[recognizer!] : undefined;
+    if (action === 'switch_to_local' && !await this.dependencies.localWhisperUsable?.().catch(() => false)) {
+      action = undefined;
+    }
     await this.dependencies.sendToTab(tabId, status
       ? {
           type: 'SESSION_ERROR',
@@ -467,11 +495,19 @@ export class CaptureSessionController {
       return { sentences };
     }
 
-    const recognized = await this.dependencies.transcribeChunk({
-      apiKey: settings.groqApiKey,
-      audioBase64,
-      ...(sourceLanguage ? { sourceLanguage } : {}),
-    }).catch(providerFailure('groq'));
+    const language = sourceLanguage ? { sourceLanguage } : {};
+    const prompt = whisperPrompt(sourceLanguage);
+    const recognizer = settings.readAheadRecognizer;
+    const recognized = await this.dependencies.transcribeChunk(recognizer === 'local'
+      ? { audioBase64, model: settings.localWhisperModel, provider: 'local', ...language }
+      : {
+          apiKey: settings.groqApiKey,
+          audioBase64,
+          provider: 'groq',
+          ...language,
+          ...(prompt ? { prompt } : {}),
+        },
+    ).catch(providerFailure(recognizer));
     const source = sourceLanguage ?? recognized.language;
     if (recognized.sentences.length === 0) return { sentences: [] };
     if (source && sameLanguage(source, targetLanguage)) {
