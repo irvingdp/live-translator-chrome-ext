@@ -83,5 +83,6 @@ describe('ChromeTranslation', () => {
     expect(chromeLanguageCode('zh-Hans')).toBe('zh');
     expect(chromeLanguageCode('pt-BR')).toBe('pt');
     expect(chromeLanguageCode('zh-Hant')).toBe('zh-Hant');
+    expect(chromeLanguageCode('zh-HK')).toBe('zh-Hant');
   });
 });

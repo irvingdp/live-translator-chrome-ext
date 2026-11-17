@@ -315,7 +315,7 @@
     "description": "Heading and document title of the options page."
   },
   "optionsKeyHint": {
-    "message": "You can clear a key and save. Only the keys your choices need are used: Gemini for Gemini live and for read-ahead with Gemini; Groq, or Cloudflare's account ID and token, for read-ahead with their Whisper (translated by Chrome's built-in translation, which needs no key).",
+    "message": "You can clear a key and save. Only the keys your choices need are used: Gemini for Gemini live and for read-ahead with Gemini; Groq for read-ahead with Groq Whisper (translated by Chrome's built-in translation, which needs no key).",
     "description": "Explanation under the key fields on the options page."
   },
   "save": {
@@ -516,9 +516,79 @@
     "message": "Read-ahead",
     "description": "Provider dropdown option for read-ahead mode, which translates upcoming audio so captions appear as the speech starts."
   },
+  "targetHongKongLiveHint": {
+    "message": "Live audio mode has no Hong Kong variant: it translates into Traditional Chinese. Read-ahead mode uses Hong Kong's captions and wording.",
+    "description": "Popup hint under the target language when live mode is chosen with Hong Kong Traditional Chinese, which Gemini Live Translate has no code for."
+  },
+  "errorProviderRateLimited": {
+    "message": "$1 is too busy: it is rate-limiting requests for now. Wait a minute and it recovers, or switch to another speech recognition service.",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion. $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "errorProviderTimeout": {
+    "message": "$1 did not answer within 7 seconds, so this part was skipped. Check your connection; if the service is busy, switch to another speech recognition service.",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion. $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "errorProviderInvalidCredentials": {
+    "message": "$1 rejected your key. Check the API key in settings.",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion. $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "errorProviderNetworkError": {
+    "message": "Could not reach $1. Check your connection, VPN or firewall.",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion. $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "errorProviderUnavailable": {
+    "message": "$1 is unavailable right now. Try again later, or switch to another speech recognition service.",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion. $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "errorProviderInvalidResponse": {
+    "message": "$1 sent back something unreadable, so this part was skipped. It is usually a one-off and the next part goes ahead; if it keeps happening, switch services.",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion. $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "errorReadAheadPageTimeout": {
+    "message": "This part took over 8.5 seconds and was skipped. If your connection or the service is slow, switch to a faster speech recognition service (Groq).",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion."
+  },
+  "errorReadAheadWebTranslationFailed": {
+    "message": "Chrome's built-in translation cannot translate these languages, and Google's web translation, tried instead, failed too. Choose Groq Whisper again in the popup and allow the connection, or set speech recognition to Gemini (with translation).",
+    "description": "Caption overlay error in read-ahead mode, with a suggestion."
+  },
   "errorReadAheadLoading": {
     "message": "Reading audio…",
     "description": "Caption overlay status while read-ahead mode holds the video until it has the audio of the next sentence."
+  },
+  "errorReadAheadCaptionsLoading": {
+    "message": "Reading captions…",
+    "description": "Caption overlay status while read-ahead mode holds the video, at most 2 seconds, to load the video's caption tracks."
+  },
+  "noticeReadAheadCaptionsYouTube": {
+    "message": "Using YouTube's captions",
+    "description": "Caption overlay notice, shown for a few seconds, that read-ahead reads the uploader's YouTube caption track instead of recognizing speech."
+  },
+  "noticeReadAheadCaptionsVideo": {
+    "message": "Using the video's captions",
+    "description": "Caption overlay notice, shown for a few seconds, that read-ahead reads the video's own caption track instead of recognizing speech."
+  },
+  "recognizerCaptionTrackHint": {
+    "message": "When the video has captions from its uploader, they are used first: no speech recognition, and no translation when there are captions in your language too.",
+    "description": "Popup hint under the read-ahead speech recognition choice."
   },
   "errorReadAheadTranslating": {
     "message": "Translating…",
@@ -573,7 +643,7 @@
     "description": "Caption overlay button shown with a used-up Gemini quota in read-ahead mode."
   },
   "errorGroqQuotaExceeded": {
-    "message": "Today's Groq quota is used up.",
+    "message": "Groq's daily quota is used up (about 2,000 requests a day). Switch to Gemini (with translation), or come back tomorrow.",
     "description": "Caption overlay error in read-ahead mode with Groq Whisper."
   },
   "errorReadAheadTranslatorUnsupported": {
@@ -590,42 +660,6 @@
   "transcriberLive": {
     "message": "Live audio",
     "description": "Translation mode option: Gemini live translate, which captions the tab audio as it plays."
-  },
-  "needCloudflareAccountId": {
-    "message": "Enter your Cloudflare account ID first.",
-    "description": "Popup error when starting read-ahead with Cloudflare Whisper without an account ID."
-  },
-  "needCloudflareToken": {
-    "message": "Enter your Cloudflare API token first.",
-    "description": "Popup error when starting read-ahead with Cloudflare Whisper without a token."
-  },
-  "needCloudflareAccountIdField": {
-    "message": "Enter a Cloudflare account ID",
-    "description": "Field-level validation message for the Cloudflare account ID."
-  },
-  "needCloudflareTokenField": {
-    "message": "Enter a Cloudflare API token",
-    "description": "Field-level validation message for the Cloudflare API token."
-  },
-  "cloudflarePermissionDenied": {
-    "message": "Cloudflare Whisper needs permission to reach api.cloudflare.com.",
-    "description": "Popup message when the user declines the Cloudflare host permission."
-  },
-  "cloudflareAccountIdLabel": {
-    "message": "Cloudflare account ID",
-    "description": "Label of the Cloudflare account ID field."
-  },
-  "cloudflareAccountIdHint": {
-    "message": "On the Workers AI page of the Cloudflare dashboard, under \"Use REST API\". The token needs the Workers AI permission.",
-    "description": "Hint under the Cloudflare account ID field."
-  },
-  "errorCloudflareQuotaExceeded": {
-    "message": "Today's Cloudflare quota is used up.",
-    "description": "Caption overlay error in read-ahead mode with Cloudflare Whisper."
-  },
-  "switchToCloudflareWhisper": {
-    "message": "Switch to Cloudflare Whisper",
-    "description": "Caption overlay button shown with a used-up Groq quota in read-ahead mode."
   },
   "translatorWebFallback": {
     "message": "Google web translation (automatic)",

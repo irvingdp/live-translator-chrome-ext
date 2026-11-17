@@ -11,8 +11,6 @@ type BackgroundListener = (
 
 const settings: AppSettings = {
   backgroundOpacity: 78,
-  cloudflareAccountId: 'cf-account',
-  cloudflareApiToken: 'cf-secret',
   geminiApiKey: 'gemini-key',
   geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
@@ -278,7 +276,6 @@ describe('background offscreen document lifecycle', () => {
       type: 'READ_AHEAD_SWITCH_RECOGNIZER',
       payload: { recognizer: 'groq' },
     } as const;
-    const toCloudflare = { ...switchMessage, payload: { recognizer: 'cloudflare' } } as const;
     const readAheadStarts = () => tabsSendMessage.mock.calls
       .filter(([, message]) => (message as { type?: string }).type === 'READ_AHEAD_START');
 
@@ -326,30 +323,6 @@ describe('background offscreen document lifecycle', () => {
 
       expect(actionOpenPopup).toHaveBeenCalledOnce();
       expect(localStorageData.settings).toMatchObject({ readAheadRecognizer: 'groq' });
-      expect(readAheadStarts()).toHaveLength(1);
-    });
-
-    it('switches a Groq session whose quota ran out to Cloudflare once it is set up', async () => {
-      await startReadAhead({
-        cloudflareAccountId: 'acc', cloudflareApiToken: 'tok', groqApiKey: 'gq', readAheadRecognizer: 'groq',
-      });
-
-      await expect(dispatchFrom(toCloudflare, fromTab)).resolves.toEqual({ ok: true, switched: true });
-
-      expect(localStorageData.settings).toMatchObject({ readAheadRecognizer: 'cloudflare' });
-      expect(permissionsContains).toHaveBeenCalledWith({ origins: ['https://api.cloudflare.com/*'] });
-      expect(readAheadStarts()).toHaveLength(2);
-    });
-
-    it('stops and opens the popup on Cloudflare when its account ID or token is missing', async () => {
-      await startReadAhead({
-        cloudflareAccountId: '', cloudflareApiToken: 'tok', groqApiKey: 'gq', readAheadRecognizer: 'groq',
-      });
-
-      await expect(dispatchFrom(toCloudflare, fromTab)).resolves.toEqual({ ok: true, switched: false });
-
-      expect(actionOpenPopup).toHaveBeenCalledOnce();
-      expect(localStorageData.settings).toMatchObject({ readAheadRecognizer: 'cloudflare' });
       expect(readAheadStarts()).toHaveLength(1);
     });
 

@@ -20,8 +20,18 @@ const ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
 // stock phrases it invents over silence or music.
 const MAX_NO_SPEECH_PROBABILITY = 0.6;
 
-const SENTENCE_END = /[.?!。！？…]["'』」)）”’\]}》〉】〕»]*$/u;
+export const SENTENCE_END = /[.?!。！？…]["'』」)）”’\]}》〉】〕»]*$/u;
 const LOWERCASE_START = /^\p{Ll}/u;
+// Whisper sometimes returns fast, casual speech with no punctuation or
+// capitals at all. Then pauses are the only sentence boundaries: a gap this
+// long between words, once the sentence has run this long, ends it, and none
+// runs past MAX_UNPUNCTUATED_SECONDS.
+const UNPUNCTUATED_PAUSE_SECONDS = 0.6;
+const MIN_UNPUNCTUATED_SECONDS = 1.5;
+const MAX_UNPUNCTUATED_SECONDS = 8;
+// Without capitals, a first sentence is taken as picked up mid-speech when it
+// starts this close to the chunk's start.
+const CHUNK_EDGE_SECONDS = 0.3;
 
 export interface GroqWord {
   end: number;
@@ -29,7 +39,7 @@ export interface GroqWord {
   word: string;
 }
 
-// A Whisper segment, as Groq and Cloudflare both return them.
+// A Whisper segment, as Groq returns them.
 export interface WhisperSegment {
   end: number;
   no_speech_prob?: number;
@@ -76,7 +86,7 @@ export function whisperLanguageCode(name: unknown): string | undefined {
 
 // Joins words the way the language writes them: no space between two
 // characters of a script written without spaces (Chinese, Japanese).
-function joinWords(words: string[]): string {
+export function joinWords(words: string[]): string {
   let text = '';
   for (const word of words) {
     const piece = word.trim();
@@ -93,16 +103,22 @@ function joinWords(words: string[]): string {
 // Times are seconds from the start of the chunk.
 export function sentencesFromWords(words: GroqWord[]): ChunkSentence[] {
   const sentences: ChunkSentence[] = [];
+  const unpunctuated = !words.some((word) => SENTENCE_END.test(word.word.trim()));
+  // Capitals say where sentences start only if the text has any.
+  const cased = words.some((word) => /\p{Lu}/u.test(word.word));
   let pending: GroqWord[] = [];
   const close = (finished: boolean) => {
     if (pending.length === 0) return;
     const original = joinWords(pending.map((word) => word.word));
     if (original) {
+      const pickedUp = cased
+        ? LOWERCASE_START.test(original)
+        : pending[0]!.start < CHUNK_EDGE_SECONDS;
       sentences.push({
         // Cut at the chunk's end (no closing punctuation), or picked up
         // mid-sentence at its start (opens lowercase); the session decides
         // what to do with a cut fragment at a hard edge.
-        cut: !finished || (sentences.length === 0 && LOWERCASE_START.test(original)),
+        cut: !finished || (sentences.length === 0 && pickedUp),
         end: Math.max(pending[0]!.start, pending.at(-1)!.end),
         original,
         sameLanguage: false,
@@ -113,6 +129,14 @@ export function sentencesFromWords(words: GroqWord[]): ChunkSentence[] {
     pending = [];
   };
   for (const word of words) {
+    const last = pending.at(-1);
+    if (unpunctuated && last) {
+      const length = last.end - pending[0]!.start;
+      const paused = word.start - last.end >= UNPUNCTUATED_PAUSE_SECONDS;
+      if ((paused && length >= MIN_UNPUNCTUATED_SECONDS) || word.end - pending[0]!.start > MAX_UNPUNCTUATED_SECONDS) {
+        close(true);
+      }
+    }
     pending.push(word);
     if (SENTENCE_END.test(word.word.trim())) close(true);
   }

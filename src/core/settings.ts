@@ -44,8 +44,6 @@ export const SETTING_RANGES = {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   backgroundOpacity: 0,
-  cloudflareAccountId: '',
-  cloudflareApiToken: '',
   geminiApiKey: '',
   geminiSourceLanguage: 'auto',
   geminiTargetLanguage: 'zh-Hant',
@@ -66,8 +64,10 @@ export const TRANSCRIBER_IDS = ['gemini', 'gemini-read-ahead'] as const;
 export type TranscriberId = (typeof TRANSCRIBER_IDS)[number];
 
 // Read-ahead mode picks its speech recognition (issue #11). Gemini also
-// translates; with a Whisper service Chrome's built-in Translator translates.
-export const READ_AHEAD_RECOGNIZERS = ['gemini', 'groq', 'cloudflare'] as const;
+// translates; with Groq Whisper Chrome's built-in Translator translates.
+// Cloudflare Whisper was removed before release (it often missed the 7 s
+// budget); a stored 'cloudflare' falls back to the default.
+export const READ_AHEAD_RECOGNIZERS = ['gemini', 'groq'] as const;
 export type ReadAheadRecognizer = (typeof READ_AHEAD_RECOGNIZERS)[number];
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
@@ -109,8 +109,6 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       SETTING_RANGES.backgroundOpacity,
       DEFAULT_SETTINGS.backgroundOpacity,
     ),
-    cloudflareAccountId: stringValue(raw.cloudflareAccountId, DEFAULT_SETTINGS.cloudflareAccountId),
-    cloudflareApiToken: stringValue(raw.cloudflareApiToken, DEFAULT_SETTINGS.cloudflareApiToken),
     geminiApiKey: stringValue(raw.geminiApiKey, DEFAULT_SETTINGS.geminiApiKey),
     geminiSourceLanguage: stringValue(
       raw.geminiSourceLanguage,
@@ -153,25 +151,17 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
   };
 }
 
-export type ApiKeyField =
-  | 'cloudflareAccountId'
-  | 'cloudflareApiToken'
-  | 'geminiApiKey'
-  | 'groqApiKey';
+export type ApiKeyField = 'geminiApiKey' | 'groqApiKey';
 
 // The keys the chosen services need, in the order the popup asks for them.
 export function requiredApiKeys(settings: AppSettings): ApiKeyField[] {
   if (settings.transcriber !== 'gemini-read-ahead' || settings.readAheadRecognizer === 'gemini') {
     return ['geminiApiKey'];
   }
-  return settings.readAheadRecognizer === 'cloudflare'
-    ? ['cloudflareAccountId', 'cloudflareApiToken']
-    : ['groqApiKey'];
+  return ['groqApiKey'];
 }
 
 const MISSING_KEY_MESSAGES = {
-  cloudflareAccountId: 'needCloudflareAccountIdField',
-  cloudflareApiToken: 'needCloudflareTokenField',
   geminiApiKey: 'needGeminiKeyField',
   groqApiKey: 'needGroqKeyField',
 } as const;
@@ -190,7 +180,8 @@ export function validateSettingsForStart(
 export const DEEPGRAM_REMOVED_NOTICE_KEY = 'deepgramRemovedNotice';
 
 // Settings stored by a version before 1.5.0 may still select Deepgram, or hold
-// its key and the fields only its mode used. Normalizing drops them; the
+// its key and the fields only its mode used; a development build may hold
+// Cloudflare's account ID and token, or select it. Normalizing drops them; the
 // result says whether the stored copy needs rewriting, and whether a Deepgram
 // user was moved to Gemini live without a Gemini key (the popup then tells
 // them why it is asking for one).
@@ -203,6 +194,7 @@ export function migrateStoredSettings(raw: unknown): {
   const settings = normalizeSettings(stored as Partial<AppSettings>);
   const known = new Set(Object.keys(DEFAULT_SETTINGS));
   const changed = stored.transcriber === 'deepgram' ||
+    stored.readAheadRecognizer === 'cloudflare' ||
     Object.keys(stored).some((key) => !known.has(key));
   return {
     changed,

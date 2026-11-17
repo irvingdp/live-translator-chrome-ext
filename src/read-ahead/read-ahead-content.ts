@@ -1,7 +1,8 @@
-// Isolated-world side of read-ahead mode: finds the main player, picks the
-// audio source (buffer tap on YouTube, shadow player for plain video files),
-// runs a ReadAheadSession against them and relays cues, statuses and chunk
-// translations through the background.
+// Isolated-world side of read-ahead mode: finds the main player, looks for a
+// caption track (ADR 0003) and runs a CaptionTrackSession on it, or else picks
+// the audio source (buffer tap on YouTube, shadow player for plain video
+// files) and runs a ReadAheadSession; relays cues, statuses and translations
+// through the background.
 import type { ReadAheadStartRequest, TabMessage } from '../core/capture-session-controller';
 import type { ExtensionMessage } from '../core/messages';
 import { findLargestVisibleVideo } from '../content/media-locator';
@@ -15,11 +16,25 @@ import {
 import {
   ReadAheadSession,
   SAMPLE_RATE,
+  type DisplayedCue,
   type MainPlayer,
   type ReadAheadStatus,
   type ReadAheadSource,
 } from './read-ahead-session';
 import { ChromeTranslation } from './chrome-translation';
+import {
+  languageCodeOf,
+  pairTranslations,
+  sentencesFromLines,
+  type LoadedCaptionTracks,
+} from './caption-track';
+import { CaptionTrackSession } from './caption-track-session';
+import { loadHtmlCaptionTracks } from './html-caption-tracks';
+import {
+  CAPTION_MESSAGE_SOURCE,
+  type CaptionTapToContentMessage,
+  type ContentToCaptionTapMessage,
+} from './youtube-caption-tap';
 import { ShadowPlayerSource } from './shadow-player-source';
 import {
   TAP_MESSAGE_SOURCE,
@@ -39,6 +54,15 @@ const MIN_PAGE_TRANSLATION_MS = 1_000;
 // stuck, and the web fallback gets the rest of the budget.
 const CHROME_TRANSLATION_MS = 3_000;
 const TICK_MS = 100;
+// How long a video may wait for its caption tracks before the recognizer runs
+// instead (ADR 0003).
+const CAPTION_WAIT_MS = 2_000;
+// How long "使用 YouTube 字幕" stays up.
+const CAPTION_NOTICE_MS = 4_000;
+// YouTube's own caption rendering, hidden while ours show from its tracks.
+const HIDE_YOUTUBE_CAPTIONS_ID = 'bilingual-read-ahead-hide-youtube-captions';
+const HIDE_YOUTUBE_CAPTIONS_CSS =
+  '#movie_player .ytp-caption-window-container { display: none !important; }';
 
 type ReadAheadWindow = Window & { [INSTALL_KEY]?: boolean };
 
@@ -55,6 +79,17 @@ interface Running {
   mediaKey: string;
 }
 
+// What both kinds of session take from the main player's events.
+interface PlayerDriven {
+  dispose(): void;
+  onMainPause(): void;
+  onMainPlay(): void;
+  onMainSeeking(): void;
+  tick(): void;
+}
+
+type PageLanguages = { sourceLanguage?: string; targetLanguage: string };
+
 export function installReadAhead(document: Document): void {
   const view = document.defaultView as ReadAheadWindow | null;
   if (!view || view[INSTALL_KEY]) return;
@@ -62,7 +97,10 @@ export function installReadAhead(document: Document): void {
 
   let request: ReadAheadStartRequest | undefined;
   let running: Running | undefined;
+  // The video whose caption tracks are being looked for.
+  let starting: string | undefined;
   let watchdog: number | undefined;
+  let captionRequests = 0;
 
   const youtube = isYouTube(view.location);
   // Kept for the page's lifetime: translators are cached per language pair.
@@ -116,6 +154,31 @@ export function installReadAhead(document: Document): void {
     }));
   };
 
+  // Chrome's on-device Translator, or Google's web translation where it cannot
+  // (ADR 0002), within what is left of `budgetMs` since `started`.
+  const translateInPage = async (
+    sentences: ChunkSentence[],
+    languages: PageLanguages,
+    started: number,
+    budgetMs: number,
+  ): Promise<ChunkSentence[]> => {
+    const remaining = () =>
+      Math.max(MIN_PAGE_TRANSLATION_MS, budgetMs - (Date.now() - started));
+    try {
+      return await withDeadline(
+        chromeTranslation.translate(sentences, languages),
+        Math.min(CHROME_TRANSLATION_MS, remaining()),
+        'translator_timeout',
+      );
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : '';
+      if (reason !== 'translator_unsupported' && reason !== 'translator_timeout') throw error;
+      // The on-device Translator cannot do it here: Google's web
+      // translation, through the background (ADR 0002).
+      return await translateOnWeb(sentences, languages, remaining());
+    }
+  };
+
   const reportStatus = (sessionId: string, status?: ReadAheadStatus | 'unsupported') =>
     void send({
       target: 'background',
@@ -123,17 +186,177 @@ export function installReadAhead(document: Document): void {
       payload: { sessionId, ...(status ? { status } : {}) },
     }).catch(() => undefined);
 
-  // Why read-ahead cannot run here, or undefined when it can.
+  // Why read-ahead cannot run here at all, or undefined when it may.
   const unsupportedReason = (video: HTMLVideoElement | undefined): string | undefined => {
     if (!video) return 'no_video';
     if (video.mediaKeys) return 'drm';
     if (video.duration === Infinity) return 'live';
-    if (youtube) return undefined;
-    if (!video.currentSrc || video.currentSrc.startsWith('blob:')) return 'stream';
     return undefined;
   };
 
-  const startOn = (video: HTMLVideoElement, active: ReadAheadStartRequest): Running => {
+  // A streamed plain video has no audio read-ahead can reach; it can still
+  // use a caption track.
+  const audioUnreachable = (video: HTMLVideoElement): boolean =>
+    !youtube && (!video.currentSrc || video.currentSrc.startsWith('blob:'));
+
+  // Wires a session to the main player's events and the tick.
+  const attach = (video: HTMLVideoElement, session: PlayerDriven): (() => void) => {
+    const onPause = () => session.onMainPause();
+    const onPlay = () => session.onMainPlay();
+    const onSeeking = () => session.onMainSeeking();
+    video.addEventListener('pause', onPause);
+    video.addEventListener('play', onPlay);
+    video.addEventListener('seeking', onSeeking);
+    const interval = view.setInterval(() => session.tick(), TICK_MS);
+    session.tick();
+    return () => {
+      view.clearInterval(interval);
+      video.removeEventListener('pause', onPause);
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('seeking', onSeeking);
+      session.dispose();
+    };
+  };
+
+  const mainPlayer = (video: HTMLVideoElement): MainPlayer => ({
+    adPlaying,
+    currentTime: () => video.currentTime,
+    duration: () => Number.isFinite(video.duration) ? video.duration : Infinity,
+    pause: () => video.pause(),
+    paused: () => video.paused,
+    play: () => void video.play().catch(() => undefined),
+    playbackRate: () => video.playbackRate,
+  });
+
+  const showCue = (sessionId: string) => (cue: DisplayedCue | undefined) =>
+    void send({
+      target: 'background',
+      type: 'READ_AHEAD_CUE',
+      payload: { sessionId, ...(cue ? { cue } : {}) },
+    }).catch(() => undefined);
+
+  // The video's caption tracks, or undefined after CAPTION_WAIT_MS.
+  const findCaptionTracks = (
+    video: HTMLVideoElement,
+    active: ReadAheadStartRequest,
+  ): Promise<LoadedCaptionTracks | undefined> => {
+    const languages: PageLanguages = {
+      ...(active.sourceLanguage ? { sourceLanguage: active.sourceLanguage } : {}),
+      targetLanguage: active.targetLanguage,
+    };
+    if (!youtube) {
+      return loadHtmlCaptionTracks(video, languages, CAPTION_WAIT_MS).catch(() => undefined);
+    }
+    const requestId = `${active.sessionId}:${++captionRequests}`;
+    return new Promise((resolve) => {
+      const finish = (tracks?: LoadedCaptionTracks) => {
+        view.clearTimeout(timer);
+        view.removeEventListener('message', onMessage);
+        resolve(tracks);
+      };
+      const onMessage = (event: MessageEvent<unknown>) => {
+        if (event.source !== view) return;
+        const message = event.data as Partial<CaptionTapToContentMessage> | null;
+        if (message?.source !== CAPTION_MESSAGE_SOURCE || message.type !== 'tracks') return;
+        if (message.requestId !== requestId) return;
+        finish(message.original
+          ? {
+              original: message.original,
+              sameLanguage: Boolean(message.sameLanguage),
+              site: 'youtube',
+              ...(message.target ? { target: message.target } : {}),
+            }
+          : undefined);
+      };
+      const timer = view.setTimeout(() => finish(undefined), CAPTION_WAIT_MS);
+      view.addEventListener('message', onMessage);
+      const ask: ContentToCaptionTapMessage = {
+        ...languages,
+        requestId,
+        source: CAPTION_MESSAGE_SOURCE,
+        type: 'request',
+        videoId: mediaKeyOf(video),
+      };
+      view.postMessage(ask, view.location.origin);
+    });
+  };
+
+  const setYouTubeCaptionsHidden = (hidden: boolean) => {
+    document.getElementById(HIDE_YOUTUBE_CAPTIONS_ID)?.remove();
+    if (!hidden) return;
+    const style = document.createElement('style');
+    style.id = HIDE_YOUTUBE_CAPTIONS_ID;
+    style.textContent = HIDE_YOUTUBE_CAPTIONS_CSS;
+    (document.head ?? document.documentElement).append(style);
+  };
+
+  const startCaptions = (
+    video: HTMLVideoElement,
+    active: ReadAheadStartRequest,
+    tracks: LoadedCaptionTracks,
+  ): Running => {
+    const { sessionId } = active;
+    const sentences = sentencesFromLines(tracks.original.lines);
+    const languages: PageLanguages = {
+      sourceLanguage: languageCodeOf(tracks.original.language),
+      targetLanguage: active.targetLanguage,
+    };
+    // The session's own status, so the notice never hides a hold or failure.
+    let sessionStatus: ReadAheadStatus;
+    const session = new CaptionTrackSession({
+      main: mainPlayer(video),
+      sameLanguage: tracks.sameLanguage,
+      sentences,
+      showCue: showCue(sessionId),
+      showStatus(status) {
+        sessionStatus = status;
+        reportStatus(sessionId, status);
+      },
+      ...(tracks.target
+        ? { translations: pairTranslations(sentences, tracks.target.lines) }
+        : {}),
+      async translate(texts) {
+        const started = Date.now();
+        const translated = await translateInPage(
+          texts.map((original) => ({
+            cut: false,
+            end: 0,
+            original,
+            sameLanguage: false,
+            start: 0,
+            translation: '',
+          })),
+          languages,
+          started,
+          PAGE_DEADLINE_MS,
+        ).catch((error: unknown) => {
+          console.warn(LOG_PREFIX, 'caption translation failed', {
+            ms: Date.now() - started,
+            reason: error instanceof Error ? error.message : String(error),
+            sentences: texts.length,
+          });
+          throw error;
+        });
+        return translated.map((sentence) => sentence.translation);
+      },
+    });
+    if (tracks.site === 'youtube') setYouTubeCaptionsHidden(true);
+    const detach = attach(video, session);
+    reportStatus(sessionId, tracks.site === 'youtube' ? 'captions_youtube' : 'captions_video');
+    const notice = view.setTimeout(() => {
+      if (sessionStatus === undefined) reportStatus(sessionId);
+    }, CAPTION_NOTICE_MS);
+    return {
+      dispose() {
+        view.clearTimeout(notice);
+        detach();
+        if (tracks.site === 'youtube') setYouTubeCaptionsHidden(false);
+      },
+      mediaKey: mediaKeyOf(video),
+    };
+  };
+
+  const startAudio = (video: HTMLVideoElement, active: ReadAheadStartRequest): Running => {
     const { sessionId } = active;
     let session: ReadAheadSession | undefined;
     let source: ReadAheadSource & { dispose?(): void };
@@ -163,24 +386,9 @@ export function installReadAhead(document: Document): void {
         session?.acceptAudio(block));
     }
 
-    const main: MainPlayer = {
-      adPlaying,
-      currentTime: () => video.currentTime,
-      duration: () => Number.isFinite(video.duration) ? video.duration : Infinity,
-      pause: () => video.pause(),
-      paused: () => video.paused,
-      play: () => void video.play().catch(() => undefined),
-      playbackRate: () => video.playbackRate,
-    };
-
     session = new ReadAheadSession({
-      main,
-      showCue: (cue) =>
-        void send({
-          target: 'background',
-          type: 'READ_AHEAD_CUE',
-          payload: { sessionId, ...(cue ? { cue } : {}) },
-        }).catch(() => undefined),
+      main: mainPlayer(video),
+      showCue: showCue(sessionId),
       showStatus: (status) => reportStatus(sessionId, status),
       now: () => Date.now(),
       source,
@@ -201,22 +409,12 @@ export function installReadAhead(document: Document): void {
             throw new Error(response?.error ?? 'translation_failed');
           }
           if (!response.translateInPage) return response.sentences;
-          const languages = response.translateInPage;
-          const remaining = () =>
-            Math.max(MIN_PAGE_TRANSLATION_MS, PAGE_DEADLINE_MS - (Date.now() - started));
-          try {
-            return await withDeadline(
-              chromeTranslation.translate(response.sentences, languages),
-              Math.min(CHROME_TRANSLATION_MS, remaining()),
-              'translator_timeout',
-            );
-          } catch (error) {
-            const reason = error instanceof Error ? error.message : '';
-            if (reason !== 'translator_unsupported' && reason !== 'translator_timeout') throw error;
-            // The on-device Translator cannot do it here: Google's web
-            // translation, through the background (ADR 0002).
-            return await translateOnWeb(response.sentences, languages, remaining());
-          }
+          return await translateInPage(
+            response.sentences,
+            response.translateInPage,
+            started,
+            PAGE_DEADLINE_MS,
+          );
         } catch (error) {
           // Logged so a failing chunk can be diagnosed from the page console.
           console.warn(LOG_PREFIX, 'chunk failed', {
@@ -229,23 +427,12 @@ export function installReadAhead(document: Document): void {
       },
     });
 
-    const onPause = () => session?.onMainPause();
-    const onPlay = () => session?.onMainPlay();
-    const onSeeking = () => session?.onMainSeeking();
-    video.addEventListener('pause', onPause);
-    video.addEventListener('play', onPlay);
-    video.addEventListener('seeking', onSeeking);
-    const interval = view.setInterval(() => session?.tick(), TICK_MS);
     if (youtube) postToTap(true);
-    session.tick();
+    const detach = attach(video, session);
 
     return {
       dispose() {
-        view.clearInterval(interval);
-        video.removeEventListener('pause', onPause);
-        video.removeEventListener('play', onPlay);
-        video.removeEventListener('seeking', onSeeking);
-        session?.dispose();
+        detach();
         session = undefined;
         source.dispose?.();
         removeTapListener();
@@ -255,27 +442,54 @@ export function installReadAhead(document: Document): void {
     };
   };
 
+  // Looks for the video's caption tracks, holding it with "讀取字幕中…" for
+  // at most CAPTION_WAIT_MS, then starts on them or on the audio (ADR 0003).
+  const start = async (video: HTMLVideoElement, active: ReadAheadStartRequest) => {
+    const mediaKey = mediaKeyOf(video);
+    starting = mediaKey;
+    const wasPlaying = !video.paused;
+    if (wasPlaying) video.pause();
+    reportStatus(active.sessionId, 'captions_loading');
+    const tracks = await findCaptionTracks(video, active);
+    if (starting !== mediaKey || request !== active) return;
+    starting = undefined;
+    // Resumed only if the viewer did not pause it meanwhile; the sessions
+    // hold it again themselves if they must.
+    if (wasPlaying && video.paused) void video.play().catch(() => undefined);
+    if (tracks) {
+      running = startCaptions(video, active, tracks);
+    } else if (audioUnreachable(video)) {
+      reportStatus(active.sessionId, 'unsupported');
+    } else {
+      reportStatus(active.sessionId);
+      running = startAudio(video, active);
+    }
+  };
+
   // Starts, or restarts after the viewer moved to another video: a new video
-  // starts with an empty cue cache.
+  // starts with an empty cue cache and is looked at for caption tracks again.
   const ensureRunning = () => {
     if (!request) return;
     const video = findMainVideo();
-    if (running && video && running.mediaKey === mediaKeyOf(video)) return;
+    const key = video && mediaKeyOf(video);
+    if (running && key && running.mediaKey === key) return;
+    if (starting !== undefined && starting === key) return;
     if (video && video.readyState < HTMLMediaElement.HAVE_METADATA) return;
     running?.dispose();
     running = undefined;
+    starting = undefined;
     const reason = unsupportedReason(video);
     if (reason || !video) {
       reportStatus(request.sessionId, 'unsupported');
       return;
     }
-    reportStatus(request.sessionId);
-    running = startOn(video, request);
+    void start(video, request);
   };
 
   const stop = () => {
     running?.dispose();
     running = undefined;
+    starting = undefined;
     request = undefined;
     if (watchdog !== undefined) view.clearInterval(watchdog);
     watchdog = undefined;

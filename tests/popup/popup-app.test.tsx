@@ -333,6 +333,12 @@ describe('PopupApp', () => {
     );
   });
 
+  it('offers Hong Kong Traditional Chinese, and says live mode translates it into plain Traditional Chinese', async () => {
+    render(<PopupApp api={createApi({ loadSettings: vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS, geminiTargetLanguage: 'zh-HK' }) })} />);
+    expect(await screen.findByLabelText('目標語言')).toHaveValue('zh-HK');
+    expect(screen.getByText(/即時音訊模式不分地區/)).toBeVisible();
+  });
+
   describe('read-ahead services', () => {
     const readAheadApi = (settings: Record<string, unknown> = {}, overrides: Partial<PopupApi> = {}) =>
       createApi({
@@ -349,7 +355,7 @@ describe('PopupApp', () => {
 
       const recognizer = await screen.findByLabelText('語音辨識');
       expect([...recognizer.querySelectorAll('option')].map((option) => option.textContent))
-        .toEqual(['Gemini（含翻譯）', 'Groq Whisper', 'Cloudflare Whisper']);
+        .toEqual(['Gemini（含翻譯）', 'Groq Whisper']);
       const translator = screen.getByLabelText('翻譯服務');
       expect(translator).toBeDisabled();
       expect(translator).toHaveValue('gemini');
@@ -380,30 +386,6 @@ describe('PopupApp', () => {
       expect(screen.getByLabelText('翻譯服務')).toHaveValue('chrome');
     });
 
-    it('asks for the Cloudflare permission and shows its account ID and token when Cloudflare is chosen', async () => {
-      const api = readAheadApi();
-      render(<PopupApp api={api} />);
-
-      fireEvent.change(await screen.findByLabelText('語音辨識'), { target: { value: 'cloudflare' } });
-
-      await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ readAheadRecognizer: 'cloudflare' }),
-      ));
-      expect(api.requestPermission).toHaveBeenCalledWith('cloudflare');
-      expect(screen.getByLabelText('Cloudflare 帳號 ID')).toBeInTheDocument();
-      expect(screen.getByLabelText('Cloudflare API Token')).toBeInTheDocument();
-      expect(screen.queryByLabelText('Groq API Key')).not.toBeInTheDocument();
-      expect(screen.getByLabelText('翻譯服務')).toHaveValue('chrome');
-    });
-
-    it('names the missing Cloudflare account ID before starting', async () => {
-      const api = readAheadApi({ cloudflareApiToken: 'cft', readAheadRecognizer: 'cloudflare' });
-      render(<PopupApp api={api} />);
-      fireEvent.click(await screen.findByRole('switch', { name: '開始即時字幕' }));
-      expect(await screen.findByText('請先輸入 Cloudflare 帳號 ID。')).toBeVisible();
-      expect(api.start).not.toHaveBeenCalled();
-    });
-
     it('stays on Gemini when the Groq permission is declined', async () => {
       const api = readAheadApi({}, { requestPermission: vi.fn().mockResolvedValue(false) });
       render(<PopupApp api={api} />);
@@ -430,7 +412,7 @@ describe('PopupApp', () => {
 
     it('says why when this computer has no built-in Translator at all', async () => {
       render(<PopupApp api={readAheadApi(
-        { readAheadRecognizer: 'cloudflare' },
+        { readAheadRecognizer: 'groq' },
         { chromeTranslatorStatus: vi.fn().mockResolvedValue('unsupported') },
       )} />);
       expect(await screen.findByText(/這台電腦無法使用 Chrome 內建翻譯/)).toBeVisible();
@@ -459,6 +441,17 @@ describe('PopupApp', () => {
       fireEvent.click((await screen.findAllByRole('switch', { name: '開始即時字幕' })).at(-1)!);
       await waitFor(() => expect(ready.start).toHaveBeenCalledOnce());
       expect(ready.prepareChromeTranslator).not.toHaveBeenCalled();
+    });
+
+    it('notes that caption tracks come first, and readies Chrome\'s translator for them even with Gemini', async () => {
+      const api = readAheadApi(
+        { geminiApiKey: 'gm', readAheadRecognizer: 'gemini' },
+        { chromeTranslatorStatus: vi.fn().mockResolvedValue('downloadable') },
+      );
+      render(<PopupApp api={api} />);
+      expect(await screen.findByText(/影片有上傳者提供的字幕時優先使用/)).toBeVisible();
+      fireEvent.click(screen.getByRole('switch', { name: '開始即時字幕' }));
+      await waitFor(() => expect(api.prepareChromeTranslator).toHaveBeenCalledWith('en', 'zh-Hant'));
     });
 
     it('names the missing key and checks the Groq permission before starting', async () => {

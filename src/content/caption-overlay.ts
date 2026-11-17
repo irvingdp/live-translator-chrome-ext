@@ -10,23 +10,50 @@ import { SETTING_RANGES, type CaptionAppearance } from '../core/settings';
 import type { SessionErrorAction } from '../core/capture-session-controller';
 
 const SESSION_ACTION_KEYS: Record<SessionErrorAction, MessageKey> = {
-  switch_to_cloudflare: 'switchToCloudflareWhisper',
   switch_to_groq: 'switchToGroqWhisper',
 };
 
 const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
-  cloudflare_quota_exceeded: 'errorCloudflareQuotaExceeded',
   gemini_disconnected: 'errorGeminiDisconnected',
   gemini_invalid_credentials: 'errorGeminiInvalidCredentials',
   gemini_quota_exceeded: 'errorGeminiQuotaExceeded',
   gemini_unavailable: 'errorGeminiUnavailable',
   groq_quota_exceeded: 'errorGroqQuotaExceeded',
+  read_ahead_captions_loading: 'errorReadAheadCaptionsLoading',
+  read_ahead_captions_video: 'noticeReadAheadCaptionsVideo',
+  read_ahead_captions_youtube: 'noticeReadAheadCaptionsYouTube',
   read_ahead_failed: 'errorReadAheadFailed',
   read_ahead_loading: 'errorReadAheadLoading',
+  read_ahead_page_timeout: 'errorReadAheadPageTimeout',
+  read_ahead_web_translation_failed: 'errorReadAheadWebTranslationFailed',
   read_ahead_translating: 'errorReadAheadTranslating',
   read_ahead_translator_unsupported: 'errorReadAheadTranslatorUnsupported',
   read_ahead_unsupported: 'errorReadAheadUnsupported',
 };
+
+// A read-ahead provider's failure ('groq_rate_limited') without a message of
+// its own: the reason's message, naming the service.
+const PROVIDER_NAMES: Record<string, string> = {
+  gemini: 'Gemini',
+  groq: 'Groq Whisper',
+};
+const PROVIDER_REASON_KEYS: Record<string, MessageKey> = {
+  invalid_credentials: 'errorProviderInvalidCredentials',
+  invalid_response: 'errorProviderInvalidResponse',
+  network_error: 'errorProviderNetworkError',
+  provider_unavailable: 'errorProviderUnavailable',
+  rate_limited: 'errorProviderRateLimited',
+  timeout: 'errorProviderTimeout',
+};
+
+export function sessionErrorText(code: string): string {
+  const key = SESSION_ERROR_KEYS[code];
+  if (key) return t(key);
+  const [, provider, reason] = /^(gemini|groq)_(.+)$/.exec(code) ?? [];
+  const reasonKey = reason ? PROVIDER_REASON_KEYS[reason] : undefined;
+  if (provider && reasonKey) return t(reasonKey, PROVIDER_NAMES[provider]!);
+  return t('errorUnknown');
+}
 
 const VIEWPORT_MARGIN = 8;
 const TITLEBAR_HEIGHT = 32;
@@ -565,7 +592,7 @@ export class CaptionOverlay {
   }
 
   setSessionError(code: string, action?: SessionErrorAction): void {
-    this.statusTextValue = t(SESSION_ERROR_KEYS[code] ?? 'errorUnknown');
+    this.statusTextValue = sessionErrorText(code);
     if (this.statusElement) this.statusElement.textContent = this.statusTextValue;
     this.statusAction = action;
     this.syncStatusAction();

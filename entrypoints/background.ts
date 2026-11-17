@@ -24,7 +24,6 @@ import {
 import { redactSessionSnapshot } from '../src/core/session-persistence';
 import {
   ReadAheadChunkError,
-  type WhisperRecognition,
 } from '../src/core/capture-session-controller';
 import {
   CHUNK_REQUEST_TIMEOUT_MS,
@@ -37,10 +36,6 @@ import {
   GROQ_ORIGIN,
   transcribeChunk,
 } from '../src/read-ahead/groq-transcription';
-import {
-  CLOUDFLARE_ORIGIN,
-  transcribeWithCloudflare,
-} from '../src/read-ahead/cloudflare-transcription';
 
 const YOUTUBE_HOSTS = new Set(['www.youtube.com', 'm.youtube.com', 'youtube.com']);
 
@@ -72,7 +67,7 @@ export default defineBackground(() => {
   // page) with that service already selected.
   async function switchReadAheadRecognizer(
     tabId: number,
-    recognizer: 'cloudflare' | 'groq',
+    recognizer: 'groq',
   ): Promise<{ ok: true; switched: boolean }> {
     const status = controller.status();
     const stored = await chrome.storage.local.get('settings');
@@ -80,11 +75,8 @@ export default defineBackground(() => {
     if (status.state !== 'running' || status.tabId !== tabId || settings.transcriber !== 'gemini-read-ahead') {
       return { ok: true, switched: false };
     }
-    const configured = recognizer === 'cloudflare'
-      ? settings.cloudflareAccountId.trim() !== '' && settings.cloudflareApiToken.trim() !== ''
-      : settings.groqApiKey.trim() !== '';
-    const ready = configured && await chrome.permissions.contains({
-      origins: [recognizer === 'cloudflare' ? CLOUDFLARE_ORIGIN : GROQ_ORIGIN],
+    const ready = settings.groqApiKey.trim() !== '' && await chrome.permissions.contains({
+      origins: [GROQ_ORIGIN],
     }).catch(() => false);
     const next = { ...settings, readAheadRecognizer: recognizer };
     await chrome.storage.local.set({ settings: next });
@@ -213,10 +205,7 @@ export default defineBackground(() => {
     translateChunk: (request) => translateChunk(request),
     translateOnWeb: (request, timeoutMs) =>
       withRequestTimeout((signal) => translateOnWeb(request, signal), timeoutMs),
-    transcribeChunk: ({ provider, ...request }) =>
-      provider === 'cloudflare'
-        ? transcribeWithCloudflare(request as Omit<Extract<WhisperRecognition, { provider: 'cloudflare' }>, 'provider'>)
-        : transcribeChunk(request as Omit<Extract<WhisperRecognition, { provider: 'groq' }>, 'provider'>),
+    transcribeChunk: (request) => transcribeChunk(request),
   });
 
   async function persistAuthorizedTabs(): Promise<void> {
@@ -706,7 +695,7 @@ export default defineBackground(() => {
             const tabId = sender.tab?.id;
             if (tabId === undefined) return { error: 'missing_tab', ok: false };
             const { recognizer } = message.payload;
-            if (recognizer !== 'groq' && recognizer !== 'cloudflare') {
+            if (recognizer !== 'groq') {
               return { error: 'unsupported_recognizer', ok: false };
             }
             return enqueueLifecycle(() => switchReadAheadRecognizer(tabId, recognizer));

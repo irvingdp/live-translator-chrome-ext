@@ -43,14 +43,14 @@ export type ChromeTranslatorStatus =
   | 'unavailable'
   | 'unsupported';
 
-export type OptionalService = 'cloudflare' | 'groq';
+export type OptionalService = 'groq';
 
 export interface PopupApi {
   chromeTranslatorStatus(sourceLanguage: string, targetLanguage: string): Promise<ChromeTranslatorStatus>;
   // Starts the language-pack download; needs a user gesture (choosing a
   // Whisper recognizer, or the start click).
   prepareChromeTranslator(sourceLanguage: string, targetLanguage: string): Promise<void>;
-  // Groq's and Cloudflare's hosts are optional permissions, asked for when
+  // Groq's host is an optional permission, asked for when
   // the service is chosen (and again at start, in case it was set up
   // elsewhere).
   requestPermission(service: OptionalService): Promise<boolean>;
@@ -191,18 +191,14 @@ export function PopupApp({ api }: { api: PopupApi }) {
       setMessage(t(MISSING_KEY_MESSAGES[missing]));
       return;
     }
-    for (const [field, service] of [
-      ['groqApiKey', 'groq'],
-      ['cloudflareApiToken', 'cloudflare'],
-    ] as const) {
-      if (requiredApiKeys(settings).includes(field) && !await api.requestPermission(service)) {
-        setMessage(t(PERMISSION_DENIED_MESSAGES[service]));
-        return;
-      }
+    if (requiredApiKeys(settings).includes('groqApiKey') && !await api.requestPermission('groq')) {
+      setMessage(t(PERMISSION_DENIED_MESSAGES.groq));
+      return;
     }
     // The start click is a user gesture: the moment to download Chrome's
-    // language pack if a Whisper recognizer will need it.
-    if (settings.transcriber === 'gemini-read-ahead' && settings.readAheadRecognizer !== 'gemini') {
+    // language pack, which a Whisper recognizer needs, and a caption track
+    // without a target-language track too, whatever the recognizer (ADR 0003).
+    if (settings.transcriber === 'gemini-read-ahead') {
       void prepareChromeTranslation(settings.geminiSourceLanguage, settings.geminiTargetLanguage);
     }
 
@@ -353,8 +349,8 @@ export function PopupApp({ api }: { api: PopupApi }) {
             >
               <option value="gemini">{t('recognizerGemini')}</option>
               <option value="groq">Groq Whisper</option>
-              <option value="cloudflare">Cloudflare Whisper</option>
             </select>
+            <p className="field-hint" role="note">{t('recognizerCaptionTrackHint')}</p>
             {/* With a Whisper recognizer Chrome's built-in Translator
                 translates, and where it cannot, Google's web translation
                 does, automatically: shown, not offered. */}
@@ -416,34 +412,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
             />
           </>
         )}
-        {keys.includes('cloudflareApiToken') && (
-          <>
-            <ProviderLink
-              href="https://dash.cloudflare.com/profile/api-tokens"
-              label="dash.cloudflare.com"
-            />
-            <TextField
-              hint={t('cloudflareAccountIdHint')}
-              id="cloudflare-account"
-              label={t('cloudflareAccountIdLabel')}
-              placeholder="0123456789abcdef0123456789abcdef"
-              value={settings.cloudflareAccountId}
-              onSave={(cloudflareAccountId) => update('cloudflareAccountId', cloudflareAccountId)}
-            />
-            <ConfigurableSecretField
-              id="cloudflare-token"
-              label="Cloudflare API Token"
-              onSave={(cloudflareApiToken) => {
-                update('cloudflareApiToken', cloudflareApiToken);
-              }}
-              onToggle={() => setRevealedSecret((current) =>
-                current === 'cloudflare-token' ? undefined : 'cloudflare-token'
-              )}
-              revealed={revealedSecret === 'cloudflare-token'}
-              value={settings.cloudflareApiToken}
-            />
-          </>
-        )}
       </section>
 
       <section className="card grid" aria-labelledby="language-heading">
@@ -482,6 +450,9 @@ export function PopupApp({ api }: { api: PopupApi }) {
               </option>
             ))}
           </select>
+          {!isReadAhead && settings.geminiTargetLanguage === 'zh-HK' && (
+            <p className="field-hint" role="note">{t('targetHongKongLiveHint')}</p>
+          )}
         </div>
       </section>
 
@@ -570,59 +541,13 @@ function statusMessageKey(status: SessionStatus): MessageKey {
 }
 
 const MISSING_KEY_MESSAGES = {
-  cloudflareAccountId: 'needCloudflareAccountId',
-  cloudflareApiToken: 'needCloudflareToken',
   geminiApiKey: 'needGeminiKey',
   groqApiKey: 'needGroqKey',
 } as const satisfies Record<ApiKeyField, MessageKey>;
 
 const PERMISSION_DENIED_MESSAGES = {
-  cloudflare: 'cloudflarePermissionDenied',
   groq: 'groqPermissionDenied',
 } as const satisfies Record<OptionalService, MessageKey>;
-
-// A plain setting saved when the field loses focus (or on Enter).
-function TextField({
-  hint,
-  id,
-  label,
-  onSave,
-  placeholder,
-  value,
-}: {
-  hint: string;
-  id: string;
-  label: string;
-  onSave(value: string): void;
-  placeholder: string;
-  value: string;
-}) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  const commit = () => {
-    const next = draft.trim();
-    if (next !== value) onSave(next);
-  };
-  return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <input
-        autoComplete="off"
-        id={id}
-        placeholder={placeholder}
-        spellCheck={false}
-        type="text"
-        value={draft}
-        onBlur={commit}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') event.currentTarget.blur();
-        }}
-      />
-      <p className="field-note">{hint}</p>
-    </div>
-  );
-}
 
 // The Translator API needs a source language; with auto-detect, English is the
 // pair worth probing (and pre-downloading) in the popup.

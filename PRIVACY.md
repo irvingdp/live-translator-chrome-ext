@@ -41,11 +41,11 @@ services, with no intermediary server:
 | Caption mode and services | What is sent | Where it goes |
 | --- | --- | --- |
 | Gemini live translate 3.5 (default) | The tab's audio, as it plays | Google (`generativelanguage.googleapis.com`) |
+| Read-ahead on a video with uploader captions | Nothing: the captions YouTube's player (or the page's video) already loaded are read in the page; no audio is sent | — |
 | Read-ahead with Gemini | Audio the page's video player has already loaded, in 10–15 second pieces, a little ahead of what is playing | Google (`generativelanguage.googleapis.com`) |
 | Read-ahead with Groq Whisper | The same audio pieces | Groq (`api.groq.com`) |
-| Read-ahead with Cloudflare Whisper | The same audio pieces | Cloudflare Workers AI (`api.cloudflare.com`) |
-| …translated by Chrome's built-in translation | The text Groq or Cloudflare recognized | Nowhere: Chrome translates it on your device |
-| …where Chrome's built-in translation cannot translate | The text Groq or Cloudflare recognized | Google (`translate.googleapis.com`): the web translation behind Google's page translation, used without an account or key |
+| …translated by Chrome's built-in translation | The text Groq recognized, or the uploader's captions when there are none in your language | Nowhere: Chrome translates it on your device |
+| …where Chrome's built-in translation cannot translate | The same text | Google (`translate.googleapis.com`): the web translation behind Google's page translation, used without an account or key |
 
 Audio is read only after you press start, and only for the one tab you selected.
 It stops when you press stop or close that tab. The original and translated
@@ -75,7 +75,6 @@ agreement with them, not by this extension. Please read:
 - Google Gemini API — [terms](https://ai.google.dev/gemini-api/terms),
   [Google Privacy Policy](https://policies.google.com/privacy)
 - Groq — [privacy policy](https://groq.com/privacy-policy/) (read-ahead with Groq Whisper)
-- Cloudflare — [privacy policy](https://www.cloudflare.com/privacypolicy/) (read-ahead with Cloudflare Whisper)
 - Google — [privacy policy](https://policies.google.com/privacy) (read-ahead's web translation fallback)
 
 ## Two things to know before using a free Gemini key
@@ -99,7 +98,7 @@ from the paid tier:
 | `activeTab`, `scripting` | Inject the caption overlay only into the tab where you pressed start; no script is registered across all websites |
 | `storage` | Save your API keys, caption settings and whether you have rated the extension |
 | `host_permissions` | Limited to Google's Gemini API domain used above |
-| `optional_host_permissions` | `api.groq.com` and `api.cloudflare.com`, each asked for only when you choose Groq Whisper or Cloudflare Whisper, together with the web translation fallback's host (`translate.googleapis.com`) |
+| `optional_host_permissions` | `api.groq.com`, asked for only when you choose Groq Whisper, together with the web translation fallback's host (`translate.googleapis.com`) |
 
 ## Children
 

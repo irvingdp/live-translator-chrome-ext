@@ -5,6 +5,10 @@ export const GEMINI_LANGUAGE_OPTIONS = [
   // The four the extension is most likely to be pointed at come first; the rest
   // follow Google's own alphabetical-by-English-name order.
   { code: 'zh-Hant', label: '繁體中文' },
+  // Not one of Live Translate's codes: live mode sends 'zh-Hant' for it
+  // (liveTargetLanguageCode). Read-ahead can honour it: Gemini's prompt names
+  // it, and it picks Hong Kong's caption track over Taiwan's.
+  { code: 'zh-HK', label: '繁體中文（香港）' },
   { code: 'en', label: 'English' },
   { code: 'ja', label: '日本語' },
   { code: 'ko', label: '한국어' },
@@ -83,6 +87,11 @@ export const GEMINI_LANGUAGE_OPTIONS = [
   { code: 'vi', label: 'Tiếng Việt' },
   { code: 'zu', label: 'isiZulu' },
 ] as const;
+
+// Live Translate's own code for a target this list offers beyond its codes.
+export function liveTargetLanguageCode(code: string): string {
+  return code === 'zh-HK' ? 'zh-Hant' : code;
+}
 
 // The model detects the source language itself and has no sourceLanguageCode
 // field, so the source picker offers this single sentinel instead of pretending

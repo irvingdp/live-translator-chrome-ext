@@ -20,7 +20,6 @@ if (JSON.stringify(actualProviderHosts) !== JSON.stringify(expectedProviderHosts
 
 // Hosts asked for at runtime, when the user picks that provider.
 const expectedOptionalHosts = [
-  'https://api.cloudflare.com/*',
   'https://translate.googleapis.com/*',
   'https://api.groq.com/*',
 ].sort();

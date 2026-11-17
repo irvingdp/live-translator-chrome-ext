@@ -5,7 +5,7 @@ import type {
 
 export type NonSecretSessionSettings = Omit<
   SessionSettings,
-  'cloudflareApiToken' | 'geminiApiKey' | 'groqApiKey'
+  'geminiApiKey' | 'groqApiKey'
 >;
 
 export interface PersistedSessionSnapshot {
@@ -18,7 +18,6 @@ export function redactSessionSnapshot(
   snapshot: ActiveSessionSnapshot,
 ): PersistedSessionSnapshot {
   const {
-    cloudflareApiToken: _cloudflareApiToken,
     geminiApiKey: _geminiApiKey,
     groqApiKey: _groqApiKey,
     ...settings

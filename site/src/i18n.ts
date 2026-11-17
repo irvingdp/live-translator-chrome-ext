@@ -73,7 +73,7 @@ export const STRINGS: Record<Lang, Strings> = {
     providersTitle: 'Providers and languages',
     providerHeaders: ['', 'Live audio (Gemini live translate 3.5)', 'Read-ahead'],
     providerRows: [
-      ['API keys', 'One (Google)', 'The same one, or Groq or Cloudflare'],
+      ['API keys', 'One (Google)', 'The same one, or Groq; none for a video with uploader captions'],
       ['Languages', '78', '78'],
       ['Captions appear', 'Just after the speaker', 'As the speaker starts; the video pauses briefly if a sentence is not ready'],
       ['Works on', 'Any tab, including live streams', 'YouTube and ordinary HTML5 video'],
@@ -135,7 +135,7 @@ export const STRINGS: Record<Lang, Strings> = {
     providersTitle: '服務與語言',
     providerHeaders: ['', '即時音訊模式（Gemini live translate 3.5）', '預讀模式'],
     providerRows: [
-      ['API Key', '一把（Google）', '同一把；或 Groq、Cloudflare'],
+      ['API Key', '一把（Google）', '同一把；或 Groq；有上傳者字幕的影片不需要'],
       ['語言數', '78 種', '78 種'],
       ['字幕出現時機', '比講者稍晚', '講者開口時；下一句還沒翻好時影片會短暫暫停'],
       ['適用範圍', '任何分頁，包含直播', 'YouTube 與一般 HTML5 影片'],
