@@ -289,6 +289,21 @@ describe('ReadAheadSession', () => {
     expect(t.statuses.at(-1)).toBe('loading');
   });
 
+  it('plays through a hole of a few hundredths of a second between chunks', async () => {
+    // A MediaSource player's audio can have tiny holes the player plays
+    // straight through (Bilibili: 99.30 → 99.33, a little over 0.03 s). They are not worth a hold,
+    // and a refill cannot fill them.
+    const t = setup({ autoTranslate: true });
+    t.session.acceptAudio({ samples: audio([4, 0.5, 4, 0.5, 1]), start: 0 });
+    t.session.acceptAudio({ samples: audio([4, 0.5, 4, 1.5]), start: 10.05 });
+    await t.settle();
+    t.at(9.9);
+    await t.settle();
+    t.at(9.9);
+    expect(t.main.isPaused).toBe(false);
+    expect(t.statuses.at(-1)).not.toBe('loading');
+  });
+
   it('gives a cue its words at media time, for word highlight', async () => {
     const t = setup();
     t.main.time = 200;

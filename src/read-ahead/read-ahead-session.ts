@@ -46,6 +46,9 @@ const DUPLICATE_START_SECONDS = 0.6;
 // Blocks this close together are treated as contiguous audio.
 const CONTIGUITY_SECONDS = 0.03;
 const HOLD_MARGIN_SECONDS = 0.15;
+// The largest hole between chunks that counts as continuous (see chainEnd;
+// ADR 0010).
+const PLAYABLE_HOLE_SECONDS = 0.1;
 const MAX_IN_FLIGHT = 2;
 const MIN_SPOKEN_FRACTION = 0.1;
 // A shadow player plays this much faster than the viewer until it is
@@ -667,7 +670,13 @@ export class ReadAheadSession {
   private chainEnd(time: number, includePending: boolean): number {
     let end = time;
     for (;;) {
-      const chunk = this.chunkAt(end, includePending);
+      // A hole too small to hear (a MediaSource player's audio can have a few
+      // hundredths of a second between fragments, which the player plays
+      // straight through) does not break the chain: holding there would wait
+      // for audio that does not exist.
+      const chunk = this.chunkAt(end, includePending) ?? this.chunks.find((item) =>
+        (includePending || item.state !== 'pending') &&
+        item.start > end && item.start - end <= PLAYABLE_HOLE_SECONDS);
       if (!chunk || chunk.end <= end) return end;
       end = chunk.end;
     }
