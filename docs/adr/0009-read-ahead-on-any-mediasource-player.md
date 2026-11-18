@@ -8,7 +8,7 @@ status: accepted
 
 Chrome 上所有非 DRM 的串流播放器，都是透過 MediaSource `SourceBuffer.appendBuffer` 把媒體交給 `<video>`，格式為 fMP4 或 WebM（hls.js 會把 TS 轉成 fMP4）。因此，**從頁面載入時就在場**的擷取程式，能看到每個播放器的 init segment 與每一次 append，不需要播放器 API，也不需要重新載入。
 
-所以自 1.7.0 起，觀眾可以**允許一個網站**。允許時會向 Chrome 要求該網站的 host 權限（`https://<網站>/*`，在 popup 中、於觀眾點擊的當下請求），並用 `chrome.scripting.registerContentScripts` 為該 origin 註冊 MediaSource 擷取程式：`world: 'MAIN'`、`runAt: 'document_start'`、只在最上層 frame、跨 session 保留。manifest 在 `optional_host_permissions` 宣告 `https://*/*`，只作為這些逐站請求的上限。
+所以自 2.0.0 起，觀眾可以**允許一個網站**。允許時會向 Chrome 要求該網站的 host 權限（`https://<網站>/*`，在 popup 中、於觀眾點擊的當下請求），並用 `chrome.scripting.registerContentScripts` 為該 origin 註冊 MediaSource 擷取程式：`world: 'MAIN'`、`runAt: 'document_start'`、只在最上層 frame、跨 session 保留。manifest 在 `optional_host_permissions` 宣告 `https://*/*`，只作為這些逐站請求的上限。
 
 擷取程式 hook 了 `URL.createObjectURL`（把 blob 網址對應回它的 MediaSource，藉此選出最大那支影片的 buffer，而不是廣告或預覽）、`MediaSource.prototype.addSourceBuffer`，以及每個 buffer 的 `appendBuffer`/`abort`。它把 WebM/Opus 與 fMP4（任何 profile 的 AAC，或 Opus；以 `tfdt` + `trun` 計時）解析成壓縮音框，在 buffer 仍持有期間保留，上限 15 分鐘的音訊。預讀開始之前，它不解碼也不送出任何東西。開始之後，以 WebCodecs 解碼，並用與 YouTube 擷取程式相同的訊息送出 16 kHz 單聲道區塊。加密的音軌（`enca`/`encv`，或 `video.mediaKeys`）屬於 DRM，不支援；`AudioDecoder` 無法設定的編碼也不支援。
 
