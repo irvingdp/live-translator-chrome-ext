@@ -11,6 +11,20 @@ export const url = (path = '') =>
 
 type Item = { title: string; body: string };
 
+// One spoken line in a mode demo: the original split into the pieces read-ahead
+// highlights one by one, and its translation.
+export type DemoLine = { words: string[]; translation: string };
+
+export type Mode = {
+  name: string;
+  tagline: string;
+  body: string;
+  points: string[];
+  note: string;
+  demoLabel: string;
+  lines: [DemoLine, DemoLine];
+};
+
 export type Strings = {
   htmlLang: string;
   videoLocale: 'en' | 'zh-TW';
@@ -20,6 +34,13 @@ export type Strings = {
   heroLead: string;
   install: string;
   source: string;
+  modesTitle: string;
+  modesLead: string;
+  live: Mode;
+  readAhead: Mode;
+  // Joins a demo line's words: a space for English, nothing for Chinese.
+  sourceJoiner: string;
+  demo: { speech: string; captions: string; readAhead: string; hold: string; liveBadge: string };
   featuresTitle: string;
   features: Item[];
   stepsTitle: string;
@@ -46,6 +67,43 @@ export const STRINGS: Record<Lang, Strings> = {
       'Bilingual Live Captions listens to the tab you pick and shows the original line with its translation right on the video — live, in 78 languages.',
     install: 'Add to Chrome — free',
     source: 'View source',
+    modesTitle: 'Two modes, for two kinds of video',
+    modesLead: 'Pick one in the extension’s “Translation mode” menu.',
+    live: {
+      name: 'Live audio mode',
+      tagline: 'For live streams, calls and any tab',
+      body: 'Gemini live translate 3.5 listens to the tab as it plays and returns the original line and its translation together. Captions follow the speaker by about a second.',
+      points: [
+        'Works on any tab, including live streams and protected video like Netflix',
+        'Recognition and translation in one connection',
+        'Needs one Gemini API key',
+      ],
+      note: 'Captions arrive about a second after the speaker',
+      demoLabel: 'Animation: in live audio mode the caption appears word by word, about a second after the speaker talks.',
+      lines: [
+        { words: ['歡迎回到', '直播，', '決賽', '馬上就要', '開始了。'], translation: 'Welcome back to the stream — the final round starts in a minute.' },
+        { words: ['謝謝', '大家', '今天', '在聊天室', '提問。'], translation: 'Thanks, everyone, for all the questions in chat today.' },
+      ],
+    },
+    readAhead: {
+      name: 'Read-ahead mode',
+      tagline: 'For videos you watch, not live',
+      body: 'Read-ahead reads the audio the player has already loaded but not yet played, and translates it before you get there. Each caption appears as its speech starts — nothing is predicted.',
+      points: [
+        'Captions on time, with each word marked as it is said',
+        'YouTube, ordinary HTML5 video, and streaming sites you allow',
+        'Gemini, Groq Whisper, or Local Whisper on your own computer with no key; uploader captions are used when the video has them',
+        'If the next line is not translated yet, the video pauses for a moment',
+      ],
+      note: 'Captions start with the speaker',
+      demoLabel: 'Animation: read-ahead translates the audio ahead of the playhead, so each caption appears as its speech starts and marks each word as it is said.',
+      lines: [
+        { words: ['學語言', '最好的方法，', '就是', '每天', '使用它。'], translation: 'The best way to learn a language is to use it every day.' },
+        { words: ['從小地方', '開始，', '不要', '害怕', '犯錯。'], translation: 'Start small, and don’t be afraid of mistakes.' },
+      ],
+    },
+    sourceJoiner: '',
+    demo: { speech: 'Speaker', captions: 'Captions', readAhead: 'Read ahead', hold: 'Reading audio…', liveBadge: 'LIVE' },
     featuresTitle: 'What it does',
     features: [
       {
@@ -68,7 +126,10 @@ export const STRINGS: Record<Lang, Strings> = {
         title: 'Get a Gemini API key',
         body: 'The welcome page walks you through creating a key in Google AI Studio and pasting it in.',
       },
-      { title: 'Switch it on', body: 'Open a video, click the extension icon, and flip the switch at the top right.' },
+      {
+        title: 'Switch it on',
+        body: 'Open a video, click the extension icon, pick live audio or read-ahead, and flip the switch at the top right.',
+      },
     ],
     providersTitle: 'Providers and languages',
     providerHeaders: ['', 'Live audio (Gemini live translate 3.5)', 'Read-ahead'],
@@ -76,7 +137,7 @@ export const STRINGS: Record<Lang, Strings> = {
       ['API keys', 'One (Google)', 'The same one, or Groq; none for Local Whisper or a video with uploader captions'],
       ['Languages', '78', '78'],
       ['Captions appear', 'Just after the speaker', 'As the speaker starts; the video pauses briefly if a sentence is not ready'],
-      ['Works on', 'Any tab, including live streams', 'YouTube and ordinary HTML5 video'],
+      ['Works on', 'Any tab, including live streams', 'YouTube, ordinary HTML5 video, and streaming sites you allow'],
     ],
     faqTitle: 'Questions',
     faq: [
@@ -111,6 +172,43 @@ export const STRINGS: Record<Lang, Strings> = {
     heroLead: '雙語即時字幕會擷取你選的分頁聲音，直接在影片上即時顯示原文與譯文，支援 78 種語言。',
     install: '免費加到 Chrome',
     source: '查看原始碼',
+    modesTitle: '兩種模式，對應兩種影片',
+    modesLead: '在擴充功能的「翻譯模式」選單切換。',
+    live: {
+      name: '即時音訊模式',
+      tagline: '直播、會議，任何分頁都能用',
+      body: 'Gemini live translate 3.5 邊聽分頁的聲音，邊同時回傳原文與譯文。字幕比講者晚約一秒出現。',
+      points: [
+        '任何分頁都能用，包含直播和 Netflix 這類有版權保護的影片',
+        '辨識和翻譯在同一條連線完成',
+        '只需要一把 Gemini API Key',
+      ],
+      note: '字幕比講者晚約 1 秒出現',
+      demoLabel: '動畫：即時音訊模式中，講者說完一段，字幕約一秒後才逐字出現。',
+      lines: [
+        { words: ['Welcome', 'back', 'to', 'the', 'stream —', 'the', 'final', 'round', 'starts', 'in', 'a', 'minute.'], translation: '歡迎回到直播，決賽馬上就要開始了。' },
+        { words: ['Thanks,', 'everyone,', 'for', 'all', 'the', 'questions', 'in', 'chat', 'today.'], translation: '謝謝大家今天在聊天室提問。' },
+      ],
+    },
+    readAhead: {
+      name: '預讀模式',
+      tagline: '看影片（非直播）時用',
+      body: '預讀會讀取播放器已經載入、還沒播放的音訊，在你看到之前先翻好。每句字幕在講者開口時就出現，不靠猜測。',
+      points: [
+        '字幕準時出現，講到哪個字就標示哪個字',
+        'YouTube、一般 HTML5 影片，以及你允許的串流網站',
+        '可選 Gemini、Groq Whisper，或在自己電腦執行、不需要金鑰的本地 Whisper；影片有上傳者字幕時直接讀字幕',
+        '下一句還沒翻好時，影片會短暫暫停等待',
+      ],
+      note: '字幕和講者同時開始',
+      demoLabel: '動畫：預讀模式先翻好播放位置前方的音訊，所以字幕在講者開口時出現，並逐字標示講到的字。',
+      lines: [
+        { words: ['The', 'best', 'way', 'to', 'learn', 'a', 'language', 'is', 'to', 'use', 'it', 'every', 'day.'], translation: '學語言最好的方法，就是每天使用它。' },
+        { words: ['Start', 'small,', 'and', 'don’t', 'be', 'afraid', 'of', 'mistakes.'], translation: '從小地方開始，不要害怕犯錯。' },
+      ],
+    },
+    sourceJoiner: ' ',
+    demo: { speech: '講者', captions: '字幕', readAhead: '已預讀', hold: '讀取音訊中…', liveBadge: 'LIVE' },
     featuresTitle: '功能',
     features: [
       {
@@ -130,7 +228,7 @@ export const STRINGS: Record<Lang, Strings> = {
     steps: [
       { title: '安裝', body: '從 Chrome 線上應用程式商店安裝（需要 Chrome 116 以上）。' },
       { title: '取得 Gemini API Key', body: '歡迎頁會一步步帶你在 Google AI Studio 建立金鑰並貼上。' },
-      { title: '打開開關', body: '打開影片，點擴充功能圖示，打開右上角的開關。' },
+      { title: '打開開關', body: '打開影片，點擴充功能圖示，選即時音訊或預讀，再打開右上角的開關。' },
     ],
     providersTitle: '服務與語言',
     providerHeaders: ['', '即時音訊模式（Gemini live translate 3.5）', '預讀模式'],
@@ -138,7 +236,7 @@ export const STRINGS: Record<Lang, Strings> = {
       ['API Key', '一把（Google）', '同一把；或 Groq；本地 Whisper 或有上傳者字幕的影片不需要'],
       ['語言數', '78 種', '78 種'],
       ['字幕出現時機', '比講者稍晚', '講者開口時；下一句還沒翻好時影片會短暫暫停'],
-      ['適用範圍', '任何分頁，包含直播', 'YouTube 與一般 HTML5 影片'],
+      ['適用範圍', '任何分頁，包含直播', 'YouTube、一般 HTML5 影片，以及你允許的串流網站'],
     ],
     faqTitle: '常見問題',
     faq: [

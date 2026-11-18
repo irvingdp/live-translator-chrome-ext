@@ -1,0 +1,436 @@
+---
+// An animated sketch of one caption mode: a player with the caption overlay,
+// and under it a timeline of when the speaker talks and when captions show.
+// Live audio: captions trail the speaker. Read-ahead: the audio ahead of the
+// playhead is already translated, so captions start with the speaker.
+import type { DemoLine, Strings } from '../i18n';
+
+interface Props {
+  kind: 'live' | 'read';
+  lines: [DemoLine, DemoLine];
+  label: string;
+  t: Strings;
+}
+
+const { kind, lines, label, t } = Astro.props;
+const config = JSON.stringify({ kind, joiner: t.sourceJoiner, lines });
+---
+
+<figure class={`demo ${kind}`} data-demo={config} role="img" aria-label={label}>
+  <div class="screen" aria-hidden="true">
+    <div class="person"></div>
+    {kind === 'live' && <span class="badge">● {t.demo.liveBadge}</span>}
+    {
+      kind === 'read' && (
+        <div class="hold">
+          <span class="spinner" />
+          {t.demo.hold}
+        </div>
+      )
+    }
+    <div class="caption">
+      <p class="src"></p>
+      <p class="tr"></p>
+    </div>
+    {
+      kind === 'read' && (
+        <div class="progress">
+          <div class="loaded" />
+          <div class="played" />
+        </div>
+      )
+    }
+  </div>
+  <div class="tracks" aria-hidden="true">
+    <span class="label">{t.demo.speech}</span>
+    <span class="label">{t.demo.captions}</span>
+    <div class="lanes">
+      {kind === 'read' && <div class="zone"><span>{t.demo.readAhead}</span></div>}
+      <div class="lane speech"></div>
+      <div class="lane cues"></div>
+      <div class="now"></div>
+    </div>
+  </div>
+</figure>
+
+<script>
+  type Line = { words: string[]; translation: string };
+  type Config = { kind: 'live' | 'read'; joiner: string; lines: Line[] };
+  type Timed = Line & { start: number; end: number };
+
+  // Live audio: captions trail the speech by LAG; the timeline scrolls, with
+  // the present at NOW_AT of its width.
+  const LIVE = { period: 13, lag: 1.2, window: 9, nowAt: 0.8, times: [[0.6, 4.6], [6.4, 10.6]] };
+  // Read-ahead: a short hold while the first audio is read, then the video
+  // plays through TOTAL seconds while the translated lead grows ahead of it.
+  const READ = { hold: 1.8, total: 12, tail: 1.2, firstRead: 3.5, readRate: 1.6, times: [[0.8, 5.2], [6.6, 10.6]] };
+
+  const pct = (value: number) => `${value * 100}%`;
+
+  function block(lane: Element, kind: string): HTMLElement {
+    const el = document.createElement('div');
+    el.className = `block ${kind}`;
+    lane.append(el);
+    return el;
+  }
+
+  function place(el: HTMLElement, from: number, to: number, scale: (time: number) => number) {
+    if (to <= from) {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = '';
+    el.style.left = pct(scale(from));
+    el.style.width = pct(scale(to) - scale(from));
+  }
+
+  function setup(figure: HTMLElement) {
+    const config = JSON.parse(figure.dataset.demo!) as Config;
+    const live = config.kind === 'live';
+    const times = live ? LIVE.times : READ.times;
+    const lines: Timed[] = config.lines.map((line, i) => ({ ...line, start: times[i]![0]!, end: times[i]![1]! }));
+    const q = <T extends Element>(selector: string) => figure.querySelector(selector) as T;
+    const screen = q<HTMLElement>('.screen');
+    const caption = q<HTMLElement>('.caption');
+    const src = q<HTMLElement>('.src');
+    const tr = q<HTMLElement>('.tr');
+    const speechLane = q<HTMLElement>('.lane.speech');
+    const cueLane = q<HTMLElement>('.lane.cues');
+    const now = q<HTMLElement>('.now');
+    let shown = '';
+
+    // Renders the caption only when it changes. `count` words are shown (live)
+    // or, with `current`, all of them with the spoken one marked (read-ahead).
+    const showCaption = (line: Line | undefined, count: number, current: number | undefined, translation: boolean) => {
+      const key = line ? `${lines.indexOf(line as Timed)}:${count}:${current}:${translation}` : '';
+      if (key === shown) return;
+      shown = key;
+      caption.classList.toggle('on', Boolean(line && (count > 0 || translation)));
+      src.replaceChildren();
+      tr.textContent = line && translation ? line.translation : '';
+      if (!line) return;
+      line.words.slice(0, count).forEach((word, i) => {
+        if (i > 0 && config.joiner) src.append(config.joiner);
+        const span = document.createElement('span');
+        span.textContent = word;
+        if (current !== undefined) span.className = i < current ? 'said' : i === current ? 'cur' : 'ahead';
+        src.append(span);
+      });
+    };
+
+    let render: (time: number) => void;
+    let period: number;
+
+    if (live) {
+      period = LIVE.period;
+      // Three copies of the lines so the scrolling timeline never runs dry.
+      const copies = [-1, 0, 1].flatMap((k) =>
+        lines.map((line) => ({
+          speech: block(speechLane, 'speech'),
+          cue: block(cueLane, 'cue'),
+          start: line.start + k * period,
+          end: line.end + k * period,
+        })),
+      );
+      now.style.left = pct(LIVE.nowAt);
+      render = (time) => {
+        const viewStart = time - LIVE.nowAt * LIVE.window;
+        const scale = (value: number) => (value - viewStart) / LIVE.window;
+        for (const copy of copies) {
+          place(copy.speech, copy.start, Math.min(copy.end, time), scale);
+          place(copy.cue, copy.start + LIVE.lag, Math.min(copy.end + LIVE.lag, time), scale);
+        }
+        screen.classList.toggle('speaking', lines.some((line) => line.start <= time && time < line.end));
+        const line = [...lines].reverse().find((item) => item.start + LIVE.lag <= time);
+        if (!line) return showCaption(undefined, 0, undefined, false);
+        const progress = (time - line.start - LIVE.lag) / (line.end - line.start);
+        const count = Math.min(line.words.length, Math.ceil(progress * line.words.length));
+        showCaption(line, count, undefined, time >= line.end + LIVE.lag);
+      };
+    } else {
+      period = READ.hold + READ.total + READ.tail;
+      const scale = (value: number) => Math.min(1, value / READ.total);
+      const pairs = lines.map((line) => {
+        const speech = block(speechLane, 'speech');
+        place(speech, line.start, line.end, scale);
+        return { cue: block(cueLane, 'cue'), line };
+      });
+      const zone = q<HTMLElement>('.zone');
+      const loaded = q<HTMLElement>('.loaded');
+      const played = q<HTMLElement>('.played');
+      render = (time) => {
+        const holding = time < READ.hold;
+        const media = Math.min(READ.total, Math.max(0, time - READ.hold));
+        const readTo = holding
+          ? (time / READ.hold) * READ.firstRead
+          : Math.min(READ.total, READ.firstRead + (time - READ.hold) * READ.readRate);
+        zone.style.width = pct(scale(readTo));
+        // The label sits just past the zone's edge until the zone is wide.
+        zone.classList.toggle('wide', scale(readTo) > 0.7);
+        loaded.style.width = pct(scale(readTo));
+        played.style.width = pct(scale(media));
+        now.style.left = pct(scale(media));
+        for (const { cue, line } of pairs) place(cue, line.start, Math.min(line.end, readTo), scale);
+        screen.classList.toggle('holding', holding);
+        screen.classList.toggle('speaking', !holding && lines.some((line) => line.start <= media && media < line.end));
+        const line = holding ? undefined : [...lines].reverse().find((item) => item.start <= media && media < item.end + 1.2);
+        if (!line) return showCaption(undefined, 0, undefined, false);
+        const n = line.words.length;
+        const current = media >= line.end ? n : Math.floor((n * (media - line.start)) / (line.end - line.start));
+        showCaption(line, n, current, true);
+      };
+    }
+
+    // Reduced motion: one still frame with a caption on screen.
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      render(live ? 6.2 : READ.hold + 8.2);
+      return;
+    }
+
+    let frame = 0;
+    let origin = performance.now();
+    let pausedAt: number | undefined;
+    const tick = (stamp: number) => {
+      render(((stamp - origin) / 1000) % period);
+      frame = requestAnimationFrame(tick);
+    };
+    render(0);
+    // Animate only while on screen; resume where it stopped.
+    new IntersectionObserver(([entry]) => {
+      if (entry!.isIntersecting && pausedAt === undefined && frame === 0) {
+        frame = requestAnimationFrame(tick);
+      } else if (entry!.isIntersecting && pausedAt !== undefined) {
+        origin += performance.now() - pausedAt;
+        pausedAt = undefined;
+        frame = requestAnimationFrame(tick);
+      } else if (!entry!.isIntersecting && frame !== 0) {
+        cancelAnimationFrame(frame);
+        frame = 0;
+        pausedAt = performance.now();
+      }
+    }).observe(figure);
+  }
+
+  document.querySelectorAll<HTMLElement>('[data-demo]').forEach(setup);
+</script>
+
+<style>
+  .demo {
+    margin: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  }
+  .screen {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: 10px;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 30%, #3b2a6b 0%, #1a1438 55%, #0d0b1f 100%);
+  }
+  .read .screen {
+    background: radial-gradient(circle at 50% 30%, #1f4d5c 0%, #12283a 55%, #0a1520 100%);
+  }
+  /* An abstract speaker: a head and shoulders. */
+  .person {
+    position: absolute;
+    left: 50%;
+    bottom: -4%;
+    width: 30%;
+    aspect-ratio: 1;
+    transform: translateX(-50%);
+  }
+  .person::before,
+  .person::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(203, 213, 225, 0.28);
+  }
+  .person::before {
+    top: 4%;
+    width: 42%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    transition: box-shadow 0.25s;
+  }
+  .person::after {
+    bottom: 0;
+    width: 100%;
+    height: 44%;
+    border-radius: 50% 50% 0 0;
+  }
+  .speaking .person::before {
+    box-shadow:
+      0 0 0 6px rgba(94, 234, 212, 0.18),
+      0 0 0 12px rgba(94, 234, 212, 0.08);
+  }
+  .badge {
+    position: absolute;
+    top: 6%;
+    left: 4%;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #dc2626;
+    color: #fff;
+    font-size: clamp(10px, 1.4vw, 13px);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  .hold {
+    position: absolute;
+    inset: 0;
+    display: none;
+    place-items: center;
+    align-content: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.45);
+    color: var(--text);
+    font-size: clamp(12px, 1.8vw, 16px);
+  }
+  .holding .hold {
+    display: grid;
+  }
+  .spinner {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.25);
+    border-top-color: var(--teal-light);
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .caption {
+    position: absolute;
+    left: 50%;
+    bottom: 12%;
+    width: max-content;
+    max-width: 90%;
+    transform: translateX(-50%);
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.66);
+    text-align: center;
+    line-height: 1.4;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .caption.on {
+    opacity: 1;
+  }
+  .caption p {
+    margin: 0;
+    font-size: clamp(11px, 1.9vw, 17px);
+  }
+  .src {
+    color: #fff;
+  }
+  .tr {
+    color: var(--amber);
+  }
+  /* As the extension marks the word being said. */
+  .src :global(.cur) {
+    background: var(--amber);
+    color: #111827;
+    border-radius: 3px;
+  }
+  .src :global(.ahead) {
+    opacity: 0.45;
+  }
+  .progress {
+    position: absolute;
+    left: 3%;
+    right: 3%;
+    bottom: 4%;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .progress div {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: 2px;
+  }
+  .loaded {
+    background: rgba(94, 234, 212, 0.45);
+  }
+  .played {
+    background: var(--teal-light);
+  }
+  .tracks {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: 22px 22px;
+    gap: 8px 12px;
+    align-items: center;
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .label {
+    grid-column: 1;
+  }
+  .lanes {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    position: relative;
+    display: grid;
+    grid-template-rows: 22px 22px;
+    gap: 8px;
+    overflow: hidden;
+  }
+  .lane {
+    position: relative;
+    border-radius: 4px;
+    background: var(--surface-2);
+  }
+  .lane :global(.block) {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    border-radius: 3px;
+  }
+  .lane :global(.speech) {
+    background: rgba(203, 213, 225, 0.55);
+  }
+  .lane :global(.cue) {
+    background: var(--amber);
+  }
+  .zone {
+    position: absolute;
+    inset: -2px auto -2px 0;
+    z-index: 1;
+    border-right: 2px dashed var(--teal-light);
+    background: rgba(94, 234, 212, 0.16);
+    pointer-events: none;
+  }
+  .zone span {
+    position: absolute;
+    left: calc(100% + 6px);
+    top: -1px;
+    font-size: 10px;
+    color: var(--teal-light);
+    white-space: nowrap;
+  }
+  .zone.wide span {
+    left: auto;
+    right: 6px;
+  }
+  .now {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    z-index: 2;
+    width: 2px;
+    margin-left: -1px;
+    background: #fff;
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+  }
+</style>
