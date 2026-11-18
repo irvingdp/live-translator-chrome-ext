@@ -1,4 +1,4 @@
-// Caption tracks (GLOSSARY.md, ADR 0003): timed captions the uploader
+// Caption tracks (GLOSSARY.md, ADR 0007): timed captions the uploader
 // published with the video. Read-ahead reads its sentences from one in the
 // spoken language instead of a recognizer, and its translations from one in
 // the target language instead of a translator. Everything here is plain data
@@ -136,7 +136,7 @@ function bestTrack<Track extends CaptionTrackInfo>(
 }
 
 // Which tracks read-ahead uses, or undefined when there is no original track
-// and the recognizer runs as before (ADR 0003). `spokenLanguage` is what the
+// and the recognizer runs as before (ADR 0007). `spokenLanguage` is what the
 // site says is spoken, used when the viewer left the source on "detect".
 export function chooseCaptionTracks<Track extends CaptionTrackInfo>(
   tracks: Track[],
@@ -179,7 +179,7 @@ export function cleanLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-// Consecutive lines joined into sentences (ADR 0003): up to a sentence ender,
+// Consecutive lines joined into sentences (ADR 0007): up to a sentence ender,
 // a gap in speech, or MAX_SENTENCE_SECONDS.
 export function sentencesFromLines(lines: CaptionLine[]): CaptionSentence[] {
   const sentences: CaptionSentence[] = [];
@@ -213,7 +213,7 @@ function overlap(a: { end: number; start: number }, b: { end: number; start: num
 }
 
 // Each sentence's translation: the target-language lines that overlap it more
-// than any other sentence, in order (ADR 0003). Every line is used once.
+// than any other sentence, in order (ADR 0007). Every line is used once.
 export function pairTranslations(sentences: CaptionSentence[], lines: CaptionLine[]): string[] {
   const pieces: string[][] = sentences.map(() => []);
   for (const line of lines) {

@@ -1,7 +1,7 @@
 // Read-ahead mode's rules, independent of where the audio comes from (buffer
 // tap or shadow player) and of the browser: chunking, translation,
 // cue timing, holds, seeks and the 30 s lead cap. See GLOSSARY.md and
-// docs/adr/0001-read-ahead-via-shadow-player.md for the vocabulary.
+// docs/adr/0005-read-ahead-via-shadow-player.md for the vocabulary.
 import type { ChunkSentence } from './gemini-chunk-translation';
 
 export const SAMPLE_RATE = 16_000;
@@ -125,7 +125,7 @@ export function readAheadFailure(reason: string | undefined): ReadAheadFailure |
   return READ_AHEAD_FAILURES.find((known) => known === reason);
 }
 
-// Statuses only a caption track (ADR 0003) shows: waiting for the track, and
+// Statuses only a caption track (ADR 0007) shows: waiting for the track, and
 // the one-time notice that it is in use.
 export type CaptionTrackStatus = 'captions_loading' | 'captions_video' | 'captions_youtube';
 

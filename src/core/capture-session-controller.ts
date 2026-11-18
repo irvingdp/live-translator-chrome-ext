@@ -65,7 +65,7 @@ export type TabMessage =
   | { type: 'READ_AHEAD_STOP'; payload: { sessionId: string } };
 
 export interface ReadAheadStartRequest {
-  // Whether to look for the video's caption tracks (ADR 0003).
+  // Whether to look for the video's caption tracks (ADR 0007).
   preferCaptionTracks: boolean;
   sessionId: string;
   sourceLanguage?: string;
@@ -124,7 +124,7 @@ export class ReadAheadChunkError extends Error {
   }
 }
 
-// Read-ahead recognition through Whisper: Groq's (ADR 0002), or on this
+// Read-ahead recognition through Whisper: Groq's (ADR 0006), or on this
 // computer (issue #15).
 export type WhisperRecognition =
   | {
@@ -182,7 +182,7 @@ export interface CaptureSessionDependencies {
   // Chrome's built-in Translator.
   transcribeChunk(request: WhisperRecognition): Promise<RecognizedChunk>;
   // The fallback when the page's built-in Translator cannot translate:
-  // Google's web translation (ADR 0002).
+  // Google's web translation (ADR 0006).
   translateOnWeb(request: WebTranslationRequest, timeoutMs: number): Promise<string[]>;
   // Whether this computer can run Local Whisper (WebGPU), so it is offered.
   localWhisperUsable?(): Promise<boolean>;

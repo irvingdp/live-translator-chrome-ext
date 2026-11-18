@@ -1,5 +1,5 @@
 // Isolated-world side of read-ahead mode: finds the main player, looks for a
-// caption track (ADR 0003) and runs a CaptionTrackSession on it, or else picks
+// caption track (ADR 0007) and runs a CaptionTrackSession on it, or else picks
 // the audio source (buffer tap on YouTube, shadow player for plain video
 // files) and runs a ReadAheadSession; relays cues, statuses and translations
 // through the background.
@@ -56,7 +56,7 @@ const CHROME_TRANSLATION_MS = 3_000;
 const TICK_MS = 100;
 const CLOCK_MS = 2_000;
 // How long a video may wait for its caption tracks before the recognizer runs
-// instead (ADR 0003).
+// instead (ADR 0007).
 const CAPTION_WAIT_MS = 2_000;
 // How long "使用 YouTube 字幕" stays up.
 const CAPTION_NOTICE_MS = 4_000;
@@ -156,7 +156,7 @@ export function installReadAhead(document: Document): void {
   };
 
   // Chrome's on-device Translator, or Google's web translation where it cannot
-  // (ADR 0002), within what is left of `budgetMs` since `started`.
+  // (ADR 0006), within what is left of `budgetMs` since `started`.
   const translateInPage = async (
     sentences: ChunkSentence[],
     languages: PageLanguages,
@@ -175,7 +175,7 @@ export function installReadAhead(document: Document): void {
       const reason = error instanceof Error ? error.message : '';
       if (reason !== 'translator_unsupported' && reason !== 'translator_timeout') throw error;
       // The on-device Translator cannot do it here: Google's web
-      // translation, through the background (ADR 0002).
+      // translation, through the background (ADR 0006).
       return await translateOnWeb(sentences, languages, remaining());
     }
   };
@@ -474,10 +474,10 @@ export function installReadAhead(document: Document): void {
   };
 
   // Looks for the video's caption tracks, holding it with "讀取字幕中…" for
-  // at most CAPTION_WAIT_MS, then starts on them or on the audio (ADR 0003).
+  // at most CAPTION_WAIT_MS, then starts on them or on the audio (ADR 0007).
   const start = async (video: HTMLVideoElement, active: ReadAheadStartRequest) => {
     const mediaKey = mediaKeyOf(video);
-    // The viewer turned caption tracks off: recognize, as before ADR 0003.
+    // The viewer turned caption tracks off: recognize, as before ADR 0007.
     if (!active.preferCaptionTracks) {
       if (audioUnreachable(video)) {
         reportStatus(active.sessionId, 'unsupported');

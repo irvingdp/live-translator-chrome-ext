@@ -11,7 +11,7 @@ status: accepted
 
 音訊在講話的停頓處切成**片段**，送到非 Live 的 `generateContent` API（`gemini-flash-lite-latest`）。JSON schema 要求每句回傳 `{start, end, original, translation, cut}`。每則**定時字幕**的時間是片段起點加上 `start`。主播放器不可以播進還沒有翻譯的媒體時間，而是**讀取等待**：先暫停，等音訊時顯示「讀取音訊中…」，等翻譯時顯示「翻譯中…」，準備好後自動繼續播放。
 
-自 1.5.0 起，Gemini 是這一步的兩種選擇之一：[ADR 0002](0002-read-ahead-recognition-and-translation-chosen-separately.md) 加入 Groq Whisper 做語音辨識，搭配 Chrome 內建的 Translator 做翻譯。
+自 1.5.0 起，Gemini 是這一步的兩種選擇之一：[ADR 0006](0006-read-ahead-recognition-and-translation-chosen-separately.md) 加入 Groq Whisper 做語音辨識，搭配 Chrome 內建的 Translator 做翻譯。
 
 ## 考慮過的選項
 
@@ -28,9 +28,9 @@ status: accepted
 
 ## 後果
 
-- 預讀是 popup 服務下拉選單中的第三個選項，與 Gemini 即時和 Deepgram 並列（Deepgram 已於 1.5.0 移除，#10，因此預讀成為第二個）。它共用 Gemini API 金鑰（與 Gemini 語音辨識共用，見 ADR 0002），且不動到即時模式的程式路徑。
+- 預讀是 popup 服務下拉選單中的第三個選項，與 Gemini 即時和 Deepgram 並列（Deepgram 已於 1.5.0 移除，#10，因此預讀成為第二個）。它共用 Gemini API 金鑰（與 Gemini 語音辨識共用，見 ADR 0006），且不動到即時模式的程式路徑。
 - 模型固定為 `gemini-flash-lite-latest`，使用者不能選，因為慢的模型（例如 `gemini-3.8-flash` 每個片段 245 秒）會讓播放器無止盡地讀取等待。
-- 預讀模式支援 YouTube（緩衝擷取，WebM/Opus 音訊）與一般 HTML5 影片（影子播放器）。其他 MSE 網站與其他音訊格式（hls.js、dash.js 的 fMP4/AAC）在 v1 不支援；自 1.7.0 起，在觀眾允許的網站上支援（[ADR 0005](0005-read-ahead-on-any-mediasource-player.md)）。在 DRM 網站上選擇預讀，會顯示建議改用 Gemini 即時的提示，擴充功能不會自行切換模式。
+- 預讀模式支援 YouTube（緩衝擷取，WebM/Opus 音訊）與一般 HTML5 影片（影子播放器）。其他 MSE 網站與其他音訊格式（hls.js、dash.js 的 fMP4/AAC）在 v1 不支援；自 1.7.0 起，在觀眾允許的網站上支援（[ADR 0009](0009-read-ahead-on-any-mediasource-player.md)）。在 DRM 網站上選擇預讀，會顯示建議改用 Gemini 即時的提示，擴充功能不會自行切換模式。
 - 緩衝擷取在預讀開始時才注入，那時 YouTube 早已建好 SourceBuffer 並 append 了前面的音訊。因此它用播放器自己的 `loadVideoById` 在目前位置重新載入影片，讓播放器透過 hook 再 append 一次。這樣就不需要常駐的 content script，也不需要 youtube.com 的 host 權限；要求那個權限會讓既有使用者的擴充功能被停用，直到他們同意為止。
 - 緩衝擷取對每段音訊只會在 YouTube 第一次 append 時看到一次；往回跳到 YouTube 已持有的音訊不會產生新的 append。因此擷取程式會在 SourceBuffer 仍回報為 buffered 的期間，保留壓縮過的 Opus 音框（約 16 KB/s）。每次更新後，它會丟掉 `buffered` 已不涵蓋的部分，不論是 YouTube 移除的或 Chrome 因配額淘汰的。記憶體因此受限於 Chrome 每個 SourceBuffer 的配額，被丟掉的部分在需要時 YouTube 會再 append。跳轉到已翻譯範圍之外時，session 會向來源要求從目標前 5 秒開始的音訊。擷取程式用新的解碼器解碼儲存的音框後送出；影子播放器則直接跳轉。session 本身只保留觀眾後方 6 秒的已解碼音訊。保留所有已解碼樣本的做法被否決：以 64 KB/s 計算，一小時就是 230 MB。
 - 修剪會略過仍在 `updating` 的 SourceBuffer。YouTube 經常在 `update` 與 `updateend` 之間就開始下一次 append，所以晚到的 `updateend` 看到的 `buffered` 還不包含已儲存的音框；修剪因此丟掉整段 append，在儲存中留下空洞。

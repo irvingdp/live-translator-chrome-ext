@@ -1,4 +1,4 @@
-// Reads YouTube's caption tracks in the page's MAIN world (ADR 0003). A
+// Reads YouTube's caption tracks in the page's MAIN world (ADR 0007). A
 // track's own URL needs a proof-of-origin token only the player computes, and
 // producing one would get around YouTube's restrictions, which this extension
 // does not do. So the player is asked, through its own API, to show the track;
@@ -34,7 +34,7 @@ export type CaptionTapToContentMessage = {
 };
 
 const INSTALL_KEY = '__bilingualCaptionTapInstalled';
-// The isolated world gives up after 2 s (ADR 0003); this stops working
+// The isolated world gives up after 2 s (ADR 0007); this stops working
 // shortly after so a late answer is never half done.
 const DEADLINE_MS = 2_500;
 const POLL_MS = 100;

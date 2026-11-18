@@ -1,4 +1,4 @@
-// Caption tracks of an ordinary HTML5 video (ADR 0003): its <track> elements,
+// Caption tracks of an ordinary HTML5 video (ADR 0007): its <track> elements,
 // read through video.textTracks. A track the page cannot read (another origin
 // without CORS) never loads, and counts as absent.
 import {

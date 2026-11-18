@@ -4,7 +4,7 @@ status: accepted
 
 # 本地 Whisper：在觀眾電腦上的 offscreen document 執行 Whisper
 
-預讀模式的雲端語音辨識有每日額度，也需要金鑰（ADR 0002）。**本地 Whisper** 加入一個兩者都不需要的語音辨識。它在觀眾自己的電腦上、在瀏覽器中，以 transformers.js 搭配 WebGPU 執行 Whisper 模型（issue #15）。
+預讀模式的雲端語音辨識有每日額度，也需要金鑰（ADR 0006）。**本地 Whisper** 加入一個兩者都不需要的語音辨識。它在觀眾自己的電腦上、在瀏覽器中，以 transformers.js 搭配 WebGPU 執行 Whisper 模型（issue #15）。
 
 - 它在 **offscreen document** 中執行，這個文件原本就為即時擷取而存在：WebGPU 在那裡可用，一個載入的模型能服務所有分頁，也不受 YouTube 頁面 CSP 的限制。背景把每個片段的音訊送給它，再取回句子。之後的流程與 Groq 相同：同樣的句子整理，再交給 Chrome 的翻譯或 Google 網頁翻譯。
 - **提供的模型：** `large-v3-turbo`（預設，566 MB）與 `small`（325 MB）。它們是 `onnx-community/whisper-*_timestamped`，也就是帶有逐字時間戳的匯出版本。

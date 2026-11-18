@@ -1,5 +1,5 @@
 // One read-ahead chunk → one non-Live generateContent request. The model is
-// fixed (ADR 0001): a slower one would hold the main player indefinitely.
+// fixed (ADR 0005): a slower one would hold the main player indefinitely.
 import { GEMINI_LANGUAGE_OPTIONS } from '../core/gemini-languages';
 
 export const READ_AHEAD_MODEL = 'gemini-flash-lite-latest';

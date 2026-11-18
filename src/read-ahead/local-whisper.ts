@@ -11,7 +11,7 @@ export const LOCAL_WHISPER_MODEL_IDS = ['turbo', 'small'] as const;
 export type LocalWhisperModel = (typeof LOCAL_WHISPER_MODEL_IDS)[number];
 
 export interface LocalWhisperSpec {
-  // Precision per part; measured on 2026-11-17 (ADR 0004).
+  // Precision per part; measured on 2026-11-17 (ADR 0008).
   dtype: { decoder_model_merged: string; encoder_model: string };
   // Megabytes downloaded, shown before the viewer agrees to it.
   downloadMB: number;

@@ -240,7 +240,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
     }
     // The start click is a user gesture: the moment to download Chrome's
     // language pack, which a Whisper recognizer needs, and a caption track
-    // without a target-language track too, whatever the recognizer (ADR 0003).
+    // without a target-language track too, whatever the recognizer (ADR 0007).
     if (settings.transcriber === 'gemini-read-ahead') {
       void prepareChromeTranslation(settings.geminiSourceLanguage, settings.geminiTargetLanguage);
     }
