@@ -14,9 +14,9 @@ export type Copy = {
   targetLabel: string;
   providerHeading: string;
   transcriberLabel: string;
-  apiKeyLabel: string;
-  keysConfigured: string;
-  setApiKey: string;
+  captionModeLabel: string;
+  readAheadMode: string;
+  recognizer: string;
   languageHeading: string;
   sourceTitle: string;
   targetTitle: string;
@@ -37,7 +37,7 @@ export const COPY: Record<Locale, Copy> = {
   en: {
     hook: "Watching something in a language you don't speak?",
     oneClick: 'One click to start.',
-    live: 'The original line and its translation, live.',
+    live: 'Captions on time, each word marked as it is said.',
     sidebar: 'Open the side panel for the full history.',
     tagline: 'Live bilingual captions for any tab.',
     cta: 'Add to Chrome — free',
@@ -46,9 +46,9 @@ export const COPY: Record<Locale, Copy> = {
     targetLabel: 'English',
     providerHeading: 'Providers',
     transcriberLabel: 'Speech recognition',
-    apiKeyLabel: 'Gemini API Key',
-    keysConfigured: 'API key set',
-    setApiKey: 'Set',
+    captionModeLabel: 'Translation mode',
+    readAheadMode: 'Read-ahead',
+    recognizer: 'Local Whisper',
     languageHeading: 'Languages',
     sourceTitle: 'Source language',
     targetTitle: 'Target language',
@@ -76,7 +76,7 @@ export const COPY: Record<Locale, Copy> = {
   'zh-TW': {
     hook: '看外語影片，卻聽不懂？',
     oneClick: '一鍵開始。',
-    live: '原文與譯文，即時並排。',
+    live: '字幕準時出現，講到哪個字就標到哪個字。',
     sidebar: '開啟側邊欄，看完整字幕紀錄。',
     tagline: '任何分頁都能顯示即時雙語字幕。',
     cta: '免費加到 Chrome',
@@ -85,9 +85,9 @@ export const COPY: Record<Locale, Copy> = {
     targetLabel: '繁體中文',
     providerHeading: '服務提供者',
     transcriberLabel: '語音辨識',
-    apiKeyLabel: 'Gemini API Key',
-    keysConfigured: 'API Key 已設定',
-    setApiKey: '設定',
+    captionModeLabel: '翻譯模式',
+    readAheadMode: '預讀模式',
+    recognizer: '本地 Whisper',
     languageHeading: '語言',
     sourceTitle: '來源語言',
     targetTitle: '目標語言',
