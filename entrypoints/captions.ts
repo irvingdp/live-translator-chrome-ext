@@ -166,10 +166,10 @@ export default defineUnlistedScript(() => {
   };
   const overlay = new CaptionOverlay(document, {
     async onSessionAction(action) {
-      if (action === 'use_recognizer') {
+      if (action === 'use_recognizer' || action === 'allow_site') {
         await chrome.runtime.sendMessage({
           target: 'background',
-          type: 'READ_AHEAD_USE_RECOGNIZER',
+          type: action === 'allow_site' ? 'READ_AHEAD_OPEN_SITE_ACCESS' : 'READ_AHEAD_USE_RECOGNIZER',
         } satisfies import('../src/core/messages').ExtensionMessage);
         return;
       }

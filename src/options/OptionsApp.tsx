@@ -83,6 +83,8 @@ export function OptionsApp({ api }: { api: OptionsApi }) {
         <p className="privacy">{t('optionsKeyHint')}</p>
       </section>
 
+      <AllowedSites api={api} />
+
       {message && (
         <p className="feedback" role="status">
           {message}
@@ -135,5 +137,36 @@ function SecretField({
         </button>
       </div>
     </div>
+  );
+}
+
+// Sites allowed for read-ahead (ADR 0009), each removable: removing one drops
+// its registration and gives its permission back.
+function AllowedSites({ api }: { api: OptionsApi }) {
+  const [sites, setSites] = useState<string[]>();
+  useEffect(() => {
+    void api.listSites().then(setSites, () => setSites([]));
+  }, [api]);
+  return (
+    <section className="card" aria-labelledby="allowed-sites-heading">
+      <h2 id="allowed-sites-heading">{t('allowedSitesTitle')}</h2>
+      {sites && sites.length === 0 && <p className="privacy">{t('allowedSitesEmpty')}</p>}
+      <ul className="allowed-sites">
+        {sites?.map((origin) => (
+          <li key={origin}>
+            <span>{new URL(origin).host}</span>
+            <button
+              type="button"
+              onClick={() => {
+                void api.removeSite(origin).then(() =>
+                  setSites((current) => current?.filter((site) => site !== origin)));
+              }}
+            >
+              {t('allowedSitesRemove')}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

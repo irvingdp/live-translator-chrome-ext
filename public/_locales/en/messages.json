@@ -671,6 +671,42 @@
     "message": "Prefer the video's caption tracks",
     "description": "Popup switch: use the uploader's caption track instead of speech recognition when there is one (read-ahead)."
   },
+  "allowSite": {
+    "message": "Allow this site",
+    "description": "Caption overlay button that opens the popup to allow read-ahead on this site."
+  },
+  "errorReadAheadNeedsSiteAccess": {
+    "message": "Read-ahead can read this site's video once you allow the site.",
+    "description": "Caption overlay status when read-ahead could read the page's streaming player after the viewer allows the site."
+  },
+  "siteAccessTitle": {
+    "message": "Allow read-ahead on this site",
+    "description": "Popup heading when the current site must be allowed for read-ahead."
+  },
+  "siteAccessHint": {
+    "message": "Once allowed, read-ahead is ready from the moment this site's pages load and reads the audio the player has downloaded (used only when you start read-ahead). The page reloads.",
+    "description": "Popup explanation of allowing a site for read-ahead."
+  },
+  "siteAccessAllow": {
+    "message": "Allow and reload",
+    "description": "Popup button that allows the current site for read-ahead and reloads the page."
+  },
+  "siteAccessDenied": {
+    "message": "Permission for this site was not granted, so read-ahead cannot work here.",
+    "description": "Popup message when the viewer declines the site permission."
+  },
+  "allowedSitesTitle": {
+    "message": "Sites allowed for read-ahead",
+    "description": "Options page heading for the allowed sites list."
+  },
+  "allowedSitesEmpty": {
+    "message": "No site allowed yet.",
+    "description": "Options page text when no site is allowed."
+  },
+  "allowedSitesRemove": {
+    "message": "Remove",
+    "description": "Options page button that removes an allowed site."
+  },
   "errorReadAheadLoading": {
     "message": "Reading audio…",
     "description": "Caption overlay status while read-ahead mode holds the video until it has the audio of the next sentence."

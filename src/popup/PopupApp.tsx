@@ -69,6 +69,11 @@ export interface PopupApi {
   downloadLocalWhisper(model: LocalWhisperModel): Promise<void>;
   deleteLocalWhisper(model: LocalWhisperModel): Promise<void>;
   watchLocalWhisperDownload(onChange: (download: LocalWhisperDownload | undefined) => void): () => void;
+  // Allowed sites (ADR 0009): the current tab's site, and allowing it — the
+  // permission request must run inside the click, so the site is looked up
+  // beforehand. Resolves false when the viewer declines.
+  currentSite(): Promise<{ origin: string; tabId: number } | undefined>;
+  allowSite(site: { origin: string; tabId: number }): Promise<boolean>;
   authorizeCurrentTab(): Promise<AuthorizedTab | undefined>;
   extensionVersion(): string;
   loadRatingPrompt(): Promise<RatingPromptState>;
@@ -93,6 +98,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
   const [webGpu, setWebGpu] = useState<boolean>();
   const [modelCached, setModelCached] = useState<boolean>();
   const [download, setDownload] = useState<LocalWhisperDownload>();
+  const [site, setSite] = useState<{ origin: string; tabId: number }>();
   const [revealedSecret, setRevealedSecret] = useState<string>();
   const [ratingVisible, setRatingVisible] = useState(false);
   const saveTail = useRef<Promise<void>>(Promise.resolve());
@@ -142,6 +148,10 @@ export function PopupApp({ api }: { api: PopupApi }) {
       },
     );
   }, [api, updateRatingPrompt]);
+
+  useEffect(() => {
+    void api.currentSite().catch(() => undefined).then(setSite);
+  }, [api]);
 
   useEffect(() => {
     void api.webGpuAvailable().catch(() => false).then(setWebGpu);
@@ -351,6 +361,26 @@ export function PopupApp({ api }: { api: PopupApi }) {
           )}
         </div>
       </header>
+
+      {site && 'error' in status && status.error === 'read_ahead_needs_site_access' && (
+        <section className="card site-access" aria-labelledby="site-access-heading">
+          <h2 id="site-access-heading">{t('siteAccessTitle')}</h2>
+          <p className="field-note">{new URL(site.origin).host}</p>
+          <p className="field-note">{t('siteAccessHint')}</p>
+          <button
+            className="secret-submit"
+            type="button"
+            onClick={() => {
+              // Asked inside this click: Chrome allows it nowhere else.
+              void api.allowSite(site).then((granted) => {
+                if (!granted) setMessage(t('siteAccessDenied'));
+              }, () => setMessage(t('siteAccessDenied')));
+            }}
+          >
+            {t('siteAccessAllow')}
+          </button>
+        </section>
+      )}
 
       <section className="card" aria-labelledby="provider-heading">
         <h2 id="provider-heading">{t('providerHeading')}</h2>
@@ -620,6 +650,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
 function statusMessageKey(status: SessionStatus): MessageKey {
   const error = 'error' in status ? status.error : undefined;
   if (error === 'read_ahead_unsupported') return 'statusReadAheadUnsupported';
+  if (error === 'read_ahead_needs_site_access') return 'errorReadAheadNeedsSiteAccess';
   if (status.state === 'running') return 'statusRunning';
   if (status.state === 'starting') return 'statusStarting';
   if (status.state === 'error') return 'statusRetry';

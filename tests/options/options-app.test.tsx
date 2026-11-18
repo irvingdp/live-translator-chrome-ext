@@ -11,6 +11,8 @@ function createApi(overrides: Partial<OptionsApi> = {}): OptionsApi {
       groqApiKey: 'gq-existing',
     }),
     saveKeys: vi.fn().mockResolvedValue(undefined),
+    listSites: vi.fn().mockResolvedValue([]),
+    removeSite: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -102,5 +104,15 @@ describe('OptionsApp', () => {
       await screen.findByText('API Key 儲存失敗，請重試。'),
     ).toBeVisible();
     expect(screen.queryByText('API Key 已儲存')).not.toBeInTheDocument();
+  });
+
+  it('lists the sites allowed for read-ahead and removes one', async () => {
+    const api = createApi({ listSites: vi.fn().mockResolvedValue(['https://www.bilibili.com', 'https://www.youtube.com']) });
+    render(<OptionsApp api={api} />);
+    expect(await screen.findByText('www.bilibili.com')).toBeVisible();
+    fireEvent.click(screen.getAllByRole('button', { name: '移除' })[0]!);
+    await waitFor(() => expect(api.removeSite).toHaveBeenCalledWith('https://www.bilibili.com'));
+    await waitFor(() => expect(screen.queryByText('www.bilibili.com')).not.toBeInTheDocument());
+    expect(screen.getByText('www.youtube.com')).toBeVisible();
   });
 });

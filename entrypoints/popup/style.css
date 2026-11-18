@@ -50,6 +50,11 @@ select:disabled { cursor: not-allowed; opacity: .65; }
 .field { margin-top: 2px; }
 .local-whisper { display: grid; gap: 6px; margin-top: 2px; }
 .check-field { margin-top: 2px; }
+.site-access { border-color: #2dd4bf; }
+.site-access .secret-submit { margin-top: 4px; }
+.allowed-sites { display: grid; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.allowed-sites li { align-items: center; display: flex; justify-content: space-between; gap: 12px; }
+.allowed-sites button { background: none; border: 1px solid #475569; border-radius: 6px; color: #fca5a5; cursor: pointer; font-size: 12px; padding: 4px 10px; }
 .check-row { align-items: center; cursor: pointer; display: flex; gap: 8px; margin-bottom: 0; }
 .check-row input { accent-color: var(--primary); height: 16px; min-height: 0; padding: 0; width: 16px; }
 .secret-row { position: relative; }

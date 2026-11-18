@@ -31,6 +31,9 @@ if (JSON.stringify(actualProviderHosts) !== JSON.stringify(expectedProviderHosts
 const expectedOptionalHosts = [
   'https://translate.googleapis.com/*',
   'https://api.groq.com/*',
+  // Allowed sites for read-ahead (ADR 0009): only the one site the viewer
+  // allows is ever requested at runtime.
+  'https://*/*',
 ].sort();
 const actualOptionalHosts = [...(manifest.optional_host_permissions ?? [])].sort();
 if (JSON.stringify(actualOptionalHosts) !== JSON.stringify(expectedOptionalHosts)) {
@@ -40,9 +43,11 @@ if (JSON.stringify(actualOptionalHosts) !== JSON.stringify(expectedOptionalHosts
 }
 
 const broadPatterns = new Set(['<all_urls>', '*://*/*', 'http://*/*', 'https://*/*']);
+// The optional https://*/* above is the one exception: it is only a ceiling
+// for per-site requests. Granted host access and content scripts stay narrow.
 const declaredPatterns = [
   ...(manifest.host_permissions ?? []),
-  ...(manifest.optional_host_permissions ?? []),
+  ...(manifest.optional_host_permissions ?? []).filter((pattern) => pattern !== 'https://*/*'),
 ];
 for (const registration of manifest.content_scripts ?? []) {
   declaredPatterns.push(...(registration.matches ?? []));

@@ -7,18 +7,34 @@
 // again without reloading the player. See docs/adr/0001.
 import { OpusFrameStore } from './opus-frame-store';
 import { WebmOpusDemuxer, type OpusFrame } from './webm-opus-demuxer';
+import { MAX_FRAME_GAP_SECONDS, createAudioEmitter, planesOf, toMono16k } from './tap-audio';
 
 export const TAP_MESSAGE_SOURCE = 'bilingual-read-ahead-tap';
 
-export type TapToContentMessage = {
-  samples: Float32Array;
-  source: typeof TAP_MESSAGE_SOURCE;
-  start: number;
-  type: 'audio';
-};
+// The MediaSource tap (ADR 0009) marks the page's <html> with this data
+// attribute, so read-ahead knows at once that it is there.
+export const MSE_TAP_MARKER = 'bilingualMseTap';
+
+export type TapToContentMessage =
+  | {
+      samples: Float32Array;
+      source: typeof TAP_MESSAGE_SOURCE;
+      start: number;
+      type: 'audio';
+    }
+  // The MediaSource tap's answer to 'probe' (ADR 0009): whether it can read
+  // the main video here, and if not why.
+  | {
+      reason?: 'codec' | 'drm' | 'no_audio';
+      source: typeof TAP_MESSAGE_SOURCE;
+      supported: boolean;
+      type: 'probe-result';
+    };
 
 export type ContentToTapMessage =
   | { enabled: boolean; source: typeof TAP_MESSAGE_SOURCE; type: 'enable' }
+  // Asks whether a MediaSource tap is on the page and can read it.
+  | { source: typeof TAP_MESSAGE_SOURCE; type: 'probe' }
   // Send the stored audio from `time` again (the session dropped it).
   | { source: typeof TAP_MESSAGE_SOURCE; time: number; type: 'seek' }
   // A hold is getting no audio: send it from the store, or reload the player.
@@ -26,11 +42,6 @@ export type ContentToTapMessage =
 
 const INSTALL_KEY = '__bilingualReadAheadTapInstalled';
 const OPUS_RATE = 48_000;
-const OUTPUT_RATE = 16_000;
-const DECIMATION = OPUS_RATE / OUTPUT_RATE;
-const FLUSH_MS = 200;
-const MAX_BLOCK_SECONDS = 2;
-const CONTIGUITY_SECONDS = 0.03;
 // How much stored audio one seek or refill sends: the session reads ahead at
 // most 30 s plus one chunk.
 const REPLAY_SECONDS = 60;
@@ -56,35 +67,9 @@ interface TappedBuffer {
   store: OpusFrameStore;
 }
 
-// Chrome's AudioDecoder stamps its output by counting samples from the first
-// input, not from each input's timestamp, so after a seek its output would
-// carry the wrong media time. A jump in input timestamps therefore gets a
-// fresh decoder, whose first output is stamped from its first input.
-const MAX_FRAME_GAP_SECONDS = 0.1;
 
 function adShowing(document: Document): boolean {
   return Boolean(document.querySelector('#movie_player')?.classList.contains('ad-showing'));
-}
-
-// 48 kHz → 16 kHz by averaging each group of three, mixing channels to mono.
-// Speech recognition does not need a better anti-alias filter than that.
-function toMono16k(data: AudioData): Float32Array {
-  const frames = data.numberOfFrames;
-  const channels = data.numberOfChannels;
-  const mixed = new Float32Array(frames);
-  const plane = new Float32Array(frames);
-  for (let channel = 0; channel < channels; channel += 1) {
-    data.copyTo(plane, { format: 'f32-planar', planeIndex: channel });
-    for (let index = 0; index < frames; index += 1) mixed[index]! += plane[index]! / channels;
-  }
-  const ratio = Math.round(data.sampleRate / OUTPUT_RATE) || DECIMATION;
-  const output = new Float32Array(Math.floor(frames / ratio));
-  for (let index = 0; index < output.length; index += 1) {
-    let sum = 0;
-    for (let offset = 0; offset < ratio; offset += 1) sum += mixed[index * ratio + offset]!;
-    output[index] = sum / ratio;
-  }
-  return output;
 }
 
 export function installBufferTap(view: Window): void {
@@ -97,42 +82,12 @@ export function installBufferTap(view: Window): void {
   const adSources = new WeakSet<MediaSource>();
   // Newest first: after a video change the old buffers are dead weight.
   const tappedBuffers: TappedBuffer[] = [];
-  let pending: { parts: Float32Array[]; start: number; end: number } | undefined;
-  let flushTimer: number | undefined;
-
-  const flush = () => {
-    if (flushTimer !== undefined) view.clearTimeout(flushTimer);
-    flushTimer = undefined;
-    if (!pending) return;
-    const length = pending.parts.reduce((sum, part) => sum + part.length, 0);
-    const samples = new Float32Array(length);
-    let offset = 0;
-    for (const part of pending.parts) {
-      samples.set(part, offset);
-      offset += part.length;
-    }
-    const message: TapToContentMessage = {
-      samples,
-      source: TAP_MESSAGE_SOURCE,
-      start: pending.start,
-      type: 'audio',
-    };
-    pending = undefined;
+  const emitter = createAudioEmitter(view, (start, samples) => {
+    const message: TapToContentMessage = { samples, source: TAP_MESSAGE_SOURCE, start, type: 'audio' };
     view.postMessage(message, view.location.origin, [samples.buffer]);
-  };
-
+  });
   const emit = (start: number, samples: Float32Array) => {
-    if (!enabled || samples.length === 0) return;
-    const end = start + samples.length / OUTPUT_RATE;
-    if (pending && (Math.abs(pending.end - start) > CONTIGUITY_SECONDS ||
-      pending.end - pending.start > MAX_BLOCK_SECONDS)) flush();
-    if (pending) {
-      pending.parts.push(samples);
-      pending.end = end;
-    } else {
-      pending = { end, parts: [samples], start };
-    }
-    if (flushTimer === undefined) flushTimer = view.setTimeout(flush, FLUSH_MS);
+    if (enabled) emitter.emit(start, samples);
   };
 
   const createDecoder = (head: Uint8Array | undefined, onError: () => void) => {
@@ -140,7 +95,7 @@ export function installBufferTap(view: Window): void {
       error: onError,
       output: (data) => {
         try {
-          emit(data.timestamp / 1e6, toMono16k(data));
+          emit(data.timestamp / 1e6, toMono16k(planesOf(data), data.sampleRate));
         } finally {
           data.close();
         }
@@ -335,7 +290,7 @@ export function installBufferTap(view: Window): void {
     if (message.type !== 'enable') return;
     enabled = message.enabled === true;
     if (!enabled) {
-      pending = undefined;
+      emitter.reset();
       return;
     }
     // Audio appended before the tap was installed was never seen; only a

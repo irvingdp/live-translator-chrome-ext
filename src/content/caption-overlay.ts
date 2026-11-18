@@ -12,6 +12,7 @@ import { SETTING_RANGES, type CaptionAppearance } from '../core/settings';
 import type { SessionErrorAction } from '../core/capture-session-controller';
 
 const SESSION_ACTION_KEYS: Record<SessionErrorAction, MessageKey> = {
+  allow_site: 'allowSite',
   switch_to_groq: 'switchToGroqWhisper',
   switch_to_local: 'switchToLocalWhisper',
   use_recognizer: 'useRecognizer',
@@ -31,6 +32,7 @@ const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
   read_ahead_failed: 'errorReadAheadFailed',
   local_timeout: 'errorLocalWhisperTimeout',
   read_ahead_loading: 'errorReadAheadLoading',
+  read_ahead_needs_site_access: 'errorReadAheadNeedsSiteAccess',
   read_ahead_page_timeout: 'errorReadAheadPageTimeout',
   read_ahead_web_translation_failed: 'errorReadAheadWebTranslationFailed',
   read_ahead_translating: 'errorReadAheadTranslating',

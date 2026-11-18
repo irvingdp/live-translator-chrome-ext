@@ -20,6 +20,8 @@ import {
   modelCacheUrls,
 } from '../read-ahead/local-whisper';
 import type { PopupApi } from './PopupApp';
+import { chromeSitesApi } from '../core/chrome-sites-api';
+import { enableSite, siteOrigin, sitePattern } from '../core/read-ahead-sites';
 
 function translatorApi(): TranslatorApi | undefined {
   return (globalThis as { Translator?: TranslatorApi }).Translator;
@@ -95,6 +97,19 @@ export const browserPopupApi: PopupApi = {
     };
     chrome.storage.onChanged.addListener(listener);
     return () => chrome.storage.onChanged.removeListener(listener);
+  },
+  async currentSite() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const origin = siteOrigin(tab?.url);
+    return tab?.id !== undefined && origin ? { origin, tabId: tab.id } : undefined;
+  },
+  async allowSite({ origin, tabId }) {
+    const granted = await chrome.permissions.request({ origins: [sitePattern(origin)] });
+    if (!granted) return false;
+    await enableSite(chromeSitesApi, origin);
+    // The tap only arrives with a fresh page; read-ahead resumes after it.
+    await chrome.tabs.reload(tabId);
+    return true;
   },
   async authorizeCurrentTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
