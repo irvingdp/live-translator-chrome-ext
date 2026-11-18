@@ -2,52 +2,39 @@
 status: accepted
 ---
 
-# Read-ahead mode: buffer tap or shadow player + chunked generateContent
+# 預讀模式：緩衝擷取或影子播放器 + 分段 generateContent
 
-Live captions always trail the speech, because `chrome.tabCapture` only hears what is playing now. **Read-ahead mode** is a separate caption mode with its own switch, alongside the existing live modes, which stay unchanged. It gets upcoming audio in one of two ways.
+即時字幕一定落後於講話，因為 `chrome.tabCapture` 只聽得到當下正在播放的聲音。**預讀模式**是另一種字幕模式，有自己的開關，與既有的即時模式並列，即時模式維持不變。它用以下兩種方式之一取得即將播放的音訊。
 
-- **Buffer tap.** Used on YouTube. The main player streams through Media Source Extensions and already downloads 30–50 s ahead of playback. A MAIN-world content script installed at `document_start` wraps `MediaSource.prototype.addSourceBuffer`. From each audio SourceBuffer's `appendBuffer` data it demuxes the WebM stream into Opus frames, each carrying its media timestamp (Cluster timecode plus block offset). The frames are decoded with WebCodecs `AudioDecoder`.
-- **Shadow player.** Used on plain HTML5 video. A hidden, muted second `<video>` with the same `src` plays ahead of the main player, and its audio is taken with `captureStream()`.
+- **緩衝擷取。** 用於 YouTube。主播放器透過 Media Source Extensions 串流，本來就會比播放進度多下載 30–50 秒。一支在 MAIN world 執行的腳本（在預讀開始時注入，見「後果」）包住 `MediaSource.prototype.addSourceBuffer`。它從每個音訊 SourceBuffer 的 `appendBuffer` 資料中，把 WebM 串流解析成 Opus 音框，每個音框都帶有媒體時間戳（Cluster timecode 加上 block 偏移）。音框再用 WebCodecs `AudioDecoder` 解碼。
+- **影子播放器。** 用於一般 HTML5 影片。一個隱藏、靜音、`src` 相同的第二個 `<video>` 搶先主播放器播放，再用 `captureStream()` 取得它的音訊。
 
-The audio is cut into **chunks** at pauses in speech and sent to the non-Live `generateContent` API (`gemini-flash-lite-latest`). A JSON schema asks for `{start, end, original, translation, cut}` per sentence. Each **cue** is pinned to chunk start + `start`. The main player may not play into media time that has no translation yet. Instead it **holds**: it pauses, shows "讀取音訊中…" while it waits for audio or "翻譯中…" while it waits for the translation, and resumes on its own.
+音訊在講話的停頓處切成**片段**，送到非 Live 的 `generateContent` API（`gemini-flash-lite-latest`）。JSON schema 要求每句回傳 `{start, end, original, translation, cut}`。每則**定時字幕**的時間是片段起點加上 `start`。主播放器不可以播進還沒有翻譯的媒體時間，而是**讀取等待**：先暫停，等音訊時顯示「讀取音訊中…」，等翻譯時顯示「翻譯中…」，準備好後自動繼續播放。
 
-Since 1.5.0 Gemini is one of two choices for this step: [ADR 0002](0002-read-ahead-recognition-and-translation-chosen-separately.md) adds Groq Whisper for recognition, with Chrome's built-in Translator for translation.
+自 1.5.0 起，Gemini 是這一步的兩種選擇之一：[ADR 0002](0002-read-ahead-recognition-and-translation-chosen-separately.md) 加入 Groq Whisper 做語音辨識，搭配 Chrome 內建的 Translator 做翻譯。
 
-## Considered Options
+## 考慮過的選項
 
-- **Gemini Live (`gemini-3.5-live-translate-preview`) fed ahead-of-time audio**: rejected. A 2026-11-15 spike showed it never fills `startOffset`/`endOffset`, and `wordTimestamp` is refused ("not supported in BidiGenerateContent"), so cue times could only be guessed from arrival time.
-- **Delayed presentation** (capture the tab's audio and video and show the viewer a delayed copy): rejected. DRM sites capture as black frames, and replacing the page's player hurts quality and A/V sync.
-- **Live captions during warm-up**: rejected in favour of a hold. They trailed the speech and split sentences at the handoff.
-- **Fixed-length chunks**: rejected in favour of cutting at pauses. A chunk is cut at the longest pause (≥0.3 s of silence) that falls between 10 and 15 s. If there is no pause by 15 s, it is hard-cut with 2 s of overlap. The chunk the viewer is waiting on is the exception: one that starts no more than 1 s ahead of them. It is cut at the first pause at least 2 s into the chunk and 5 s past the viewer, so the next full-size chunk is translated before the viewer reaches it. A shadow player whose audio does not reach that far yet settles for the first pause 1.5 s past the viewer, so the hold stays about one sentence long.
-- **Judging urgency by lead alone** (any chunk less than N s ahead is cut short): rejected. After a start or seek the first chunk reaches 5 s back, so the next few chunks also start close to the viewer. In the 2026-11-16 implementation run this produced four 3 s chunks in a row and a 429 from the free tier.
-- **Cutting at every 0.3 s pause**: rejected. On a real talk it produced 1.7–5 s chunks, 22 requests a minute. The free-tier key hit 429 after about 18 requests, and sentences with a mid-sentence pause were translated in fragments.
-- **YouTube shadow player as a hidden `youtube.com/embed/<id>` iframe**: rejected. Inside a youtube.com page the embed fails with error 152-4. Hosted by an extension page, directly or nested in youtube.com, it fails with error 153, because extension pages send no Referer. Spoofing the Referer would circumvent YouTube's embed policy.
-- **YouTube shadow player as a background tab (`active: false`)**: rejected. Chrome defers media in a tab that has never been shown, so the video never loads. Showing the tab briefly and then backgrounding it does work, but it flashes the tab and adds one to the tab strip.
-- **YouTube shadow player in a minimized window**: it works (macOS), but was rejected by the product owner. An extra window is not acceptable.
-- **Fetching YouTube's audio stream separately** (as yt-dlp does): rejected. It needs YouTube's signature and token handling, which is circumvention, and it breaks often.
+- **把預先取得的音訊餵給 Gemini Live（`gemini-3.5-live-translate-preview`）**：否決。2026-11-15 的 spike 顯示它從不填 `startOffset`/`endOffset`，而且 `wordTimestamp` 會被拒絕（"not supported in BidiGenerateContent"），定時字幕的時間只能從回應到達的時間去猜。
+- **延遲呈現**（擷取分頁的影音，給觀眾看延遲過的副本）：否決。DRM 網站擷取到的是黑畫面，而且取代頁面的播放器會損害畫質與影音同步。
+- **暖機期間先用即時字幕**：否決，改用讀取等待。即時字幕落後於講話，而且在交接處會把句子切斷。
+- **固定長度的片段**：否決，改在停頓處切。片段在 10 到 15 秒之間最長的停頓（≥0.3 秒靜音）處切開；到 15 秒還沒有停頓，就硬切並重疊 2 秒。觀眾正在等待的片段是例外：起點距離觀眾不超過 1 秒的片段，會在片段開始至少 2 秒、且超過觀眾位置 5 秒後的第一個停頓處切開，讓下一個完整片段能在觀眾到達前翻譯好。音訊還沒那麼遠的影子播放器，則退而在超過觀眾 1.5 秒後的第一個停頓處切，讓讀取等待大約只有一句長。
+- **只用提前量判斷急迫性**（任何距離不到 N 秒的片段都切短）：否決。開始或跳轉後，第一個片段會往回取 5 秒，所以接下來幾個片段的起點也都很接近觀眾。2026-11-16 實作時，這造成連續四個 3 秒片段，並觸發免費方案的 429。
+- **每個 0.3 秒停頓都切**：否決。在一場真實演講上產生 1.7–5 秒的片段，每分鐘 22 個請求。免費金鑰約 18 個請求後就 429，中間有停頓的句子也被切成碎片翻譯。
+- **用隱藏的 `youtube.com/embed/<id>` iframe 當 YouTube 影子播放器**：否決。在 youtube.com 頁面內，embed 會出現錯誤 152-4。由擴充功能頁面承載時，不論直接或包在 youtube.com 內，都會出現錯誤 153，因為擴充功能頁面不送 Referer。偽造 Referer 等於規避 YouTube 的嵌入政策。
+- **用背景分頁（`active: false`）當 YouTube 影子播放器**：否決。Chrome 會延後從未顯示過的分頁裡的媒體，影片永遠不會載入。先短暫顯示再切到背景是可行的，但分頁會閃一下，分頁列也多一個分頁。
+- **用最小化視窗當 YouTube 影子播放器**：可行（macOS），但產品負責人否決，不接受多開一個視窗。
+- **另外抓取 YouTube 的音訊串流**（像 yt-dlp 那樣）：否決。需要處理 YouTube 的簽章與 token，屬於規避行為，而且經常失效。
 
-## Consequences
+## 後果
 
-- Read-ahead is a third entry in the popup's provider dropdown, next to Gemini live and Deepgram (removed in 1.5.0, #10, which left it the second). It shares the Gemini API key (with Gemini recognition; see ADR 0002), and the live code paths are not touched.
-- The model is fixed to `gemini-flash-lite-latest` and is not user-selectable, because a slow model (e.g. `gemini-3.8-flash` at 245 s per chunk) would hold the player indefinitely.
-- Read-ahead works on YouTube (buffer tap, WebM/Opus audio) and on plain HTML5 video (shadow player). Other MSE sites and other audio formats (fMP4/AAC from hls.js, dash.js) are not supported in v1. On DRM sites, choosing read-ahead shows a notice suggesting Gemini live, and the extension never switches modes on its own.
-- The buffer tap is injected when read-ahead starts, after YouTube has already built its SourceBuffers and appended the audio ahead. It therefore reloads the video at the current position with the player's own `loadVideoById`, so the player appends again through the hook. This avoids a persistent content script and a youtube.com host permission; asking for that permission would disable the extension for existing users until they approve it.
-- The buffer tap sees each stretch of audio only once, when YouTube first appends it; seeking back into audio YouTube already holds produces no new appends. The tap therefore keeps the compressed Opus frames (~16 KB/s) for as long as the SourceBuffer still reports them as buffered. After each update it drops whatever `buffered` no longer covers, whether YouTube removed it or Chrome evicted it for quota. Memory is then bounded by Chrome's per-SourceBuffer quota, and anything dropped is appended again by YouTube when needed. On a seek outside what it has translated, the session asks the source for audio from 5 s before the target. The tap decodes the stored frames with a fresh decoder and sends them; a shadow player just seeks. The session itself keeps decoded audio only 6 s behind the viewer. Keeping every decoded sample instead was rejected: at 64 KB/s that is 230 MB for an hour.
-- Pruning skips a SourceBuffer that is still `updating`. YouTube often starts the next append between `update` and `updateend`, so the late `updateend` sees a `buffered` that does not yet include frames already stored; pruning then dropped whole appends and left holes in the store.
-- If a hold still receives no audio for 3 s, or the viewer is held where there is no audio at all, the session asks the source to refill and reads again from 5 s before the viewer. The tap sends stored frames only if they reach 1 s past the viewer; otherwise it reloads the video at the viewer's position, at most once every 10 s. Reading may skip a hole ahead of the viewer, translating the audio before the hole as it is, but never a hole the viewer is in.
-- Chrome's `AudioDecoder` stamps its output by counting samples from its first input, not from each input's timestamp. When input timestamps jump (a seek), the tap starts a fresh decoder; otherwise cues after a seek would carry the wrong media time.
-- A shadow player reads at twice the viewer's rate (`preservesPitch = false`, then resampled back to media time) until it is 30 s ahead. At 1× the lead only grows during holds, which meant a hold every sentence.
-- The model sometimes produces a stock sentence over silence (e.g. "Thank you for listening." over a quiet ending). Sentences whose span is almost all quiet are dropped.
-- Each chunk gets one request, aborted if it has not answered in 7 s, and is never retried, whatever the error (timeout, 429, 503). The viewer may be held while a request runs, so a hold for translation lasts at most 7 s once its request is sent. Right after a seek it may first wait up to 7 s for a free slot, since at most two requests run at once; giving up the requests for media the viewer left was rejected, because their answers would be lost and paid for again. Retries (2 s, then 5 s, honouring a 429's `RetryInfo.retryDelay`) were tried first and rejected: on a bad day for the API one stretch could hold the viewer for half a minute. A seek is the one exception: seeking into or just before a stretch that failed (up to 30 s past the seek) forgets those failed chunks and reads them again, since the viewer chose to go back there.
-- Read-ahead stays on the tab it started in; it does not follow playback to another tab. Its state lives in the page, so when the service worker restarts (for example while the video sits paused) the background restores the session without needing an offscreen document.
-- The buffer tap reads only data YouTube has already downloaded for playback in the viewer's own browser. Nothing is downloaded twice and no window or tab is opened. In exchange, the lead is bounded by YouTube's own buffer (30–50 s observed), and the tap depends on YouTube's player internals (MSE, WebM Clusters), which can change without notice.
-- YouTube appends do not line up with Clusters: about 10 s Clusters arrive split across many appends. The demuxer must therefore be a streaming parser that resets when an append starts with an EBML header or a Cluster (seek), or on `SourceBuffer.abort()`.
-- YouTube ads play through their own MediaSource, with timestamps starting at 0 that overlap the video's. Audio appended while `#movie_player` has `ad-showing`, and every SourceBuffer of that MediaSource, is excluded.
-- After a seek YouTube buffers from the new position, so the sentence that straddles the seek point may only be partly available. It is dropped (`cut`), and captions resume at the next sentence.
-- Translation stops 30 s ahead of the main player even if more is buffered. Holds are distinct from viewer pauses: a viewer pause during a hold is never auto-resumed.
-- A chunk whose request fails leaves that stretch uncaptioned with a "翻譯失敗" note, or "Gemini 配額已用完" when a 429 names a daily quota (`quotaId` containing `PerDay`; the free tier allows 500 requests a day, about 1.5–2 hours of video). The main player is not held for it.
-- Translated cues are kept in memory for the current viewing, so rewinding reuses them. Changing the video, closing the tab or changing the target language clears them.
-- Costs we accept: translation of read-ahead the viewer never watches, and read-ahead discarded on forward seeks. On plain HTML5 video the media is also downloaded twice.
-- The side panel lists only cues the main player has reached.
-- Timestamp accuracy is 0.0–0.3 s between sentence starts and the human-timed captions of a real TED talk. This held both for audio taken from the buffer tap (also after a seek) and for audio from `captureStream()`. Soundtracks with music or overlapping speakers are still unmeasured.
-- Testing: YouTube blocks seeking in Playwright-controlled browsers, and Playwright reports every page as `visible`. Integration checks for the buffer tap must run in a browser started directly with the extension loaded.
+- 預讀是 popup 服務下拉選單中的第三個選項，與 Gemini 即時和 Deepgram 並列（Deepgram 已於 1.5.0 移除，#10，因此預讀成為第二個）。它共用 Gemini API 金鑰（與 Gemini 語音辨識共用，見 ADR 0002），且不動到即時模式的程式路徑。
+- 模型固定為 `gemini-flash-lite-latest`，使用者不能選，因為慢的模型（例如 `gemini-3.8-flash` 每個片段 245 秒）會讓播放器無止盡地讀取等待。
+- 預讀模式支援 YouTube（緩衝擷取，WebM/Opus 音訊）與一般 HTML5 影片（影子播放器）。其他 MSE 網站與其他音訊格式（hls.js、dash.js 的 fMP4/AAC）在 v1 不支援；自 1.7.0 起，在觀眾允許的網站上支援（[ADR 0005](0005-read-ahead-on-any-mediasource-player.md)）。在 DRM 網站上選擇預讀，會顯示建議改用 Gemini 即時的提示，擴充功能不會自行切換模式。
+- 緩衝擷取在預讀開始時才注入，那時 YouTube 早已建好 SourceBuffer 並 append 了前面的音訊。因此它用播放器自己的 `loadVideoById` 在目前位置重新載入影片，讓播放器透過 hook 再 append 一次。這樣就不需要常駐的 content script，也不需要 youtube.com 的 host 權限；要求那個權限會讓既有使用者的擴充功能被停用，直到他們同意為止。
+- 緩衝擷取對每段音訊只會在 YouTube 第一次 append 時看到一次；往回跳到 YouTube 已持有的音訊不會產生新的 append。因此擷取程式會在 SourceBuffer 仍回報為 buffered 的期間，保留壓縮過的 Opus 音框（約 16 KB/s）。每次更新後，它會丟掉 `buffered` 已不涵蓋的部分，不論是 YouTube 移除的或 Chrome 因配額淘汰的。記憶體因此受限於 Chrome 每個 SourceBuffer 的配額，被丟掉的部分在需要時 YouTube 會再 append。跳轉到已翻譯範圍之外時，session 會向來源要求從目標前 5 秒開始的音訊。擷取程式用新的解碼器解碼儲存的音框後送出；影子播放器則直接跳轉。session 本身只保留觀眾後方 6 秒的已解碼音訊。保留所有已解碼樣本的做法被否決：以 64 KB/s 計算，一小時就是 230 MB。
+- 修剪會略過仍在 `updating` 的 SourceBuffer。YouTube 經常在 `update` 與 `updateend` 之間就開始下一次 append，所以晚到的 `updateend` 看到的 `buffered` 還不包含已儲存的音框；修剪因此丟掉整段 append，在儲存中留下空洞。
+- 如果讀取等待 3 秒仍收不到音訊，或觀眾停在完全沒有音訊的地方，session 會要求來源補充，並從觀眾前 5 秒重新讀取。擷取程式只有在儲存的音框超過觀眾 1 秒以上時才送出；否則在觀眾位置重新載入影片，最多每 10 秒一次。讀取可以跳過觀眾前方的空洞，把空洞前的音訊照原樣翻譯，但絕不跳過觀眾所在的空洞。
+- Chrome 的 `AudioDecoder` 是從第一個輸入開始數樣本來標記輸出時間，而不是依每個輸入的時間戳。當輸入時間戳跳動（跳轉）時，擷取程式會啟用新的解碼器；否則跳轉後的定時字幕會帶著錯誤的媒體時間。
+- 影子播放器以觀眾兩倍的速度讀取（`preservesPitch = false`，再重新取樣回媒體時間），直到領先 30 秒。以 1 倍速讀取時，提前量只會在讀取等待期間增加，結果每句話都要讀取等待一次。
+- 模型有時會在靜音處產生制式句子（例如在安靜的結尾產生 "Thank you for listening."）。時間範圍幾乎全是安靜的句子會被丟棄。

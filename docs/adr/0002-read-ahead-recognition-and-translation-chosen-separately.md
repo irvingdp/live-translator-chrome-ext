@@ -2,33 +2,33 @@
 status: accepted
 ---
 
-# Read-ahead: speech recognition and translation chosen separately
+# 預讀模式：語音辨識與翻譯分開選擇
 
-ADR 0001 sends each read-ahead **chunk** to Gemini (`gemini-flash-lite-latest`), which returns the sentences, their timing and their translation in one answer. The Gemini free tier allows 500 such requests a day per project. Each chunk is one request, so that is about 1.5–2 hours of video, less with a lot of seeking. Once it is used up, every chunk fails with "Gemini 配額已用完".
+ADR 0001 把每個預讀**片段**送給 Gemini（`gemini-flash-lite-latest`），它在一次回答中回傳句子、時間與翻譯。Gemini 免費方案每個專案每天允許 500 次這種請求。每個片段就是一次請求，大約等於 1.5–2 小時的影片，跳轉多的話更少。額度用完後，每個片段都會以「Gemini 配額已用完」失敗。
 
-So in read-ahead mode the viewer picks **speech recognition** and **translation** separately (issue #11):
+因此在預讀模式中，觀眾分別選擇**語音辨識**與**翻譯**（issue #11）：
 
-- **Speech recognition:** Gemini (which also translates, so the translation choice is locked to it), or **Groq Whisper** (`whisper-large-v3-turbo`).
-- **Translation, with a Whisper recognizer:** **Chrome's built-in Translator** (on device, no key, no quota). Where it cannot translate (no Translator on this computer, a pair it lacks, a pack it could not download, or no answer in 3 s), the page falls back automatically to **Google's web translation**, which needs no key. The popup shows which is in use but offers no choice.
+- **語音辨識：** Gemini（它同時負責翻譯，所以翻譯選項固定為它），或 **Groq Whisper**（`whisper-large-v3-turbo`）。
+- **搭配 Whisper 語音辨識時的翻譯：** **Chrome 內建的 Translator**（在裝置上執行，不需金鑰、沒有額度）。它無法翻譯時（這台電腦沒有 Translator、缺少該語言組合、語言包無法下載，或 3 秒內沒有回應），頁面會自動改用不需金鑰的 **Google 網頁翻譯**。popup 會顯示目前使用哪一個，但不提供選擇。
 
-Gemini live is unchanged; these choices exist only in read-ahead mode. Nothing switches on its own. When Gemini cannot serve (its quota ran out, it is rate-limiting, slow or unavailable), the overlay message carries a "改用 Groq Whisper" button. The button sets the recognizer to Groq. With Groq's key and permission it restarts the session on it from where the viewer is. Otherwise it stops the captions and opens the popup, already on Groq, for the key and permission.
+Gemini 即時模式不變；這些選項只存在於預讀模式。沒有任何東西會自動切換。當 Gemini 無法服務（額度用完、被限流、太慢或無法使用）時，字幕上的訊息會附「改用 Groq Whisper」按鈕。按鈕會把語音辨識改成 Groq。若已有 Groq 的金鑰與權限，就從觀眾所在位置以 Groq 重新開始 session；否則停止字幕並打開已切到 Groq 的 popup，讓觀眾輸入金鑰並授權。
 
-## Considered Options
+## 考慮過的選項
 
-- **Gemini Live Translate for read-ahead** (its quota is separate): rejected for now. It returns no timestamps (`startOffset`/`endOffset` are never filled, `wordTimestamp` is refused), so cue times could only be guessed from arrival. It also processes at about real time (≈1.4× when fed 4×), which leaves little room to read ahead.
-- **Longer chunks to save requests:** halves usage at best, and costs response time on every chunk.
-- **Automatic fallback when Gemini's quota runs out:** rejected in favour of the viewer pressing the button; the extension never changes the user's chosen services by itself.
-- **A second, cloud translator** (DeepL, then Microsoft Translator): both were built and then removed before release. DeepL's free API allows 500,000 characters a month (about 10 hours of talk), Microsoft's F0 tier 2 million. Both need the viewer to sign up for one more account and key, Microsoft's also an Azure region. Chrome's translator needs nothing. The cost is quality, and a computer whose Chrome cannot run it can only use Gemini.
-- **Google Cloud Translation:** its free 500,000 characters a month come as a credit on a billing account; not now.
-- **Unofficial keyless web endpoints as the main translator:** rejected. These are Edge's page translation (`edge.microsoft.com/translate/auth`, then `api-edge.cognitive.microsofttranslator.com`) and Google's (`translate.googleapis.com/translate_a/single?client=gtx`). They are outside both companies' terms, and they can change or be blocked without notice. A store reviewer may object. Google's was accepted later only as the **automatic fallback** behind Chrome's on-device translator, at the user's request, so it never runs where the official on-device path works. Edge's was built as the first step of that fallback and dropped before release: on 2026-11-17 its token URL answered 404 with an empty body, from Node and from Chrome alike, so every chunk lost a request to it before reaching Google.
+- **預讀改用 Gemini Live Translate**（額度是分開的）：暫時否決。它不回傳時間戳（`startOffset`/`endOffset` 從未填寫，`wordTimestamp` 會被拒絕），定時字幕的時間只能從到達時間去猜。它的處理速度也大約等於即時（以 4 倍速餵入時約 1.4 倍），沒有多少空間可以預讀。
+- **用更長的片段節省請求：** 最多只能省一半，而且每個片段的回應時間都會變長。
+- **Gemini 額度用完時自動切換：** 否決，改由觀眾按按鈕；擴充功能絕不自行更改使用者選的服務。
+- **第二個雲端翻譯服務**（先是 DeepL，後來 Microsoft Translator）：兩者都做好了，但在發布前移除。DeepL 免費 API 每月 50 萬字元（大約 10 小時的談話），Microsoft 的 F0 方案 200 萬字元。兩者都要觀眾多註冊一個帳號和金鑰，Microsoft 還要 Azure 區域。Chrome 的翻譯什麼都不用。代價是品質，而且 Chrome 無法執行它的電腦只能用 Gemini。
+- **Google Cloud Translation：** 每月免費 50 萬字元是以帳單帳戶上的抵用額度提供；暫不採用。
+- **以非官方、免金鑰的網頁端點當主要翻譯：** 否決。這些是 Edge 的網頁翻譯（`edge.microsoft.com/translate/auth`，再到 `api-edge.cognitive.microsofttranslator.com`）與 Google 的（`translate.googleapis.com/translate_a/single?client=gtx`）。它們不在兩家公司的條款範圍內，可能隨時改變或被封鎖，商店審核也可能提出異議。之後應使用者要求，Google 的端點只被接受作為 Chrome 裝置端翻譯背後的**自動備援**，所以在官方裝置端路徑可用時絕不會執行。Edge 的端點曾被做成這個備援的第一步，但在發布前拿掉：2026-11-17 它的 token 網址不論從 Node 或 Chrome 都回應 404 且內容為空，導致每個片段在到達 Google 之前都白白浪費一次請求。
 
-## Consequences
+## 後果
 
-- Groq is chosen from measurements on 2026-11-17 (60 s of a TED talk in 15 s chunks): 0.3–1.1 s per chunk; 2000 requests a day and 7200 audio seconds an hour on the free tier; first-word timing against the human VTT within a median 0.29 s (p90 0.81 s), mostly early. Gemini is about ±0.3 s.
-- **Cloudflare Workers AI Whisper** (`@cf/openai/whisper-large-v3-turbo`) was added as a second Whisper service, for when Groq's day runs out (free plan: 10,000 Neurons a day at 46.63 per audio minute, about 214 minutes of audio). Its speed was not measured before adding it. In real use on 2026-11-17 (a 15-minute talk) it often missed the 7 s budget, leaving stretches without captions, while Groq answers in about a second. Widening the budget for it was offered and declined, and it was **removed before release**. Stored settings drop its account ID and token, and a recognizer set to it falls back to Gemini.
-- Whisper returns words, not sentences. The words carry their punctuation, so a sentence ends at a word ending in a sentence ender. The last sentence of a chunk without one is marked `cut`, and so is a first sentence that starts lowercase. Words in a segment Whisper rates `no_speech_prob > 0.6` are dropped: Whisper invents stock phrases over silence.
-- The detected language comes from Whisper's `language` (an English name, mapped to a code). Speech already in the target language is not translated.
-- **Chrome's Translator exists only in documents, not in the service worker**, so the background recognizes and the page translates. The language pack has to be downloaded, and starting a download needs a user gesture. The popup therefore starts it when a Whisper recognizer is chosen, and again on the start click. In the page, a pair that is unavailable or still needs a download fails as `translator_unsupported`. That, or no answer from it within 3 s, sends the sentences to the background for the web fallback. Google gets one request per sentence, all at once, within the rest of the page's 8.5 s budget. If it fails, the chunk shows "翻譯失敗". Its quality is clearly below Gemini's: idioms are taken literally, and one long sentence in the test had its meaning inverted.
-- The 7 s request budget of ADR 0001 covers recognition; the page gives the whole chunk, Chrome's translation included, at most 8.5 s, and a chunk not back by then fails rather than holding the viewer. There are still no automatic retries; only a seek into a failed stretch asks for it again (ADR 0001). A failure names its provider and reason on the overlay, with what to do (a timeout, a rate limit, a rejected key, an unreachable or failing service, an unreadable reply, the page's 8.5 s, or both translators failing), and offers the next recognizer where another service would help.
-- A failure names its provider (`gemini_quota_exceeded`, `groq_quota_exceeded`), so the overlay says which quota ran out. Groq's 429 says in its message whether a daily limit (requests per day) or a per-minute one was hit.
-- `api.groq.com` is an **optional host permission**, requested when Groq is chosen (and again at start). The web fallback's host (`translate.googleapis.com`) is optional too. It is requested in the same prompt, because the fallback itself runs without a user gesture. Adding a required host permission would disable the extension for existing users on update until they accepted it. DeepL's hosts, required until 1.4.x, are dropped, which needs no prompt.
+- 選擇 Groq 是根據 2026-11-17 的量測（一段 TED 演講的 60 秒，切成 15 秒片段）：每個片段 0.3–1.1 秒；免費方案每天 2000 次請求、每小時 7200 秒音訊；第一個字的時間與人工 VTT 相比，中位數誤差 0.29 秒（p90 0.81 秒），多半偏早。Gemini 約 ±0.3 秒。
+- 曾加入 **Cloudflare Workers AI Whisper**（`@cf/openai/whisper-large-v3-turbo`）作為第二個 Whisper 服務，供 Groq 當日額度用完時使用（免費方案每天 10,000 Neurons，每分鐘音訊 46.63，約 214 分鐘音訊）。加入前沒有量測速度。2026-11-17 實際使用時（一場 15 分鐘的演講），它經常超過 7 秒的預算，留下沒有字幕的段落，而 Groq 大約一秒就回應。曾提議為它放寬預算但被否決，它在**發布前移除**。已儲存的設定會丟掉它的帳號 ID 與 token，語音辨識設為它的會改回 Gemini。
+- Whisper 回傳的是字，不是句子。字會帶著標點，所以句子結束於以句末標點結尾的字。片段中沒有句末標點的最後一句會被標為 `cut`，以小寫開頭的第一句也是。Whisper 評為 `no_speech_prob > 0.6` 的段落中的字會被丟棄：Whisper 會在靜音處編造制式句子。
+- 偵測到的語言來自 Whisper 的 `language`（英文名稱，再對應成語言代碼）。已經是目標語言的講話不會翻譯。
+- **Chrome 的 Translator 只存在於文件中，不存在於 service worker**，所以由背景負責辨識、由頁面負責翻譯。語言包必須下載，而開始下載需要使用者手勢。因此 popup 會在選擇 Whisper 語音辨識時開始下載，按下開始時再下載一次。在頁面中，無法使用或仍需下載的語言組合會以 `translator_unsupported` 失敗。這種情況，或它 3 秒內沒有回應，句子會送到背景做網頁備援。Google 每句一個請求，全部同時送出，在頁面 8.5 秒預算的剩餘時間內完成。失敗的話，該片段顯示「翻譯失敗」。它的品質明顯低於 Gemini：成語會照字面翻，測試中有一個長句的意思被翻反了。
+- ADR 0001 的 7 秒請求預算涵蓋辨識；頁面給整個片段（含 Chrome 翻譯）最多 8.5 秒，屆時還沒回來的片段就失敗，而不是讓觀眾讀取等待。仍然沒有自動重試；只有跳轉到失敗的段落時才會再要求一次（ADR 0001）。失敗時字幕上會說明是哪個服務、什麼原因，以及該怎麼做（逾時、限流、金鑰被拒、服務無法連線或出錯、回覆無法解析、頁面的 8.5 秒，或兩個翻譯都失敗），並在換一個服務會有幫助時提供下一個語音辨識。
+- 失敗會標明服務（`gemini_quota_exceeded`、`groq_quota_exceeded`），讓字幕說清楚是哪一個額度用完。Groq 的 429 會在訊息中說明是觸到每日上限（每日請求數）還是每分鐘上限。
+- `api.groq.com` 是**選用的 host 權限**，在選擇 Groq 時（以及開始時再一次）請求。網頁備援的網域（`translate.googleapis.com`）也是選用的，並在同一次提示中請求，因為備援本身是在沒有使用者手勢的情況下執行。新增必要的 host 權限會讓既有使用者更新後擴充功能被停用，直到他們同意為止。1.4.x 以前必要的 DeepL 網域已移除，移除不需要提示。
