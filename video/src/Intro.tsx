@@ -467,24 +467,56 @@ const OledDemo = () => {
   );
 };
 
-type TimedLine = CaptionLine & { at: number };
+type TimedLine = CaptionLine & { at: number; index: number };
 
 const timedLines = (copy: Copy): TimedLine[] => [
-  { ...copy.lines[0], at: T.line1 },
-  { ...copy.lines[1], at: T.line2 },
-  { ...copy.lines[2], at: T.line3 },
+  { ...copy.lines[0], at: T.line1, index: 0 },
+  { ...copy.lines[1], at: T.line2, index: 1 },
+  { ...copy.lines[2], at: T.line3, index: 2 },
 ];
 
-// Reveals the source text character by character, then fades in the translation.
+// Read-ahead word highlight, as the extension shows it: the line and its
+// translation are ready when the speaker starts, and each word is marked as
+// it is said (said words plain, the current one on amber, the rest dimmed).
+const SPEAK_FRAMES = [95, 100, 75];
+const segmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
+
 const useReveal = (line: TimedLine) => {
   const frame = useCurrentFrame();
-  const chars = [...line.source];
-  const shown = Math.floor(interpolate(frame, [line.at, line.at + 55], [0, chars.length], clamp));
+  const spoken = SPEAK_FRAMES[line.index]!;
+  const tokens = [...segmenter.segment(line.source)];
+  const words = tokens.filter((token) => token.isWordLike).length;
+  const current = Math.floor(interpolate(frame, [line.at, line.at + spoken], [0, words], clamp));
   return {
     visible: frame >= line.at,
-    source: chars.slice(0, shown).join(''),
-    translation: interpolate(frame, [line.at + 30, line.at + 48], [0, 1], clamp),
+    appear: interpolate(frame, [line.at, line.at + 6], [0, 1], clamp),
+    tokens,
+    current,
   };
+};
+
+const Highlighted = ({ r }: { r: ReturnType<typeof useReveal> }) => {
+  let word = -1;
+  return (
+    <>
+      {r.tokens.map((token, i) => {
+        if (token.isWordLike) word += 1;
+        // Spaces and punctuation follow the word before them.
+        const state = word < r.current ? 'said' : word === r.current ? 'current' : 'upcoming';
+        const style: CSSProperties =
+          state === 'current'
+            ? { background: C.amber, color: '#111827', borderRadius: 5 }
+            : state === 'upcoming'
+              ? { opacity: 0.45 }
+              : {};
+        return (
+          <span key={i} style={token.isWordLike ? style : state === 'upcoming' ? { opacity: 0.45 } : {}}>
+            {token.segment}
+          </span>
+        );
+      })}
+    </>
+  );
 };
 
 // Mirrors the extension's floating caption surface: a header with controls
@@ -562,18 +594,11 @@ const FloatingPair = ({ line }: { line: TimedLine }) => {
   const r = useReveal(line);
   if (!r.visible) return null;
   return (
-    <div>
-      <div style={{ fontSize: 29, fontWeight: 700, lineHeight: 1.35, color: C.text }}>{r.source}</div>
-      <div
-        style={{
-          fontSize: 28,
-          fontWeight: 700,
-          lineHeight: 1.35,
-          color: C.amber,
-          opacity: r.translation,
-          transform: `translateY(${(1 - r.translation) * 8}px)`,
-        }}
-      >
+    <div style={{ opacity: r.appear, transform: `translateY(${(1 - r.appear) * 8}px)` }}>
+      <div style={{ fontSize: 29, fontWeight: 700, lineHeight: 1.35, color: C.text }}>
+        <Highlighted r={r} />
+      </div>
+      <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.35, color: C.amber }}>
         {line.translation}
       </div>
     </div>
@@ -749,9 +774,11 @@ const PanelPair = ({ line, first }: { line: TimedLine; first: boolean }) => {
   const r = useReveal(line);
   if (!r.visible) return null;
   return (
-    <div style={{ padding: '16px 0', borderTop: first ? 'none' : `1px solid ${C.surface2}` }}>
-      <div style={{ fontSize: 27, fontWeight: 700, lineHeight: 1.35, color: C.text }}>{r.source}</div>
-      <div style={{ fontSize: 27, fontWeight: 700, lineHeight: 1.35, color: C.amber, opacity: r.translation }}>
+    <div style={{ padding: '16px 0', borderTop: first ? 'none' : `1px solid ${C.surface2}`, opacity: r.appear }}>
+      <div style={{ fontSize: 27, fontWeight: 700, lineHeight: 1.35, color: C.text }}>
+        <Highlighted r={r} />
+      </div>
+      <div style={{ fontSize: 27, fontWeight: 700, lineHeight: 1.35, color: C.amber }}>
         {line.translation}
       </div>
     </div>
@@ -855,25 +882,10 @@ const Popup = ({ copy }: { copy: Copy }) => {
       </div>
       <div style={card}>
         <div style={heading}>{copy.providerHeading}</div>
+        <div style={label}>{copy.captionModeLabel}</div>
+        {field(copy.readAheadMode)}
         <div style={label}>{copy.transcriberLabel}</div>
-        {field('Gemini live translate 3.5')}
-        <div style={label}>{copy.apiKeyLabel}</div>
-        {field(<span style={{ letterSpacing: '0.1em', color: C.muted }}>••••••••••••••••••••••</span>, false)}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: 15, color: C.tealLight }}>{copy.keysConfigured}</div>
-          <div
-            style={{
-              padding: '8px 18px',
-              borderRadius: 10,
-              background: 'rgba(20,184,166,.55)',
-              border: `1px solid ${C.tealLight}`,
-              fontSize: 15,
-              fontWeight: 700,
-            }}
-          >
-            {copy.setApiKey}
-          </div>
-        </div>
+        {field(copy.recognizer)}
       </div>
       <div style={card}>
         <div style={heading}>{copy.languageHeading}</div>
