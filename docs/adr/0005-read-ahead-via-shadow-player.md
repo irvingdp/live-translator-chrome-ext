@@ -1,0 +1,40 @@
+---
+status: accepted
+---
+
+# 預讀模式：緩衝擷取或影子播放器 + 分段 generateContent
+
+即時字幕一定落後於講話，因為 `chrome.tabCapture` 只聽得到當下正在播放的聲音。**預讀模式**是另一種字幕模式，有自己的開關，與既有的即時模式並列，即時模式維持不變。它用以下兩種方式之一取得即將播放的音訊。
+
+- **緩衝擷取。** 用於 YouTube。主播放器透過 Media Source Extensions 串流，本來就會比播放進度多下載 30–50 秒。一支在 MAIN world 執行的腳本（在預讀開始時注入，見「後果」）包住 `MediaSource.prototype.addSourceBuffer`。它從每個音訊 SourceBuffer 的 `appendBuffer` 資料中，把 WebM 串流解析成 Opus 音框，每個音框都帶有媒體時間戳（Cluster timecode 加上 block 偏移）。音框再用 WebCodecs `AudioDecoder` 解碼。
+- **影子播放器。** 用於一般 HTML5 影片。一個隱藏、靜音、`src` 相同的第二個 `<video>` 搶先主播放器播放，再用 `captureStream()` 取得它的音訊。
+
+音訊在講話的停頓處切成**片段**，送到非 Live 的 `generateContent` API（`gemini-flash-lite-latest`）。JSON schema 要求每句回傳 `{start, end, original, translation, cut}`。每則**定時字幕**的時間是片段起點加上 `start`。主播放器不可以播進還沒有翻譯的媒體時間，而是**讀取等待**：先暫停，等音訊時顯示「讀取音訊中…」，等翻譯時顯示「翻譯中…」，準備好後自動繼續播放。
+
+自 1.5.0 起，Gemini 是這一步的兩種選擇之一：[ADR 0006](0006-read-ahead-recognition-and-translation-chosen-separately.md) 加入 Groq Whisper 做語音辨識，搭配 Chrome 內建的 Translator 做翻譯。
+
+## 考慮過的選項
+
+- **把預先取得的音訊餵給 Gemini Live（`gemini-3.5-live-translate-preview`）**：否決。2026-11-15 的 spike 顯示它從不填 `startOffset`/`endOffset`，而且 `wordTimestamp` 會被拒絕（"not supported in BidiGenerateContent"），定時字幕的時間只能從回應到達的時間去猜。
+- **延遲呈現**（擷取分頁的影音，給觀眾看延遲過的副本）：否決。DRM 網站擷取到的是黑畫面，而且取代頁面的播放器會損害畫質與影音同步。
+- **暖機期間先用即時字幕**：否決，改用讀取等待。即時字幕落後於講話，而且在交接處會把句子切斷。
+- **固定長度的片段**：否決，改在停頓處切。片段在 10 到 15 秒之間最長的停頓（≥0.3 秒靜音）處切開；到 15 秒還沒有停頓，就硬切並重疊 2 秒。觀眾正在等待的片段是例外：起點距離觀眾不超過 1 秒的片段，會在片段開始至少 2 秒、且超過觀眾位置 5 秒後的第一個停頓處切開，讓下一個完整片段能在觀眾到達前翻譯好。音訊還沒那麼遠的影子播放器，則退而在超過觀眾 1.5 秒後的第一個停頓處切，讓讀取等待大約只有一句長。
+- **只用提前量判斷急迫性**（任何距離不到 N 秒的片段都切短）：否決。開始或跳轉後，第一個片段會往回取 5 秒，所以接下來幾個片段的起點也都很接近觀眾。2026-11-16 實作時，這造成連續四個 3 秒片段，並觸發免費方案的 429。
+- **每個 0.3 秒停頓都切**：否決。在一場真實演講上產生 1.7–5 秒的片段，每分鐘 22 個請求。免費金鑰約 18 個請求後就 429，中間有停頓的句子也被切成碎片翻譯。
+- **用隱藏的 `youtube.com/embed/<id>` iframe 當 YouTube 影子播放器**：否決。在 youtube.com 頁面內，embed 會出現錯誤 152-4。由擴充功能頁面承載時，不論直接或包在 youtube.com 內，都會出現錯誤 153，因為擴充功能頁面不送 Referer。偽造 Referer 等於規避 YouTube 的嵌入政策。
+- **用背景分頁（`active: false`）當 YouTube 影子播放器**：否決。Chrome 會延後從未顯示過的分頁裡的媒體，影片永遠不會載入。先短暫顯示再切到背景是可行的，但分頁會閃一下，分頁列也多一個分頁。
+- **用最小化視窗當 YouTube 影子播放器**：可行（macOS），但產品負責人否決，不接受多開一個視窗。
+- **另外抓取 YouTube 的音訊串流**（像 yt-dlp 那樣）：否決。需要處理 YouTube 的簽章與 token，屬於規避行為，而且經常失效。
+
+## 後果
+
+- 預讀是 popup 服務下拉選單中的第三個選項，與 Gemini 即時和 Deepgram 並列（Deepgram 已於 1.5.0 移除，#10，因此預讀成為第二個）。它共用 Gemini API 金鑰（與 Gemini 語音辨識共用，見 ADR 0006），且不動到即時模式的程式路徑。
+- 模型固定為 `gemini-flash-lite-latest`，使用者不能選，因為慢的模型（例如 `gemini-3.8-flash` 每個片段 245 秒）會讓播放器無止盡地讀取等待。
+- 預讀模式支援 YouTube（緩衝擷取，WebM/Opus 音訊）與一般 HTML5 影片（影子播放器）。其他 MSE 網站與其他音訊格式（hls.js、dash.js 的 fMP4/AAC）在 v1 不支援；自 1.7.0 起，在觀眾允許的網站上支援（[ADR 0009](0009-read-ahead-on-any-mediasource-player.md)）。在 DRM 網站上選擇預讀，會顯示建議改用 Gemini 即時的提示，擴充功能不會自行切換模式。
+- 緩衝擷取在預讀開始時才注入，那時 YouTube 早已建好 SourceBuffer 並 append 了前面的音訊。因此它用播放器自己的 `loadVideoById` 在目前位置重新載入影片，讓播放器透過 hook 再 append 一次。這樣就不需要常駐的 content script，也不需要 youtube.com 的 host 權限；要求那個權限會讓既有使用者的擴充功能被停用，直到他們同意為止。
+- 緩衝擷取對每段音訊只會在 YouTube 第一次 append 時看到一次；往回跳到 YouTube 已持有的音訊不會產生新的 append。因此擷取程式會在 SourceBuffer 仍回報為 buffered 的期間，保留壓縮過的 Opus 音框（約 16 KB/s）。每次更新後，它會丟掉 `buffered` 已不涵蓋的部分，不論是 YouTube 移除的或 Chrome 因配額淘汰的。記憶體因此受限於 Chrome 每個 SourceBuffer 的配額，被丟掉的部分在需要時 YouTube 會再 append。跳轉到已翻譯範圍之外時，session 會向來源要求從目標前 5 秒開始的音訊。擷取程式用新的解碼器解碼儲存的音框後送出；影子播放器則直接跳轉。session 本身只保留觀眾後方 6 秒的已解碼音訊。保留所有已解碼樣本的做法被否決：以 64 KB/s 計算，一小時就是 230 MB。
+- 修剪會略過仍在 `updating` 的 SourceBuffer。YouTube 經常在 `update` 與 `updateend` 之間就開始下一次 append，所以晚到的 `updateend` 看到的 `buffered` 還不包含已儲存的音框；修剪因此丟掉整段 append，在儲存中留下空洞。
+- 如果讀取等待 3 秒仍收不到音訊，或觀眾停在完全沒有音訊的地方，session 會要求來源補充，並從觀眾前 5 秒重新讀取。擷取程式只有在儲存的音框超過觀眾 1 秒以上時才送出；否則在觀眾位置重新載入影片，最多每 10 秒一次。讀取可以跳過觀眾前方的空洞，把空洞前的音訊照原樣翻譯，但絕不跳過觀眾所在的空洞。
+- Chrome 的 `AudioDecoder` 是從第一個輸入開始數樣本來標記輸出時間，而不是依每個輸入的時間戳。當輸入時間戳跳動（跳轉）時，擷取程式會啟用新的解碼器；否則跳轉後的定時字幕會帶著錯誤的媒體時間。
+- 影子播放器以觀眾兩倍的速度讀取（`preservesPitch = false`，再重新取樣回媒體時間），直到領先 30 秒。以 1 倍速讀取時，提前量只會在讀取等待期間增加，結果每句話都要讀取等待一次。
+- 模型有時會在靜音處產生制式句子（例如在安靜的結尾產生 "Thank you for listening."）。時間範圍幾乎全是安靜的句子會被丟棄。

@@ -65,16 +65,18 @@ export type TabMessage =
   | { type: 'READ_AHEAD_STOP'; payload: { sessionId: string } };
 
 export interface ReadAheadStartRequest {
-  // Whether to look for the video's caption tracks (ADR 0003).
+  // Whether to look for the video's caption tracks (ADR 0007).
   preferCaptionTracks: boolean;
   sessionId: string;
   sourceLanguage?: string;
   targetLanguage: string;
 }
 
-export type ReadAheadStatusCode = Exclude<ReadAheadStatus, undefined> | 'unsupported';
+// 'needs_site_access': a streaming player read-ahead could read once the
+// viewer allows the site (ADR 0009).
+export type ReadAheadStatusCode = Exclude<ReadAheadStatus, undefined> | 'needs_site_access' | 'unsupported';
 
-export type SessionErrorAction = 'switch_to_groq' | 'switch_to_local' | 'use_recognizer';
+export type SessionErrorAction = 'allow_site' | 'switch_to_groq' | 'switch_to_local' | 'use_recognizer';
 
 const READ_AHEAD_STATUS_ERRORS: Partial<Record<ReadAheadStatusCode, string>> = {
   captions_loading: 'read_ahead_captions_loading',
@@ -85,6 +87,7 @@ const READ_AHEAD_STATUS_ERRORS: Partial<Record<ReadAheadStatusCode, string>> = {
   page_timeout: 'read_ahead_page_timeout',
   translating: 'read_ahead_translating',
   translator_unsupported: 'read_ahead_translator_unsupported',
+  needs_site_access: 'read_ahead_needs_site_access',
   unsupported: 'read_ahead_unsupported',
   web_translation_failed: 'read_ahead_web_translation_failed',
 };
@@ -124,7 +127,7 @@ export class ReadAheadChunkError extends Error {
   }
 }
 
-// Read-ahead recognition through Whisper: Groq's (ADR 0002), or on this
+// Read-ahead recognition through Whisper: Groq's (ADR 0006), or on this
 // computer (issue #15).
 export type WhisperRecognition =
   | {
@@ -182,7 +185,7 @@ export interface CaptureSessionDependencies {
   // Chrome's built-in Translator.
   transcribeChunk(request: WhisperRecognition): Promise<RecognizedChunk>;
   // The fallback when the page's built-in Translator cannot translate:
-  // Google's web translation (ADR 0002).
+  // Google's web translation (ADR 0006).
   translateOnWeb(request: WebTranslationRequest, timeoutMs: number): Promise<string[]>;
   // Whether this computer can run Local Whisper (WebGPU), so it is offered.
   localWhisperUsable?(): Promise<boolean>;
@@ -462,8 +465,10 @@ export class CaptureSessionController {
     status: ReadAheadStatusCode | undefined,
   ): Promise<void> {
     if (!this.isActiveReadAhead(sessionId, tabId)) return;
+    // 'needs_site_access' keeps the session running: allowing the site
+    // reloads the tab, and a running session resumes on the fresh page.
     if (status === 'unsupported') {
-      this.currentStatus = { error: readAheadErrorCode('unsupported'), state: 'error', tabId };
+      this.currentStatus = { error: readAheadErrorCode(status), state: 'error', tabId };
     } else if (this.currentStatus.state === 'running') {
       this.currentStatus = status
         ? { error: readAheadErrorCode(status), state: 'running', tabId }
@@ -478,6 +483,7 @@ export class CaptureSessionController {
     if (action === 'switch_to_local' && !await this.dependencies.localWhisperUsable?.().catch(() => false)) {
       action = undefined;
     }
+    if (status === 'needs_site_access') action = 'allow_site';
     let code = status && readAheadErrorCode(status);
     // A caption track has no word timing: with word highlight on, the notice
     // says so and offers the recognizer instead (issue #18).

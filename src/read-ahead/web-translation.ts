@@ -1,5 +1,5 @@
 // Read-ahead's fallback translation, used automatically when Chrome's built-in
-// Translator cannot translate (ADR 0002): the web endpoint behind Google's page
+// Translator cannot translate (ADR 0006): the web endpoint behind Google's page
 // translation. It is not a public API: it needs no key, but it is outside
 // Google's terms, can change or be blocked without notice, and is tried only
 // after the on-device translator failed.

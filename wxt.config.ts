@@ -45,6 +45,9 @@ export default defineConfig({
       // Read-ahead's fallback when Chrome's built-in Translator cannot
       // translate: Google's web translation.
       'https://translate.googleapis.com/*',
+      // Allowed sites (ADR 0009): declared broadly so the popup can ask for
+      // the one site the viewer allows, never granted all at once.
+      'https://*/*',
     ],
     host_permissions: [
       'https://generativelanguage.googleapis.com/*'

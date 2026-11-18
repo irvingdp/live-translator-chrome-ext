@@ -47,6 +47,17 @@ export class OpusFrameStore {
     this.frames = [];
   }
 
+  // Keeps only frames with `from <= timestamp < to`: a cap on how much audio a
+  // tap holds when the player buffers more than read-ahead needs.
+  keepWithin(from: number, to: number): void {
+    this.frames = this.frames.filter(({ timestamp }) => timestamp >= from && timestamp < to);
+  }
+
+  // Seconds between the first and last stored frame.
+  span(): number {
+    return this.frames.length ? this.frames.at(-1)!.timestamp - this.frames[0]!.timestamp : 0;
+  }
+
   // The contiguous run of frames that starts within `lookahead` seconds of
   // `from`, up to `to` or the first gap.
   run(from: number, to: number, lookahead = 0): OpusFrame[] {

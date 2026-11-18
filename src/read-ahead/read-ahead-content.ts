@@ -1,5 +1,5 @@
 // Isolated-world side of read-ahead mode: finds the main player, looks for a
-// caption track (ADR 0003) and runs a CaptionTrackSession on it, or else picks
+// caption track (ADR 0007) and runs a CaptionTrackSession on it, or else picks
 // the audio source (buffer tap on YouTube, shadow player for plain video
 // files) and runs a ReadAheadSession; relays cues, statuses and translations
 // through the background.
@@ -37,6 +37,7 @@ import {
 } from './youtube-caption-tap';
 import { ShadowPlayerSource } from './shadow-player-source';
 import {
+  MSE_TAP_MARKER,
   TAP_MESSAGE_SOURCE,
   type ContentToTapMessage,
   type TapToContentMessage,
@@ -54,9 +55,11 @@ const MIN_PAGE_TRANSLATION_MS = 1_000;
 // stuck, and the web fallback gets the rest of the budget.
 const CHROME_TRANSLATION_MS = 3_000;
 const TICK_MS = 100;
+// How long the MediaSource tap gets to answer a probe.
+const MSE_PROBE_MS = 1_000;
 const CLOCK_MS = 2_000;
 // How long a video may wait for its caption tracks before the recognizer runs
-// instead (ADR 0003).
+// instead (ADR 0007).
 const CAPTION_WAIT_MS = 2_000;
 // How long "使用 YouTube 字幕" stays up.
 const CAPTION_NOTICE_MS = 4_000;
@@ -111,10 +114,15 @@ export function installReadAhead(document: Document): void {
     (youtube ? document.querySelector<HTMLVideoElement>('#movie_player video') : null) ??
     findLargestVisibleVideo(document);
 
+  // Which video this is, to start over when the viewer moves to another one.
+  // A stream's blob: source changes whenever its player rebuilds the
+  // MediaSource; there the page address names the video instead.
   const mediaKeyOf = (video: HTMLVideoElement): string =>
     youtube
       ? new URLSearchParams(view.location.search).get('v') ?? view.location.pathname
-      : video.currentSrc;
+      : video.currentSrc.startsWith('blob:')
+        ? `${view.location.origin}${view.location.pathname}${view.location.search}`
+        : video.currentSrc;
 
   const adPlaying = () =>
     youtube &&
@@ -156,7 +164,7 @@ export function installReadAhead(document: Document): void {
   };
 
   // Chrome's on-device Translator, or Google's web translation where it cannot
-  // (ADR 0002), within what is left of `budgetMs` since `started`.
+  // (ADR 0006), within what is left of `budgetMs` since `started`.
   const translateInPage = async (
     sentences: ChunkSentence[],
     languages: PageLanguages,
@@ -175,12 +183,12 @@ export function installReadAhead(document: Document): void {
       const reason = error instanceof Error ? error.message : '';
       if (reason !== 'translator_unsupported' && reason !== 'translator_timeout') throw error;
       // The on-device Translator cannot do it here: Google's web
-      // translation, through the background (ADR 0002).
+      // translation, through the background (ADR 0006).
       return await translateOnWeb(sentences, languages, remaining());
     }
   };
 
-  const reportStatus = (sessionId: string, status?: ReadAheadStatus | 'unsupported') =>
+  const reportStatus = (sessionId: string, status?: ReadAheadStatus | 'needs_site_access' | 'unsupported') =>
     void send({
       target: 'background',
       type: 'READ_AHEAD_STATUS',
@@ -195,10 +203,43 @@ export function installReadAhead(document: Document): void {
     return undefined;
   };
 
-  // A streamed plain video has no audio read-ahead can reach; it can still
-  // use a caption track.
-  const audioUnreachable = (video: HTMLVideoElement): boolean =>
-    !youtube && (!video.currentSrc || video.currentSrc.startsWith('blob:'));
+  // Asks the MediaSource tap (ADR 0009) whether it can read the main video.
+  const probeMseTap = (): Promise<{ reason?: string; supported: boolean }> => new Promise((resolve) => {
+    const finish = (result: { reason?: string; supported: boolean }) => {
+      view.clearTimeout(timer);
+      view.removeEventListener('message', onMessage);
+      resolve(result);
+    };
+    const onMessage = (event: MessageEvent<unknown>) => {
+      if (event.source !== view) return;
+      const message = event.data as Partial<TapToContentMessage> | null;
+      if (message?.source !== TAP_MESSAGE_SOURCE || message.type !== 'probe-result') return;
+      const { reason, supported } = message as { reason?: string; supported?: boolean };
+      finish({ ...(reason ? { reason } : {}), supported: supported === true });
+    };
+    const timer = view.setTimeout(() => finish({ supported: false }), MSE_PROBE_MS);
+    view.addEventListener('message', onMessage);
+    const probe: ContentToTapMessage = { source: TAP_MESSAGE_SOURCE, type: 'probe' };
+    view.postMessage(probe, view.location.origin);
+  });
+
+  // How read-ahead reads this video's audio (ADR 0009): the MediaSource tap
+  // on an allowed site; YouTube's own tap; a shadow player for a plain file.
+  // A stream elsewhere needs the site allowed; DRM or an unreadable codec is
+  // unsupported. (A caption track can serve any of them.)
+  const audioSource = async (
+    video: HTMLVideoElement,
+  ): Promise<{ kind: 'shadow' | 'tap' } | { status: 'needs_site_access' | 'unsupported' }> => {
+    if (document.documentElement.dataset[MSE_TAP_MARKER]) {
+      const { reason } = await probeMseTap();
+      // 'no_audio' may only mean the player has not appended yet.
+      return reason === 'drm' || reason === 'codec' ? { status: 'unsupported' } : { kind: 'tap' };
+    }
+    if (youtube) return { kind: 'tap' };
+    if (!video.currentSrc) return { status: 'unsupported' };
+    if (video.currentSrc.startsWith('blob:')) return { status: 'needs_site_access' };
+    return { kind: 'shadow' };
+  };
 
   // Wires a session to the main player's events and the tick.
   // The main player's time for the side panel's word highlight, which cannot
@@ -386,13 +427,18 @@ export function installReadAhead(document: Document): void {
     };
   };
 
-  const startAudio = (video: HTMLVideoElement, active: ReadAheadStartRequest): Running => {
+  const startAudio = (
+    video: HTMLVideoElement,
+    active: ReadAheadStartRequest,
+    kind: 'shadow' | 'tap',
+  ): Running => {
+    const tapped = kind === 'tap';
     const { sessionId } = active;
     let session: ReadAheadSession | undefined;
     let source: ReadAheadSource & { dispose?(): void };
     let removeTapListener = () => undefined as void;
 
-    if (youtube) {
+    if (tapped) {
       const toTap = (message: ContentToTapMessage) =>
         view.postMessage(message, view.location.origin);
       source = {
@@ -458,7 +504,7 @@ export function installReadAhead(document: Document): void {
       },
     });
 
-    if (youtube) postToTap(true);
+    if (tapped) postToTap(true);
     const detach = attach(video, session, sessionId);
 
     return {
@@ -467,24 +513,31 @@ export function installReadAhead(document: Document): void {
         session = undefined;
         source.dispose?.();
         removeTapListener();
-        if (youtube) postToTap(false);
+        if (tapped) postToTap(false);
       },
       mediaKey: mediaKeyOf(video),
     };
   };
 
   // Looks for the video's caption tracks, holding it with "讀取字幕中…" for
-  // at most CAPTION_WAIT_MS, then starts on them or on the audio (ADR 0003).
+  // at most CAPTION_WAIT_MS, then starts on them or on the audio (ADR 0007).
   const start = async (video: HTMLVideoElement, active: ReadAheadStartRequest) => {
     const mediaKey = mediaKeyOf(video);
-    // The viewer turned caption tracks off: recognize, as before ADR 0003.
-    if (!active.preferCaptionTracks) {
-      if (audioUnreachable(video)) {
-        reportStatus(active.sessionId, 'unsupported');
-      } else {
-        reportStatus(active.sessionId);
-        running = startAudio(video, active);
+    const startOnAudio = async () => {
+      starting = mediaKey;
+      const source = await audioSource(video);
+      if (starting !== mediaKey || request !== active) return;
+      starting = undefined;
+      if ('status' in source) {
+        reportStatus(active.sessionId, source.status);
+        return;
       }
+      reportStatus(active.sessionId);
+      running = startAudio(video, active, source.kind);
+    };
+    // The viewer turned caption tracks off: recognize, as before ADR 0007.
+    if (!active.preferCaptionTracks) {
+      await startOnAudio();
       return;
     }
     starting = mediaKey;
@@ -499,11 +552,8 @@ export function installReadAhead(document: Document): void {
     if (wasPlaying && video.paused) void video.play().catch(() => undefined);
     if (tracks) {
       running = startCaptions(video, active, tracks);
-    } else if (audioUnreachable(video)) {
-      reportStatus(active.sessionId, 'unsupported');
     } else {
-      reportStatus(active.sessionId);
-      running = startAudio(video, active);
+      await startOnAudio();
     }
   };
 

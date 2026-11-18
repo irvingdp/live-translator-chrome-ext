@@ -671,6 +671,42 @@
     "message": "優先使用影片字幕軌",
     "description": "Popup switch: use the uploader's caption track instead of speech recognition when there is one (read-ahead)."
   },
+  "allowSite": {
+    "message": "允許這個網站",
+    "description": "Caption overlay button that opens the popup to allow read-ahead on this site."
+  },
+  "errorReadAheadNeedsSiteAccess": {
+    "message": "這個網站需要先允許，預讀模式才能讀取它的影片。",
+    "description": "Caption overlay status when read-ahead could read the page's streaming player after the viewer allows the site."
+  },
+  "siteAccessTitle": {
+    "message": "允許這個網站使用預讀模式",
+    "description": "Popup heading when the current site must be allowed for read-ahead."
+  },
+  "siteAccessHint": {
+    "message": "允許後，預讀模式會在這個網站的頁面一開始載入就待命，讀取播放器已下載的音訊（只在你開始預讀時才會使用）。頁面會重新整理。",
+    "description": "Popup explanation of allowing a site for read-ahead."
+  },
+  "siteAccessAllow": {
+    "message": "允許並重新整理",
+    "description": "Popup button that allows the current site for read-ahead and reloads the page."
+  },
+  "siteAccessDenied": {
+    "message": "沒有取得這個網站的權限，預讀模式無法在這裡使用。",
+    "description": "Popup message when the viewer declines the site permission."
+  },
+  "allowedSitesTitle": {
+    "message": "允許預讀的網站",
+    "description": "Options page heading for the allowed sites list."
+  },
+  "allowedSitesEmpty": {
+    "message": "還沒有允許任何網站。",
+    "description": "Options page text when no site is allowed."
+  },
+  "allowedSitesRemove": {
+    "message": "移除",
+    "description": "Options page button that removes an allowed site."
+  },
   "errorReadAheadLoading": {
     "message": "讀取音訊中…",
     "description": "Caption overlay status while read-ahead mode holds the video until it has the audio of the next sentence."

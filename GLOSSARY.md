@@ -21,8 +21,12 @@ The media element the viewer is actually watching and hearing.
 _Avoid_: Original video, foreground player
 
 **Buffer tap** (緩衝擷取):
-Reading upcoming audio straight from what the main player has already downloaded but not yet played. Used where the main player streams its media in pieces (YouTube).
+Reading upcoming audio straight from the page's MediaSource: what the main player has already downloaded but not yet played. Used where the main player streams its media in pieces: on YouTube without asking, elsewhere on an allowed site.
 _Avoid_: Interceptor, sniffer, prefetch
+
+**Allowed site** (允許的網站):
+A site the viewer has allowed read-ahead to be ready on from the moment its pages load, so it can read any streaming player there. Asked for once per site.
+_Avoid_: Whitelisted site, enabled domain
 
 **Shadow player** (影子播放器):
 A hidden, muted second copy of the same media that plays ahead of the main player and supplies the audio for read-ahead. Used for plain video files, where there is no buffer to tap.

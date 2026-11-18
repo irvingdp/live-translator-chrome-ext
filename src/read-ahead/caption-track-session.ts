@@ -1,4 +1,4 @@
-// Read-ahead from a caption track (ADR 0003): the sentences are all known up
+// Read-ahead from a caption track (ADR 0007): the sentences are all known up
 // front, so there is no audio to read and nothing to recognize. What is left
 // of read-ahead is the translation (unless the target-language track already
 // gave it) a batch at a time up to MAX_LEAD_SECONDS ahead, the cue timing, and

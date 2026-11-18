@@ -26,6 +26,8 @@ function createApi(overrides: Partial<PopupApi> = {}): PopupApi {
     downloadLocalWhisper: vi.fn().mockResolvedValue(undefined),
     deleteLocalWhisper: vi.fn().mockResolvedValue(undefined),
     watchLocalWhisperDownload: vi.fn().mockReturnValue(() => undefined),
+    currentSite: vi.fn().mockResolvedValue({ origin: 'https://www.bilibili.com', tabId: 42 }),
+    allowSite: vi.fn().mockResolvedValue(true),
     ...overrides,
   };
 }
@@ -344,6 +346,27 @@ describe('PopupApp', () => {
     render(<PopupApp api={createApi({ loadSettings: vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS, geminiTargetLanguage: 'zh-HK' }) })} />);
     expect(await screen.findByLabelText('目標語言')).toHaveValue('zh-HK');
     expect(screen.getByText(/即時音訊模式不分地區/)).toBeVisible();
+  });
+
+  it('offers to allow the site when read-ahead needs it, asking inside the click', async () => {
+    const api = createApi({
+      status: vi.fn().mockResolvedValue({ error: 'read_ahead_needs_site_access', state: 'error', tabId: 42 }),
+    });
+    render(<PopupApp api={api} />);
+    expect(await screen.findByText('允許這個網站使用預讀模式')).toBeVisible();
+    expect(screen.getByText('www.bilibili.com')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '允許並重新整理' }));
+    expect(api.allowSite).toHaveBeenCalledWith({ origin: 'https://www.bilibili.com', tabId: 42 });
+  });
+
+  it('says so when the viewer declines the site permission', async () => {
+    const api = createApi({
+      allowSite: vi.fn().mockResolvedValue(false),
+      status: vi.fn().mockResolvedValue({ error: 'read_ahead_needs_site_access', state: 'error', tabId: 42 }),
+    });
+    render(<PopupApp api={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: '允許並重新整理' }));
+    expect(await screen.findByText('沒有取得這個網站的權限，預讀模式無法在這裡使用。')).toBeVisible();
   });
 
   describe('read-ahead services', () => {

@@ -54,7 +54,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   originalFontSize: 16,
   originalTextColor: '#ffffff',
   // Read-ahead: use the uploader's caption track when the video has one
-  // (ADR 0003), and mark the original word by word (issue #18).
+  // (ADR 0007), and mark the original word by word (issue #18).
   preferCaptionTracks: true,
   // Without WebGPU; where the computer has it, the popup starts a viewer who
   // never chose on Local Whisper instead (initialRecognizer).

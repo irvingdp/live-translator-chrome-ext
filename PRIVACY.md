@@ -1,6 +1,6 @@
 # Privacy Policy — Bilingual Live Captions
 
-**Last updated: 2026-11-17**
+**Last updated: 2026-11-18**
 
 ## Summary
 
@@ -61,6 +61,14 @@ text is only rendered on screen; it is never written to a file or a log.
 - **Caption appearance and language settings**: also in `chrome.storage.local`.
 - **Session state**: held in `chrome.storage.session` (cleared when Chrome closes)
   and **contains no API keys** — they are stripped before it is written.
+- **Sites allowed for read-ahead**: if you allow a site in the popup so
+  read-ahead can read its streaming player, a small script runs on that site's
+  pages from the moment they load. It keeps the compressed audio the page's own
+  player has already downloaded, in that tab's memory only, and does nothing
+  else with it until you start read-ahead there; then that audio goes wherever
+  your chosen recognizer sends it (see the table above). It never reads page
+  text, forms or browsing activity. Remove a site on the options page, or in
+  Chrome's site settings, and the script stops running there.
 - **Rating prompt state**: whether you have rated, and how many tabs you have used
   captions on (a counter plus recent tab ids), in `chrome.storage.local`. It only
   decides when to show the rating card and never leaves the device.
@@ -97,10 +105,10 @@ from the paid tier:
 | --- | --- |
 | `tabCapture` | Capture the audio of the tab you selected — the only source of caption text |
 | `offscreen` | A Manifest V3 service worker cannot use AudioContext, so audio processing and the provider connection run in an offscreen document |
-| `activeTab`, `scripting` | Inject the caption overlay only into the tab where you pressed start; no script is registered across all websites |
+| `activeTab`, `scripting` | Inject the caption overlay only into the tab where you pressed start. The one script registered ahead of time is read-ahead's audio reader, and only on sites you allowed |
 | `storage` | Save your API keys, caption settings and whether you have rated the extension |
 | `host_permissions` | Limited to Google's Gemini API domain used above |
-| `optional_host_permissions` | `api.groq.com`, asked for only when you choose Groq Whisper, together with the web translation fallback's host (`translate.googleapis.com`) |
+| `optional_host_permissions` | `api.groq.com`, asked for only when you choose Groq Whisper, together with the web translation fallback's host (`translate.googleapis.com`). `https://*/*` is declared only as the upper bound for allowing one site at a time for read-ahead: each site is asked for separately when you allow it, never all at once |
 
 ## Children
 

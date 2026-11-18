@@ -1,7 +1,7 @@
 // Read-ahead mode's rules, independent of where the audio comes from (buffer
 // tap or shadow player) and of the browser: chunking, translation,
 // cue timing, holds, seeks and the 30 s lead cap. See GLOSSARY.md and
-// docs/adr/0001-read-ahead-via-shadow-player.md for the vocabulary.
+// docs/adr/0005-read-ahead-via-shadow-player.md for the vocabulary.
 import type { ChunkSentence } from './gemini-chunk-translation';
 
 export const SAMPLE_RATE = 16_000;
@@ -46,6 +46,9 @@ const DUPLICATE_START_SECONDS = 0.6;
 // Blocks this close together are treated as contiguous audio.
 const CONTIGUITY_SECONDS = 0.03;
 const HOLD_MARGIN_SECONDS = 0.15;
+// The largest hole between chunks that counts as continuous (see chainEnd;
+// ADR 0010).
+const PLAYABLE_HOLE_SECONDS = 0.1;
 const MAX_IN_FLIGHT = 2;
 const MIN_SPOKEN_FRACTION = 0.1;
 // A shadow player plays this much faster than the viewer until it is
@@ -125,7 +128,7 @@ export function readAheadFailure(reason: string | undefined): ReadAheadFailure |
   return READ_AHEAD_FAILURES.find((known) => known === reason);
 }
 
-// Statuses only a caption track (ADR 0003) shows: waiting for the track, and
+// Statuses only a caption track (ADR 0007) shows: waiting for the track, and
 // the one-time notice that it is in use.
 export type CaptionTrackStatus = 'captions_loading' | 'captions_video' | 'captions_youtube';
 
@@ -667,7 +670,13 @@ export class ReadAheadSession {
   private chainEnd(time: number, includePending: boolean): number {
     let end = time;
     for (;;) {
-      const chunk = this.chunkAt(end, includePending);
+      // A hole too small to hear (a MediaSource player's audio can have a few
+      // hundredths of a second between fragments, which the player plays
+      // straight through) does not break the chain: holding there would wait
+      // for audio that does not exist.
+      const chunk = this.chunkAt(end, includePending) ?? this.chunks.find((item) =>
+        (includePending || item.state !== 'pending') &&
+        item.start > end && item.start - end <= PLAYABLE_HOLE_SECONDS);
       if (!chunk || chunk.end <= end) return end;
       end = chunk.end;
     }

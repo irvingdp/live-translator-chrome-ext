@@ -46,8 +46,12 @@ import {
   type LocalWhisperModel,
 } from '../src/read-ahead/local-whisper';
 import { t } from '../src/core/i18n';
+import { isSiteAllowed, siteOrigin, syncSites } from '../src/core/read-ahead-sites';
+import { chromeSitesApi } from '../src/core/chrome-sites-api';
 
 const YOUTUBE_HOSTS = new Set(['www.youtube.com', 'm.youtube.com', 'youtube.com']);
+
+const sitesApi = chromeSitesApi;
 
 export default defineBackground(() => {
   const activeSessionKey = 'activeSession';
@@ -202,8 +206,11 @@ export default defineBackground(() => {
       const tab = await chrome.tabs.get(tabId);
       const host = tab.url ? new URL(tab.url).hostname : '';
       // The buffer tap must run in the page's own world to see YouTube's
-      // MediaSource; everything else stays in the isolated world.
-      if (YOUTUBE_HOSTS.has(host)) {
+      // MediaSource; everything else stays in the isolated world. An allowed
+      // site already has the MediaSource tap from page load (ADR 0009), so
+      // YouTube's own tap is only for YouTube not allowed.
+      const allowed = await isSiteAllowed(sitesApi, siteOrigin(tab.url) ?? '').catch(() => false);
+      if (YOUTUBE_HOSTS.has(host) && !allowed) {
         await chrome.scripting.executeScript({
           files: ['read-ahead-tap.js'],
           target: { tabId },
@@ -614,6 +621,11 @@ export default defineBackground(() => {
     }
   }
 
+  // Allowed sites whose permission the viewer took away elsewhere lose their
+  // registration (ADR 0009).
+  void syncSites(sitesApi).catch(() => undefined);
+  chrome.permissions.onRemoved?.addListener(() => void syncSites(sitesApi).catch(() => undefined));
+
   const ready = chrome.storage.local.setAccessLevel({
     accessLevel: 'TRUSTED_CONTEXTS',
   }).then(async () => {
@@ -722,6 +734,7 @@ export default defineBackground(() => {
     'READ_AHEAD_STATUS',
     'READ_AHEAD_SWITCH_RECOGNIZER',
     'READ_AHEAD_USE_RECOGNIZER',
+    'READ_AHEAD_OPEN_SITE_ACCESS',
     'READ_AHEAD_CLOCK',
     'READ_AHEAD_TRANSLATE',
     'READ_AHEAD_WEB_TRANSLATE',
@@ -848,6 +861,11 @@ export default defineBackground(() => {
             });
             return { ok: true };
           }
+          // The "允許這個網站" button: allowing is asked for in the popup,
+          // the only place Chrome lets it be asked (ADR 0009).
+          case 'READ_AHEAD_OPEN_SITE_ACCESS':
+            await chrome.action.openPopup().catch(() => chrome.runtime.openOptionsPage());
+            return { ok: true };
           case 'READ_AHEAD_USE_RECOGNIZER': {
             const tabId = sender.tab?.id;
             if (tabId === undefined) return { error: 'missing_tab', ok: false };

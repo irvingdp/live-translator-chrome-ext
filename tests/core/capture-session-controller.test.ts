@@ -789,6 +789,21 @@ describe('CaptureSessionController read-ahead mode', () => {
     expect(harness.controller.snapshot()).toBeUndefined();
   });
 
+  it('asks to allow the site while staying running, so the session resumes after the reload', async () => {
+    const harness = createHarness();
+    const sessionId = await startReadAhead(harness);
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'needs_site_access');
+    expect(harness.controller.status()).toEqual({
+      error: 'read_ahead_needs_site_access',
+      state: 'running',
+      tabId: 42,
+    });
+    expect(harness.dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
+      type: 'SESSION_ERROR',
+      payload: { action: 'allow_site', code: 'read_ahead_needs_site_access' },
+    });
+  });
+
   it('stops in the tab rather than in the offscreen document', async () => {
     const harness = createHarness();
     const sessionId = await startReadAhead(harness);

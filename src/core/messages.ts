@@ -143,4 +143,6 @@ export type ExtensionMessage =
   // The caption-track notice's "改用語音辨識" button (issue #18): stop
   // preferring caption tracks and recognize from where the viewer is.
   | { target: 'background'; type: 'READ_AHEAD_USE_RECOGNIZER' }
+  // The "允許這個網站" button (ADR 0009): opens the popup to allow the site.
+  | { target: 'background'; type: 'READ_AHEAD_OPEN_SITE_ACCESS' }
   | { target: 'background'; type: 'SESSION_STATUS' };
