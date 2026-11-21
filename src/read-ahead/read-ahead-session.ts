@@ -1,7 +1,7 @@
 // Read-ahead mode's rules, independent of where the audio comes from (buffer
 // tap or shadow player) and of the browser: chunking, translation,
 // cue timing, holds, seeks and the 30 s lead cap. See GLOSSARY.md and
-// docs/adr/0005-read-ahead-via-shadow-player.md for the vocabulary.
+// docs/adr/0005-預讀透過緩衝擷取或影子播放器.md for the vocabulary.
 import type { ChunkSentence } from './gemini-chunk-translation';
 
 export const SAMPLE_RATE = 16_000;

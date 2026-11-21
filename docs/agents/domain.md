@@ -18,8 +18,8 @@
 /
 ├── GLOSSARY.md
 ├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
+│   ├── 0001-訂單採用事件溯源.md
+│   └── 0002-寫入模型使用Postgres.md
 └── src/
 ```
 
@@ -37,6 +37,10 @@
         ├── GLOSSARY.md
         └── docs/adr/
 ```
+
+## ADR 檔名
+
+ADR 檔名一律用中文：四位數編號，加上一句簡短的中文標題，例如 `0006-預讀的語音辨識與翻譯分開選擇.md`。產品名、API 名稱等專有名詞保留原文，標題中的空格改成 `-`。引用時連到完整檔名。
 
 ## 使用詞彙表的用詞
 
