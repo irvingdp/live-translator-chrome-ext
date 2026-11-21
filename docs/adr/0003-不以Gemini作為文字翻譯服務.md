@@ -4,7 +4,7 @@ status: accepted
 
 # 不以 Gemini 作為文字翻譯服務
 
-需求是在免費方案上用 Gemini Live API 做翻譯，端到端目標 0.5 秒。2026-08-06 評估後**不採用**，popup 中的「Gemini 3.5 Live（即將推出）」選項也移除，而不是留著一個不會兌現的承諾。這個結論只針對把 Gemini 當成*文字*翻譯服務；評估中提到的音訊路徑後來經過驗證並採用，見 [ADR 0004](0004-gemini-live-translate-as-a-combined-provider.md)。
+需求是在免費方案上用 Gemini Live API 做翻譯，端到端目標 0.5 秒。2026-08-06 評估後**不採用**，popup 中的「Gemini 3.5 Live（即將推出）」選項也移除，而不是留著一個不會兌現的承諾。這個結論只針對把 Gemini 當成*文字*翻譯服務；評估中提到的音訊路徑後來經過驗證並採用，見 [ADR 0004](0004-Gemini-Live-Translate作為整合的辨識與翻譯服務.md)。
 
 理由有三：
 

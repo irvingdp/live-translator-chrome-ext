@@ -6,12 +6,12 @@ Chrome 116+ 的 Manifest V3 擴充功能：在影片上顯示原文與譯文兩�
 
 - 兩種模式，在 Popup 的「翻譯模式」下拉切換：
   - **即時音訊模式**（預設，Gemini live translate 3.5）：擷取目前分頁的音訊（`chrome.tabCapture` + offscreen document），單一 WebSocket 同時回傳原文與譯文
-  - **預讀模式**：先讀取播放器已經載入、還沒播放的音訊並翻譯，字幕在講者開口時就出現（YouTube 與一般 HTML5 影片；見 [ADR 0005](docs/adr/0005-read-ahead-via-shadow-player.md)）。語音辨識與翻譯可以分開選（見 [ADR 0006](docs/adr/0006-read-ahead-recognition-and-translation-chosen-separately.md)）。沒選過的話，電腦支援 WebGPU 就預設本地 Whisper，否則預設 Groq Whisper，翻譯都交給 Chrome 內建翻譯：
+  - **預讀模式**：先讀取播放器已經載入、還沒播放的音訊並翻譯，字幕在講者開口時就出現（YouTube 與一般 HTML5 影片；見 [ADR 0005](docs/adr/0005-預讀透過緩衝擷取或影子播放器.md)）。語音辨識與翻譯可以分開選（見 [ADR 0006](docs/adr/0006-預讀的語音辨識與翻譯分開選擇.md)）。沒選過的話，電腦支援 WebGPU 就預設本地 Whisper，否則預設 Groq Whisper，翻譯都交給 Chrome 內建翻譯：
     - **Gemini（含翻譯）**：一把 Gemini API Key
     - **Groq Whisper** 辨識，搭配 **Chrome 內建翻譯**（在本機執行，不需要金鑰；這台電腦或這組語言無法使用時，自動改用 Google 網頁翻譯。這不是官方 API，可能隨時失效）：Gemini 每天 500 次的免費額度用完時可以改用；Gemini 額度用完或無法回應時，字幕上的「改用 Groq Whisper」按鈕會直接切換
-    - **本地 Whisper**：在這台電腦用 WebGPU 執行 Whisper，不需要金鑰、沒有額度。模型（large-v3-turbo 566 MB 或 small 325 MB）在 popup 確認大小後下載一次；翻譯同樣交給 Chrome 內建翻譯。沒有 WebGPU 的電腦不能使用（見 [ADR 0008](docs/adr/0008-local-whisper-in-the-offscreen-document.md)）
+    - **本地 Whisper**：在這台電腦用 WebGPU 執行 Whisper，不需要金鑰、沒有額度。模型（large-v3-turbo 566 MB 或 small 325 MB）在 popup 確認大小後下載一次；翻譯同樣交給 Chrome 內建翻譯。沒有 WebGPU 的電腦不能使用（見 [ADR 0008](docs/adr/0008-本地Whisper在offscreen-document執行.md)）
     - **逐字標示**：用 Groq 或本地 Whisper 辨識時，原文整句先顯示，講者講到哪個字就標示哪個字（已講的正常、正在講的加底色、還沒講的變淡）。浮動字幕和 Side Panel 都有。Gemini 和字幕軌沒有逐字時間，只顯示整句。popup 可以關掉
-    - **字幕軌優先**：影片有上傳者提供的字幕時，直接讀字幕，不呼叫語音辨識；也有你的目標語言字幕時，連翻譯也不用。popup 可以關掉「優先使用影片字幕軌」改用語音辨識。YouTube 自動產生的字幕和自動翻譯不算（見 [ADR 0007](docs/adr/0007-read-ahead-prefers-uploaded-caption-tracks.md)）
+    - **字幕軌優先**：影片有上傳者提供的字幕時，直接讀字幕，不呼叫語音辨識；也有你的目標語言字幕時，連翻譯也不用。popup 可以關掉「優先使用影片字幕軌」改用語音辨識。YouTube 自動產生的字幕和自動翻譯不算（見 [ADR 0007](docs/adr/0007-預讀優先使用上傳者的字幕軌.md)）
 - YouTube、Netflix、Disney+ 與一般 HTML5 影片的頁內字幕
 - 可自由拖曳、調整寬高的浮動字幕；拉高後會自動顯示更多完整的雙語句子
 - 可將字幕切換至 Chrome 原生 Side Panel 查看較長的字幕紀錄，關閉 Side Panel 後會自動切回浮動字幕

@@ -4,7 +4,7 @@ status: superseded
 
 # DeepL 自行選擇相容的模型
 
-> **已被取代。** 1.5.0 移除了 Deepgram 與 DeepL（#10），即時模式只剩 Gemini（[ADR 0004](0004-gemini-live-translate-as-a-combined-provider.md)）。
+> **已被取代。** 1.5.0 移除了 Deepgram 與 DeepL（#10），即時模式只剩 Gemini（[ADR 0004](0004-Gemini-Live-Translate作為整合的辨識與翻譯服務.md)）。
 
 2026-08-05 在真實 Chrome 測試時，英文字幕持續出現，翻譯卻觸發了連續五次失敗的熔斷。DeepL API 金鑰有效，額度也很充足。擴充功能當時強制指定 `model_type: latency_optimized`，而 DeepL 的標準請求格式允許服務自行選擇相容的模型。
 
