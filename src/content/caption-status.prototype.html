@@ -1,0 +1,271 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Not built or shipped (WXT only builds entrypoints/).
+  Question: how should the caption overlay show errors, holds and notices?
+  Four structurally different variants of the status UI over a mock video,
+  switchable with ?variant=A..D (← → keys or the bottom bar), and four
+  status scenarios with ?scenario=… (the top bar).
+  Open by double-clicking this file.
+-->
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caption status prototype</title>
+<style>
+  :root { --font: system-ui, -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0d12; color: #e5e7eb; font-family: var(--font); }
+  .page { max-width: 1100px; margin: 0 auto; padding: 16px 16px 96px; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; color: #f9fafb; }
+  .lead { font-size: 13px; color: #9ca3af; margin: 0 0 12px; }
+  .scenarios { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .scenarios button { font: 13px var(--font); color: #d1d5db; background: #1f2937; border: 1px solid #374151; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+  .scenarios button[aria-pressed="true"] { background: #f9fafb; color: #111827; border-color: #f9fafb; }
+
+  /* Mock video */
+  .video { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden;
+    background:
+      radial-gradient(ellipse at 30% 35%, rgba(250, 204, 21, .55), transparent 55%),
+      radial-gradient(ellipse at 75% 60%, rgba(180, 83, 9, .55), transparent 60%),
+      linear-gradient(160deg, #7c4a1e, #3b2410 70%); }
+  .video::after { content: ""; position: absolute; inset: auto 0 0 0; height: 4px; background: linear-gradient(90deg, #ef4444 38%, rgba(255,255,255,.25) 38%); }
+  .captions { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); width: min(78%, 760px); text-align: center; }
+  .captions .orig { font-size: clamp(14px, 2.1vw, 20px); color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.9); margin: 0 0 4px; }
+  .captions .tr { font-size: clamp(14px, 2.1vw, 20px); color: #fde68a; text-shadow: 0 1px 3px rgba(0,0,0,.9); margin: 0; }
+  .captions.dim .orig, .captions.dim .tr { opacity: .35; }
+
+  /* Shared bits */
+  .btn { font: 600 13px var(--font); border-radius: 7px; padding: 6px 12px; cursor: pointer; border: 1px solid transparent; white-space: nowrap; }
+  .btn.primary { background: #f9fafb; color: #111827; }
+  .btn.ghost { background: transparent; color: #e5e7eb; border-color: rgba(255,255,255,.3); }
+  .icon { width: 18px; height: 18px; flex: none; display: inline-grid; place-items: center; border-radius: 50%; font-size: 12px; font-weight: 700; }
+  .tone-error .icon { background: #f87171; color: #111827; }
+  .tone-wait .icon { border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: spin 0.9s linear infinite; }
+  .tone-info .icon { background: #60a5fa; color: #111827; }
+  .tone-action .icon { background: #fbbf24; color: #111827; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* A — toast in the video's top-right corner */
+  .a-toast { position: absolute; top: 14px; right: 14px; width: min(340px, 70%); background: rgba(17,24,39,.92); border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 12px 12px 12px 14px; display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; box-shadow: 0 10px 30px rgba(0,0,0,.45); backdrop-filter: blur(6px); }
+  .a-toast .title { font-size: 14px; font-weight: 600; color: #f9fafb; align-self: center; }
+  .a-toast .body { grid-column: 2 / 4; font-size: 13px; color: #cbd5e1; line-height: 1.45; }
+  .a-toast .actions { grid-column: 2 / 4; display: flex; gap: 6px; margin-top: 6px; }
+  .a-toast .close { background: none; border: 0; color: #9ca3af; font-size: 16px; cursor: pointer; padding: 0 2px; }
+  .a-toast .timer { grid-column: 1 / 4; height: 2px; background: rgba(255,255,255,.15); border-radius: 2px; overflow: hidden; margin-top: 8px; }
+  .a-toast .timer i { display: block; height: 100%; width: 60%; background: #60a5fa; }
+
+  /* B — chip attached above the captions, expands on click */
+  .b-wrap { position: absolute; left: 50%; bottom: calc(9% + 66px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .b-chip { display: inline-flex; align-items: center; gap: 8px; background: rgba(17,24,39,.85); border: 1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 5px 12px 5px 6px; font-size: 13px; color: #f3f4f6; cursor: pointer; }
+  .b-chip .more { color: #9ca3af; font-size: 12px; }
+  .b-pop { width: min(360px, 80vw); background: rgba(17,24,39,.95); border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 12px 14px; font-size: 13px; color: #cbd5e1; line-height: 1.5; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+  .b-pop .actions { display: flex; gap: 6px; margin-top: 10px; justify-content: flex-end; }
+  .b-pop[hidden] { display: none; }
+
+  /* C — the message takes the caption's place */
+  .c-card { position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%); width: min(78%, 620px); background: rgba(10,12,18,.82); border-radius: 12px; padding: 14px 16px; display: flex; gap: 14px; align-items: center; border-left: 4px solid; }
+  .c-card.tone-error { border-left-color: #f87171; }
+  .c-card.tone-wait { border-left-color: #9ca3af; }
+  .c-card.tone-info { border-left-color: #60a5fa; }
+  .c-card.tone-action { border-left-color: #fbbf24; }
+  .c-card .text { flex: 1; min-width: 0; }
+  .c-card .title { font-size: 15px; font-weight: 600; color: #f9fafb; }
+  .c-card .body { font-size: 13px; color: #cbd5e1; margin-top: 2px; }
+  .c-card .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+  /* D — a status light on the caption toolbar, details in a small panel */
+  .d-bar { position: absolute; left: 50%; bottom: calc(9% + 68px); transform: translateX(-50%); display: flex; align-items: center; gap: 2px; background: rgba(17,24,39,.75); border-radius: 8px; padding: 3px; }
+  .d-bar .tool { width: 28px; height: 24px; display: grid; place-items: center; color: #d1d5db; font-size: 12px; border-radius: 5px; }
+  .d-light { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 5px; font-size: 12px; color: #f3f4f6; cursor: pointer; }
+  .d-light .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .tone-error .dot { background: #f87171; box-shadow: 0 0 0 3px rgba(248,113,113,.3); }
+  .tone-wait .dot { background: #9ca3af; animation: pulse 1.2s ease-in-out infinite; }
+  .tone-info .dot { background: #60a5fa; }
+  .tone-action .dot { background: #fbbf24; box-shadow: 0 0 0 3px rgba(251,191,36,.3); }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .d-panel { position: absolute; left: 50%; bottom: calc(9% + 104px); transform: translateX(-50%); width: min(320px, 80vw); background: #f9fafb; color: #111827; border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+  .d-panel .title { font-weight: 600; margin-bottom: 2px; }
+  .d-panel .actions { display: flex; gap: 6px; margin-top: 10px; }
+  .d-panel .btn.primary { background: #111827; color: #f9fafb; }
+  .d-panel .btn.ghost { color: #111827; border-color: #d1d5db; }
+
+  .state { margin-top: 12px; font: 12px ui-monospace, Menlo, monospace; color: #9ca3af; background: #111318; border: 1px solid #1f2937; border-radius: 8px; padding: 10px 12px; white-space: pre-wrap; }
+  .notes { margin-top: 10px; font-size: 13px; color: #cbd5e1; line-height: 1.6; }
+
+  /* Prototype switcher: deliberately not part of the design */
+  .switcher { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; background: #ff3d8b; color: #fff; border-radius: 999px; padding: 4px; box-shadow: 0 6px 20px rgba(0,0,0,.5); font: 600 13px var(--font); z-index: 10; }
+  .switcher button { background: rgba(255,255,255,.2); color: #fff; border: 0; border-radius: 999px; width: 32px; height: 32px; font-size: 16px; cursor: pointer; }
+  .switcher span { padding: 0 10px; min-width: 210px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>字幕狀態訊息 prototype（暫時）</h1>
+  <p class="lead">下方粉紅色列切換版本（或按 ← →），上方切換情境。目前的做法：整句紅字放在字幕位置，按鈕在左下角。</p>
+  <div class="scenarios" id="scenarios"></div>
+  <div class="video" id="video">
+    <div class="captions" id="captions">
+      <p class="orig">김치 콩나물 너무 맛이 없어.</p>
+      <p class="tr">泡菜豆芽菜一點都不好吃。</p>
+    </div>
+    <div id="status"></div>
+  </div>
+  <div class="notes" id="notes"></div>
+  <div class="state" id="state"></div>
+</div>
+
+<div class="switcher" role="toolbar" aria-label="Prototype variant">
+  <button id="prev" aria-label="Previous variant">←</button>
+  <span id="label"></span>
+  <button id="next" aria-label="Next variant">→</button>
+</div>
+
+<script>
+// Each scenario is one kind of status the overlay shows today, rewritten as a
+// short title, one line of explanation, and at most two actions.
+const SCENARIOS = {
+  rate: {
+    name: '限流（有建議動作）', tone: 'error', glyph: '!',
+    title: 'Gemini 暫時忙碌中',
+    body: '請求太頻繁被限流，約 1 分鐘後會自動恢復。',
+    short: 'Gemini 限流中',
+    actions: [{ label: '改用 Groq Whisper', primary: true }, { label: '等它恢復' }],
+    current: 'Gemini 請求太頻繁，暫時被限流。建議：稍等一分鐘會自動恢復，或改用其他語音辨識服務。',
+    sticky: true,
+  },
+  hold: {
+    name: '讀取等待', tone: 'wait', glyph: '',
+    title: '讀取音訊中…',
+    body: '影片先暫停，等下一段字幕準備好就繼續播放。',
+    short: '讀取音訊中…',
+    actions: [],
+    current: '讀取音訊中…',
+    dimCaptions: true,
+  },
+  fallback: {
+    name: '短暫提示（自動消失）', tone: 'info', glyph: 'i',
+    title: '這段改用 Chrome 翻譯',
+    body: 'Groq（Qwen）暫時無法翻譯，下一段會再試。',
+    short: '改用 Chrome 翻譯',
+    actions: [],
+    current: 'Groq（Qwen）暫時無法翻譯，這段改用 Chrome 內建翻譯',
+    transient: true,
+  },
+  site: {
+    name: '需要使用者動作', tone: 'action', glyph: '→',
+    title: '這個網站需要先允許',
+    body: '允許後頁面會重新整理，接著自動開始預讀。',
+    short: '需要允許網站',
+    actions: [{ label: '允許這個網站', primary: true }, { label: '改用即時模式' }],
+    current: '這個網站需要先允許才能預讀',
+    sticky: true,
+  },
+};
+
+const VARIANTS = {
+  A: { name: '角落通知卡', render: renderA,
+    notes: '訊息移到影片右上角的通知卡，字幕位置留給字幕。標題＋一行說明＋按鈕集中在卡片裡；短暫提示有倒數條，自動消失。缺點：離字幕遠，視線要移開；全螢幕時角落可能和播放器的按鈕重疊。' },
+  B: { name: '字幕上方小標籤', render: renderB,
+    notes: '字幕上方只顯示一個小標籤（圖示＋幾個字），不擋畫面；點開才看到說明和按鈕。需要動作的狀況（限流、允許網站）預設展開。缺點：多一次點擊；說明藏起來，第一次看到的人可能不知道可以點。' },
+  C: { name: '取代字幕的狀態卡', render: renderC,
+    notes: '出狀況時，字幕位置換成一張有色條的卡片：左邊標題與說明、右邊按鈕，一眼看到「發生什麼、我能做什麼」。最接近現在的位置，但排版清楚、按鈕就在旁邊。缺點：卡片在時看不到字幕（讀取等待時本來就沒有新字幕，問題不大）。' },
+  D: { name: '工具列狀態燈', render: renderD,
+    notes: '字幕工具列上加一顆狀態燈（灰＝讀取、藍＝提示、黃＝要你動作、紅＝錯誤），點燈才打開白色面板。最不干擾觀看，適合常看的人。缺點：最不顯眼，需要動作的狀況容易被忽略，所以紅、黃燈會自動打開面板一次。' },
+};
+
+const params = new URLSearchParams(location.search);
+let variant = VARIANTS[params.get('variant')] ? params.get('variant') : 'A';
+let scenario = SCENARIOS[params.get('scenario')] ? params.get('scenario') : 'rate';
+let expanded = null; // B and D: whether details are open (null = default)
+let lastClick = '—';
+
+function actionsHtml(s) {
+  return s.actions.map((a, i) =>
+    `<button class="btn ${a.primary ? 'primary' : 'ghost'}" data-action="${i}">${a.label}</button>`).join('');
+}
+function iconHtml(s) { return `<span class="icon">${s.glyph}</span>`; }
+
+function renderA(s) {
+  return `<div class="a-toast tone-${s.tone}" role="status">
+    ${iconHtml(s)}<div class="title">${s.title}</div>
+    <button class="close" aria-label="關閉">×</button>
+    <div class="body">${s.body}</div>
+    ${s.actions.length ? `<div class="actions">${actionsHtml(s)}</div>` : ''}
+    ${s.transient ? '<div class="timer"><i></i></div>' : ''}
+  </div>`;
+}
+function renderB(s) {
+  const open = expanded ?? Boolean(s.sticky);
+  return `<div class="b-wrap">
+    ${open ? `<div class="b-pop" role="dialog"><strong style="color:#f9fafb">${s.title}</strong><br>${s.body}
+      ${s.actions.length ? `<div class="actions">${actionsHtml(s)}</div>` : ''}</div>` : ''}
+    <button class="b-chip tone-${s.tone}" data-toggle aria-expanded="${open}">${iconHtml(s)}${s.short}<span class="more">${open ? '收起' : '詳情'}</span></button>
+  </div>`;
+}
+function renderC(s) {
+  return `<div class="c-card tone-${s.tone}" role="status">
+    ${iconHtml(s)}
+    <div class="text"><div class="title">${s.title}</div><div class="body">${s.body}</div></div>
+    ${s.actions.length ? `<div class="actions">${actionsHtml(s)}</div>` : ''}
+  </div>`;
+}
+function renderD(s) {
+  const open = expanded ?? (s.tone === 'error' || s.tone === 'action');
+  return `<div class="d-bar">
+      <span class="tool">A−</span><span class="tool">A+</span><span class="tool">◐</span>
+      <span class="d-light tone-${s.tone}" data-toggle role="button" aria-expanded="${open}"><span class="dot"></span>${s.short}</span>
+    </div>
+    ${open ? `<div class="d-panel" role="dialog"><div class="title">${s.title}</div>${s.body}
+      ${s.actions.length ? `<div class="actions">${actionsHtml(s)}</div>` : ''}</div>` : ''}`;
+}
+
+function render() {
+  const s = SCENARIOS[scenario];
+  const v = VARIANTS[variant];
+  document.getElementById('status').innerHTML = v.render(s);
+  // C replaces the captions; the others keep them (dimmed while held).
+  const captions = document.getElementById('captions');
+  captions.style.visibility = variant === 'C' ? 'hidden' : 'visible';
+  captions.classList.toggle('dim', Boolean(s.dimCaptions));
+  document.getElementById('label').textContent = `${variant}（${v.name}）`;
+  document.getElementById('notes').textContent = v.notes;
+  document.getElementById('scenarios').innerHTML = Object.entries(SCENARIOS).map(([key, value]) =>
+    `<button data-scenario="${key}" aria-pressed="${key === scenario}">${value.name}</button>`).join('');
+  document.getElementById('state').textContent = JSON.stringify({
+    variant, variantName: v.name, scenario, tone: s.tone,
+    detailsOpen: variant === 'B' ? (expanded ?? Boolean(s.sticky)) : variant === 'D' ? (expanded ?? (s.tone === 'error' || s.tone === 'action')) : 'n/a',
+    lastClick, todayText: s.current,
+  }, null, 2);
+  const url = new URL(location.href);
+  url.searchParams.set('variant', variant);
+  url.searchParams.set('scenario', scenario);
+  history.replaceState(null, '', url);
+}
+
+const keys = Object.keys(VARIANTS);
+function step(delta) {
+  variant = keys[(keys.indexOf(variant) + delta + keys.length) % keys.length];
+  expanded = null;
+  render();
+}
+document.getElementById('prev').onclick = () => step(-1);
+document.getElementById('next').onclick = () => step(1);
+addEventListener('keydown', (event) => {
+  if (event.target.closest('input, textarea, [contenteditable]')) return;
+  if (event.key === 'ArrowLeft') step(-1);
+  if (event.key === 'ArrowRight') step(1);
+});
+document.addEventListener('click', (event) => {
+  const scenarioButton = event.target.closest('[data-scenario]');
+  if (scenarioButton) { scenario = scenarioButton.dataset.scenario; expanded = null; lastClick = '—'; render(); return; }
+  const toggle = event.target.closest('[data-toggle]');
+  if (toggle) { expanded = toggle.getAttribute('aria-expanded') !== 'true'; render(); return; }
+  const action = event.target.closest('[data-action]');
+  if (action) { lastClick = action.textContent; render(); return; }
+  if (event.target.closest('.close')) { lastClick = '關閉'; document.getElementById('status').innerHTML = ''; }
+});
+render();
+</script>
+</body>
+</html>
