@@ -36,6 +36,8 @@ const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
   read_ahead_page_timeout: 'errorReadAheadPageTimeout',
   read_ahead_web_translation_failed: 'errorReadAheadWebTranslationFailed',
   read_ahead_translating: 'errorReadAheadTranslating',
+  read_ahead_translator_fallback: 'noticeReadAheadTranslatorFallback',
+  read_ahead_translator_quota_fallback: 'noticeReadAheadTranslatorQuotaFallback',
   read_ahead_translator_unsupported: 'errorReadAheadTranslatorUnsupported',
   read_ahead_unsupported: 'errorReadAheadUnsupported',
 };

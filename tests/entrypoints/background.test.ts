@@ -20,6 +20,7 @@ const settings: AppSettings = {
   wordHighlight: true,
   maxLineWidth: 90,
   readAheadRecognizer: 'gemini',
+  readAheadTranslator: 'chrome',
   originalFontSize: 24,
   originalTextColor: '#ffffff',
   transcriber: 'gemini',
@@ -478,6 +479,76 @@ describe('background offscreen document lifecycle', () => {
       await expect(dispatchFrom(switchMessage, { ...fromTab, tab: { id: 43 } as chrome.tabs.Tab }))
         .resolves.toEqual({ ok: true, switched: false });
       expect(actionOpenPopup).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('translating a chunk with Groq (Qwen) for the page', () => {
+    const qwen = {
+      ...settings,
+      groqApiKey: 'gsk-viewer',
+      readAheadRecognizer: 'groq',
+      readAheadTranslator: 'groq',
+      transcriber: 'gemini-read-ahead',
+    } as const;
+    const fromTab = { frameId: 0, id: 'test', tab: { id: 42 } as chrome.tabs.Tab };
+
+    async function startedSession(stored: Partial<AppSettings>): Promise<string> {
+      localStorageData.settings = { ...stored };
+      await dispatch({ target: 'background', type: 'SESSION_START', payload: { settings: stored as AppSettings, tabId: 42 } });
+      const start = tabsSendMessage.mock.calls
+        .map(([, message]) => message as { payload?: { sessionId: string }; type?: string })
+        .filter((message) => message.type === 'READ_AHEAD_START')
+        .at(-1)!;
+      return start.payload!.sessionId;
+    }
+
+    const translate = (sessionId: string): ExtensionMessage => ({
+      target: 'background',
+      type: 'READ_AHEAD_GROQ_TRANSLATE',
+      payload: {
+        context: [{ original: 'Hi.', translation: '嗨。' }],
+        sessionId,
+        sourceLanguage: 'en',
+        targetLanguage: 'zh-Hant',
+        texts: ['Hello.'],
+        timeoutMs: 4_000,
+      },
+    });
+
+    it("calls Groq with the viewer's key and answers the translations", async () => {
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+        choices: [{ message: { content: '["你好。"]' } }],
+      })));
+      vi.stubGlobal('fetch', fetchMock);
+      const sessionId = await startedSession(qwen);
+
+      await expect(dispatchFrom(translate(sessionId), fromTab)).resolves.toEqual({ ok: true, translations: ['你好。'] });
+
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(url).toBe('https://api.groq.com/openai/v1/chat/completions');
+      expect(init!.headers).toMatchObject({ authorization: 'Bearer gsk-viewer' });
+      expect(String(init!.body)).toContain('嗨。');
+    });
+
+    it('answers a coded failure the page can fall back on', async () => {
+      vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(new Response(
+        '{"error":{"message":"Rate limit reached ... on requests per day (RPD)"}}',
+        { status: 429 },
+      )));
+      const sessionId = await startedSession(qwen);
+
+      await expect(dispatchFrom(translate(sessionId), fromTab))
+        .resolves.toEqual({ error: 'quota_exceeded', ok: false });
+    });
+
+    it("refuses when the viewer did not choose Groq (Qwen), without calling Groq", async () => {
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+      const sessionId = await startedSession({ ...qwen, readAheadTranslator: 'chrome' });
+
+      await expect(dispatchFrom(translate(sessionId), fromTab))
+        .resolves.toEqual({ error: 'translator_not_chosen', ok: false });
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 

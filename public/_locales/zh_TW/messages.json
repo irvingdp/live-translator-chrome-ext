@@ -759,6 +759,22 @@
     "message": "翻譯服務",
     "description": "Label for the read-ahead translation dropdown."
   },
+  "translatorGroq": {
+    "message": "Groq（Qwen）",
+    "description": "Read-ahead translation option: Groq's Qwen language model, with the viewer's Groq key."
+  },
+  "translatorGroqHint": {
+    "message": "用 Groq 上的 Qwen 語言模型翻譯，會參考前後句，成語照意思翻、用語一致。使用你的 Groq 金鑰，每天約 1,000 個片段（約 4 小時影片）；翻不了的片段改用 Chrome 內建翻譯。",
+    "description": "Popup hint under the translator choice when Groq (Qwen) is chosen."
+  },
+  "noticeReadAheadTranslatorFallback": {
+    "message": "Groq（Qwen）暫時無法翻譯，這段改用 Chrome 內建翻譯",
+    "description": "Caption overlay notice, shown for a few seconds, when a read-ahead chunk Groq (Qwen) could not translate was translated by Chrome's Translator instead."
+  },
+  "noticeReadAheadTranslatorQuotaFallback": {
+    "message": "Groq（Qwen）今天的額度已用完，改用 Chrome 內建翻譯",
+    "description": "Caption overlay notice, shown for a few seconds, when Groq (Qwen) reported its daily quota used up and Chrome's Translator translates instead."
+  },
   "translatorChrome": {
     "message": "Chrome 內建翻譯",
     "description": "Read-ahead translation option: Chrome's on-device Translator."
@@ -770,6 +786,10 @@
   "needGroqKeyField": {
     "message": "請輸入 Groq API Key",
     "description": "Field-level validation message for the Groq key."
+  },
+  "groqTranslatorPermissionDenied": {
+    "message": "Groq（Qwen）需要連線到 api.groq.com 的權限。",
+    "description": "Popup message when the user declines the Groq host permission while choosing Groq (Qwen) as the translator."
   },
   "groqPermissionDenied": {
     "message": "Groq Whisper 需要連線到 api.groq.com 的權限。",

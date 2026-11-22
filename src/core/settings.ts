@@ -59,6 +59,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // Without WebGPU; where the computer has it, the popup starts a viewer who
   // never chose on Local Whisper instead (initialRecognizer).
   readAheadRecognizer: 'groq',
+  // With a Whisper recognizer: Chrome's built-in Translator, or Groq (Qwen)
+  // when the viewer chooses it (issue #29).
+  readAheadTranslator: 'chrome',
   transcriber: 'gemini',
   translationFontSize: 16,
   translationTextColor: '#fde68a',
@@ -78,6 +81,19 @@ export type TranscriberId = (typeof TRANSCRIBER_IDS)[number];
 // budget); a stored 'cloudflare' falls back to the default.
 export const READ_AHEAD_RECOGNIZERS = ['gemini', 'groq', 'local'] as const;
 export type ReadAheadRecognizer = (typeof READ_AHEAD_RECOGNIZERS)[number];
+
+// Who translates a Whisper recognizer's sentences (issue #29): Chrome's
+// built-in Translator, or Groq (Qwen) with the viewer's Groq key. Gemini
+// translates by itself, so with it this choice does not apply.
+export const READ_AHEAD_TRANSLATORS = ['chrome', 'groq'] as const;
+export type ReadAheadTranslator = (typeof READ_AHEAD_TRANSLATORS)[number];
+
+// The translator read-ahead actually uses for the page's translation.
+export function effectiveTranslator(
+  settings: Pick<AppSettings, 'readAheadRecognizer' | 'readAheadTranslator'>,
+): ReadAheadTranslator {
+  return settings.readAheadRecognizer === 'gemini' ? 'chrome' : settings.readAheadTranslator;
+}
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return allowed.includes(value as T) ? (value as T) : fallback;
@@ -157,6 +173,11 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
       READ_AHEAD_RECOGNIZERS,
       DEFAULT_SETTINGS.readAheadRecognizer,
     ),
+    readAheadTranslator: oneOf(
+      raw.readAheadTranslator,
+      READ_AHEAD_TRANSLATORS,
+      DEFAULT_SETTINGS.readAheadTranslator,
+    ),
     transcriber: transcriberValue(raw.transcriber),
     translationFontSize: clamped(
       raw.translationFontSize,
@@ -178,8 +199,11 @@ export function requiredApiKeys(settings: AppSettings): ApiKeyField[] {
   if (settings.transcriber !== 'gemini-read-ahead' || settings.readAheadRecognizer === 'gemini') {
     return ['geminiApiKey'];
   }
-  // Local Whisper needs no key, only its downloaded model.
-  return settings.readAheadRecognizer === 'local' ? [] : ['groqApiKey'];
+  // Local Whisper needs no key, only its downloaded model; Groq (Qwen) as the
+  // translator needs the Groq key whatever the Whisper.
+  return settings.readAheadRecognizer === 'local' && settings.readAheadTranslator !== 'groq'
+    ? []
+    : ['groqApiKey'];
 }
 
 const MISSING_KEY_MESSAGES = {

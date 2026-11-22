@@ -45,6 +45,7 @@ services, with no intermediary server:
 | Read-ahead with Gemini | Audio the page's video player has already loaded, in 10–15 second pieces, a little ahead of what is playing | Google (`generativelanguage.googleapis.com`) |
 | Read-ahead with Groq Whisper | The same audio pieces | Groq (`api.groq.com`) |
 | Read-ahead with Local Whisper | Nothing: the audio pieces are recognized on your computer. Only the model is downloaded once, when you press its download button | The model comes from Hugging Face (`huggingface.co`); nothing is sent to it but the download request |
+| …translated by Groq (Qwen), when you choose it as the translator | The text Groq or Local Whisper recognized (or the uploader's captions when there are none in your language), with the two sentences translated just before it as context | Groq (`api.groq.com`) |
 | …translated by Chrome's built-in translation | The text Groq or Local Whisper recognized, or the uploader's captions when there are none in your language | Nowhere: Chrome translates it on your device |
 | …where Chrome's built-in translation cannot translate | The same text | Google (`translate.googleapis.com`): the web translation behind Google's page translation, used without an account or key |
 
@@ -83,7 +84,7 @@ agreement with them, not by this extension. Please read:
 
 - Google Gemini API — [terms](https://ai.google.dev/gemini-api/terms),
   [Google Privacy Policy](https://policies.google.com/privacy)
-- Groq — [privacy policy](https://groq.com/privacy-policy/) (read-ahead with Groq Whisper)
+- Groq — [privacy policy](https://groq.com/privacy-policy/) (read-ahead with Groq Whisper, or translated by Groq (Qwen))
 - Hugging Face — [privacy policy](https://huggingface.co/privacy) (Local Whisper's model download)
 - Google — [privacy policy](https://policies.google.com/privacy) (read-ahead's web translation fallback)
 
@@ -108,7 +109,7 @@ from the paid tier:
 | `activeTab`, `scripting` | Inject the caption overlay only into the tab where you pressed start. The one script registered ahead of time is read-ahead's audio reader, and only on sites you allowed |
 | `storage` | Save your API keys, caption settings and whether you have rated the extension |
 | `host_permissions` | Limited to Google's Gemini API domain used above |
-| `optional_host_permissions` | `api.groq.com`, asked for only when you choose Groq Whisper, together with the web translation fallback's host (`translate.googleapis.com`). `https://*/*` is declared only as the upper bound for allowing one site at a time for read-ahead: each site is asked for separately when you allow it, never all at once |
+| `optional_host_permissions` | `api.groq.com`, asked for only when you choose Groq Whisper or Groq (Qwen), together with the web translation fallback's host (`translate.googleapis.com`). `https://*/*` is declared only as the upper bound for allowing one site at a time for read-ahead: each site is asked for separately when you allow it, never all at once |
 
 ## Children
 

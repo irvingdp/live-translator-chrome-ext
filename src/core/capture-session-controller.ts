@@ -10,14 +10,17 @@ import type {
 } from '../read-ahead/gemini-chunk-translation';
 import type { RecognizedChunk } from '../read-ahead/groq-transcription';
 import type { ReadAheadStatus } from '../read-ahead/read-ahead-session';
+import type { GroqTranslationRequest } from '../read-ahead/groq-translation';
 import type { WebTranslationRequest } from '../read-ahead/web-translation';
 import { CaptionWindow, type CaptionPair } from './caption-window';
 import type { ExtensionMessage } from './messages';
 import type { OverlayLayout, OverlayPlacement } from './overlay-layout';
 import {
   captionAppearance,
+  effectiveTranslator,
   type CaptionAppearance,
   type ReadAheadRecognizer,
+  type ReadAheadTranslator,
   type TranscriberId,
 } from './settings';
 
@@ -32,6 +35,7 @@ export interface SessionSettings {
   maxLineWidth: number;
   preferCaptionTracks: boolean;
   readAheadRecognizer: ReadAheadRecognizer;
+  readAheadTranslator: ReadAheadTranslator;
   transcriber: TranscriberId;
   wordHighlight: boolean;
   originalFontSize: number;
@@ -70,11 +74,21 @@ export interface ReadAheadStartRequest {
   sessionId: string;
   sourceLanguage?: string;
   targetLanguage: string;
+  // Who translates in the page (issue #29): Chrome's built-in Translator, or
+  // Groq (Qwen) through the background.
+  translator: ReadAheadTranslator;
 }
 
 // 'needs_site_access': a streaming player read-ahead could read once the
 // viewer allows the site (ADR 0009).
-export type ReadAheadStatusCode = Exclude<ReadAheadStatus, undefined> | 'needs_site_access' | 'unsupported';
+// 'translator_fallback' / 'translator_quota_fallback': a passing notice that
+// Chrome's Translator translated a chunk Groq (Qwen) could not (issue #29).
+export type ReadAheadStatusCode =
+  | Exclude<ReadAheadStatus, undefined>
+  | 'needs_site_access'
+  | 'translator_fallback'
+  | 'translator_quota_fallback'
+  | 'unsupported';
 
 export type SessionErrorAction = 'allow_site' | 'switch_to_groq' | 'switch_to_local' | 'use_recognizer';
 
@@ -86,6 +100,8 @@ const READ_AHEAD_STATUS_ERRORS: Partial<Record<ReadAheadStatusCode, string>> = {
   loading: 'read_ahead_loading',
   page_timeout: 'read_ahead_page_timeout',
   translating: 'read_ahead_translating',
+  translator_fallback: 'read_ahead_translator_fallback',
+  translator_quota_fallback: 'read_ahead_translator_quota_fallback',
   translator_unsupported: 'read_ahead_translator_unsupported',
   needs_site_access: 'read_ahead_needs_site_access',
   unsupported: 'read_ahead_unsupported',
@@ -187,6 +203,9 @@ export interface CaptureSessionDependencies {
   // The fallback when the page's built-in Translator cannot translate:
   // Google's web translation (ADR 0006).
   translateOnWeb(request: WebTranslationRequest, timeoutMs: number): Promise<string[]>;
+  // Groq (Qwen), the translator a viewer with a Whisper recognizer may choose
+  // instead of Chrome's built-in Translator (issue #29).
+  translateWithGroq(request: GroqTranslationRequest, timeoutMs: number): Promise<string[]>;
   // Whether this computer can run Local Whisper (WebGPU), so it is offered.
   localWhisperUsable?(): Promise<boolean>;
 }
@@ -511,6 +530,22 @@ export class CaptureSessionController {
     return this.dependencies.translateOnWeb(request, timeoutMs);
   }
 
+  // The page's translation by Groq (Qwen), with the viewer's Groq key; only
+  // for the active read-ahead session's tab, and only when it was chosen.
+  async translateReadAheadWithGroq(
+    sessionId: string,
+    tabId: number,
+    request: Omit<GroqTranslationRequest, 'apiKey'>,
+    timeoutMs: number,
+  ): Promise<string[]> {
+    if (!this.isActiveReadAhead(sessionId, tabId) || !this.settings) throw new Error('inactive_session');
+    if (effectiveTranslator(this.settings) !== 'groq') throw new Error('translator_not_chosen');
+    return this.dependencies.translateWithGroq(
+      { ...request, apiKey: this.settings.groqApiKey },
+      timeoutMs,
+    );
+  }
+
   async translateReadAheadChunk(
     sessionId: string,
     tabId: number,
@@ -725,5 +760,6 @@ function readAheadRequest(
     sessionId,
     ...(source && source !== 'auto' ? { sourceLanguage: source } : {}),
     targetLanguage: settings.geminiTargetLanguage,
+    translator: effectiveTranslator(settings),
   };
 }

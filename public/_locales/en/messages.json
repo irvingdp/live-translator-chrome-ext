@@ -759,6 +759,22 @@
     "message": "Translation service",
     "description": "Label for the read-ahead translation dropdown."
   },
+  "translatorGroq": {
+    "message": "Groq (Qwen)",
+    "description": "Read-ahead translation option: Groq's Qwen language model, with the viewer's Groq key."
+  },
+  "translatorGroqHint": {
+    "message": "Translates with the Qwen language model on Groq, reading the sentences around each one: idioms by meaning, consistent terms. Uses your Groq key, about 1,000 chunks (about 4 hours of video) a day; a chunk it cannot translate uses Chrome's built-in translation.",
+    "description": "Popup hint under the translator choice when Groq (Qwen) is chosen."
+  },
+  "noticeReadAheadTranslatorFallback": {
+    "message": "Groq (Qwen) could not translate this part; using Chrome's built-in translation",
+    "description": "Caption overlay notice, shown for a few seconds, when a read-ahead chunk Groq (Qwen) could not translate was translated by Chrome's Translator instead."
+  },
+  "noticeReadAheadTranslatorQuotaFallback": {
+    "message": "Groq (Qwen)'s quota for today is used up; using Chrome's built-in translation",
+    "description": "Caption overlay notice, shown for a few seconds, when Groq (Qwen) reported its daily quota used up and Chrome's Translator translates instead."
+  },
   "translatorChrome": {
     "message": "Chrome's built-in translation",
     "description": "Read-ahead translation option: Chrome's on-device Translator."
@@ -770,6 +786,10 @@
   "needGroqKeyField": {
     "message": "Enter a Groq API key",
     "description": "Field-level validation message for the Groq key."
+  },
+  "groqTranslatorPermissionDenied": {
+    "message": "Groq (Qwen) needs permission to reach api.groq.com.",
+    "description": "Popup message when the user declines the Groq host permission while choosing Groq (Qwen) as the translator."
   },
   "groqPermissionDenied": {
     "message": "Groq Whisper needs permission to reach api.groq.com.",
