@@ -775,6 +775,87 @@
     "message": "Groq (Qwen)'s quota for today is used up; using Chrome's built-in translation",
     "description": "Caption overlay notice, shown for a few seconds, when Groq (Qwen) reported its daily quota used up and Chrome's Translator translates instead."
   },
+  "statusLabelDisconnected": {
+    "message": "Gemini disconnected",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelTranslationFailed": {
+    "message": "Translation failed",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelSiteAccess": {
+    "message": "Allow this site",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelSkipped": {
+    "message": "Part skipped (too slow)",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelChromeTranslation": {
+    "message": "Using Chrome translation",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelUnsupported": {
+    "message": "Read-ahead unavailable",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelError": {
+    "message": "Something went wrong",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelInvalidCredentials": {
+    "message": "$1 key rejected",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLabelInvalidResponse": {
+    "message": "$1 reply unreadable",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLabelNetworkError": {
+    "message": "Cannot reach $1",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLabelUnavailable": {
+    "message": "$1 unavailable",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLabelQuota": {
+    "message": "$1 quota used up",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLabelRateLimited": {
+    "message": "$1 rate-limited",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLabelTimeout": {
+    "message": "$1 too slow",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLightHint": {
+    "message": "Click for details",
+    "description": "Tooltip on the caption overlay's status light."
+  },
   "translatorChrome": {
     "message": "Chrome's built-in translation",
     "description": "Read-ahead translation option: Chrome's on-device Translator."
