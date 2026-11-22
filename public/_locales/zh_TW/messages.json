@@ -775,6 +775,87 @@
     "message": "Groq（Qwen）今天的額度已用完，改用 Chrome 內建翻譯",
     "description": "Caption overlay notice, shown for a few seconds, when Groq (Qwen) reported its daily quota used up and Chrome's Translator translates instead."
   },
+  "statusLabelDisconnected": {
+    "message": "Gemini 連線中斷",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelTranslationFailed": {
+    "message": "翻譯失敗",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelSiteAccess": {
+    "message": "需要允許網站",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelSkipped": {
+    "message": "這段逾時略過",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelChromeTranslation": {
+    "message": "改用 Chrome 翻譯",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelUnsupported": {
+    "message": "無法預讀",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelError": {
+    "message": "發生錯誤",
+    "description": "Short label on the caption overlay's status light."
+  },
+  "statusLabelInvalidCredentials": {
+    "message": "$1 金鑰無效",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLabelInvalidResponse": {
+    "message": "$1 回覆異常",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLabelNetworkError": {
+    "message": "連不上 $1",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLabelUnavailable": {
+    "message": "$1 暫時無法使用",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLabelQuota": {
+    "message": "$1 額度用完",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLabelRateLimited": {
+    "message": "$1 限流中",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLabelTimeout": {
+    "message": "$1 回應太慢",
+    "description": "Short label on the caption overlay's status light; $1 is the service name.",
+    "placeholders": {
+      "service": { "content": "$1", "example": "Groq Whisper" }
+    }
+  },
+  "statusLightHint": {
+    "message": "點一下看說明",
+    "description": "Tooltip on the caption overlay's status light."
+  },
   "translatorChrome": {
     "message": "Chrome 內建翻譯",
     "description": "Read-ahead translation option: Chrome's on-device Translator."
