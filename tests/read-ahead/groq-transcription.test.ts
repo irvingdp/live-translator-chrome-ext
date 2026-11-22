@@ -29,6 +29,12 @@ describe('sentencesFromWords', () => {
     ]);
   });
 
+  it('keeps the spaces between Korean words', () => {
+    // As Whisper returned a Korean variety show (2026-11-22).
+    const [sentence] = sentencesFromWords(words(['어우', 65.28, 65.6], ['너무', 65.6, 65.9], ['못', 65.9, 66.1], ['끓였다.', 66.1, 66.6]));
+    expect(sentence!.original).toBe('어우 너무 못 끓였다.');
+  });
+
   it('keeps each word with its time, for word highlight', () => {
     const [sentence] = sentencesFromWords(words(['  When', 5.24, 6.14], ['grades.', 7.9, 8.48]));
     expect(sentence!.words).toEqual([
