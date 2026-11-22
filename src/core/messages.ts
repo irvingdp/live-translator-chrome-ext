@@ -116,6 +116,19 @@ export type ExtensionMessage =
         timeoutMs: number;
       };
     }
+  // Groq (Qwen) translating a chunk's sentences for the page (issue #29).
+  | {
+      target: 'background';
+      type: 'READ_AHEAD_GROQ_TRANSLATE';
+      payload: {
+        context?: Array<{ original: string; translation: string }>;
+        sessionId: string;
+        sourceLanguage?: string;
+        targetLanguage: string;
+        texts: string[];
+        timeoutMs: number;
+      };
+    }
   | {
       target: 'background';
       type: 'READ_AHEAD_CUE';

@@ -33,6 +33,7 @@ import {
   withRequestTimeout,
 } from '../src/read-ahead/gemini-chunk-translation';
 import { translateOnWeb } from '../src/read-ahead/web-translation';
+import { translateWithGroq } from '../src/read-ahead/groq-translation';
 import {
   GROQ_ORIGIN,
   transcribeChunk,
@@ -103,13 +104,16 @@ export default defineBackground(() => {
     const recognizer = next.readAheadRecognizer;
     // Gemini needs its key; Groq its key and permission; Local Whisper its
     // downloaded model.
+    const groqReady = async () => next.groqApiKey.trim() !== '' && await chrome.permissions.contains({
+      origins: [GROQ_ORIGIN],
+    }).catch(() => false);
+    // Groq (Qwen) as the translator needs the Groq key and permission too.
     const ready = recognizer === 'local'
-      ? isModelCached(next.localWhisperModel, await cachedModelUrls().catch(() => []))
+      ? isModelCached(next.localWhisperModel, await cachedModelUrls().catch(() => [])) &&
+        (next.readAheadTranslator !== 'groq' || await groqReady())
       : recognizer === 'gemini'
         ? next.geminiApiKey.trim() !== ''
-        : next.groqApiKey.trim() !== '' && await chrome.permissions.contains({
-          origins: [GROQ_ORIGIN],
-        }).catch(() => false);
+        : await groqReady();
     await chrome.storage.local.set({ settings: next });
     if (!ready) {
       await stopSession();
@@ -235,6 +239,7 @@ export default defineBackground(() => {
     translateChunk: (request) => translateChunk(request),
     translateOnWeb: (request, timeoutMs) =>
       withRequestTimeout((signal) => translateOnWeb(request, signal), timeoutMs),
+    translateWithGroq: (request, timeoutMs) => translateWithGroq(request, undefined, timeoutMs),
     // WebGPU is exposed to the service worker too (Chrome 124+).
     localWhisperUsable: async () => {
       const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
@@ -738,6 +743,7 @@ export default defineBackground(() => {
     'READ_AHEAD_CLOCK',
     'READ_AHEAD_TRANSLATE',
     'READ_AHEAD_WEB_TRANSLATE',
+    'READ_AHEAD_GROQ_TRANSLATE',
     'BROWSER_FULLSCREEN_FALLBACK',
     'CLEAR_CAPTIONS',
     'CONTENT_READY',
@@ -891,6 +897,41 @@ export default defineBackground(() => {
               return {
                 error: error instanceof ChunkTranslationError ? error.code
                   : error instanceof Error ? error.message : 'unknown_error',
+                ok: false,
+              };
+            }
+          }
+          case 'READ_AHEAD_GROQ_TRANSLATE': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            const { context, sessionId, sourceLanguage, targetLanguage, texts, timeoutMs } = message.payload;
+            if (!Array.isArray(texts) || texts.some((text) => typeof text !== 'string')) {
+              return { error: 'invalid_request', ok: false };
+            }
+            const pairs = Array.isArray(context)
+              ? context.filter((item) =>
+                typeof item?.original === 'string' && typeof item.translation === 'string')
+              : [];
+            try {
+              const translations = await controller.translateReadAheadWithGroq(
+                sessionId,
+                tabId,
+                {
+                  context: pairs.map(({ original, translation }) => ({ original, translation })),
+                  ...(sourceLanguage ? { sourceLanguage } : {}),
+                  targetLanguage,
+                  texts,
+                },
+                // The page's allowance, never more than one request's.
+                Math.min(CHUNK_REQUEST_TIMEOUT_MS, Math.max(500, Number(timeoutMs) || 0)),
+              );
+              return { ok: true, translations };
+            } catch (error) {
+              const detail = (error as { detail?: unknown } | null)?.detail;
+              return {
+                error: error instanceof ChunkTranslationError ? error.code
+                  : error instanceof Error ? error.message : 'unknown_error',
+                ...(typeof detail === 'string' ? { detail } : {}),
                 ok: false,
               };
             }

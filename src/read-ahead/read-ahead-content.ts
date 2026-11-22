@@ -3,7 +3,11 @@
 // the audio source (buffer tap on YouTube, shadow player for plain video
 // files) and runs a ReadAheadSession; relays cues, statuses and translations
 // through the background.
-import type { ReadAheadStartRequest, TabMessage } from '../core/capture-session-controller';
+import type {
+  ReadAheadStartRequest,
+  ReadAheadStatusCode,
+  TabMessage,
+} from '../core/capture-session-controller';
 import type { ExtensionMessage } from '../core/messages';
 import { findLargestVisibleVideo } from '../content/media-locator';
 import type { ChunkSentence } from './gemini-chunk-translation';
@@ -22,6 +26,8 @@ import {
   type ReadAheadSource,
 } from './read-ahead-session';
 import { ChromeTranslation } from './chrome-translation';
+import { PageTranslation, type PageLanguages, type PageTranslationResult } from './page-translation';
+import type { TranslationContext } from './groq-translation';
 import {
   languageCodeOf,
   pairTranslations,
@@ -49,11 +55,8 @@ const LOG_PREFIX = '[Bilingual Captions][read-ahead]';
 // out); this covers the message round trip on top. Whatever the cause, a
 // chunk that is not back by then fails rather than holding the viewer.
 const PAGE_DEADLINE_MS = CHUNK_REQUEST_TIMEOUT_MS + 1_500;
-// The least time a translation step gets, however late the background was.
-const MIN_PAGE_TRANSLATION_MS = 1_000;
-// Chrome's on-device Translator answers in milliseconds; past this it is
-// stuck, and the web fallback gets the rest of the budget.
-const CHROME_TRANSLATION_MS = 3_000;
+// How long the notice that Groq (Qwen) could not translate stays up.
+const TRANSLATOR_NOTICE_MS = 4_000;
 const TICK_MS = 100;
 // How long the MediaSource tap gets to answer a probe.
 const MSE_PROBE_MS = 1_000;
@@ -92,7 +95,6 @@ interface PlayerDriven {
   tick(): void;
 }
 
-type PageLanguages = { sourceLanguage?: string; targetLanguage: string };
 
 export function installReadAhead(document: Document): void {
   const view = document.defaultView as ReadAheadWindow | null;
@@ -163,37 +165,80 @@ export function installReadAhead(document: Document): void {
     }));
   };
 
-  // Chrome's on-device Translator, or Google's web translation where it cannot
-  // (ADR 0006), within what is left of `budgetMs` since `started`.
-  const translateInPage = async (
-    sentences: ChunkSentence[],
+  // Groq (Qwen), through the background, which holds the Groq key (issue #29).
+  const translateWithGroq = async (
+    texts: string[],
     languages: PageLanguages,
-    started: number,
-    budgetMs: number,
-  ): Promise<ChunkSentence[]> => {
-    const remaining = () =>
-      Math.max(MIN_PAGE_TRANSLATION_MS, budgetMs - (Date.now() - started));
-    try {
-      return await withDeadline(
-        chromeTranslation.translate(sentences, languages),
-        Math.min(CHROME_TRANSLATION_MS, remaining()),
-        'translator_timeout',
-      );
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : '';
-      if (reason !== 'translator_unsupported' && reason !== 'translator_timeout') throw error;
-      // The on-device Translator cannot do it here: Google's web
-      // translation, through the background (ADR 0006).
-      return await translateOnWeb(sentences, languages, remaining());
+    context: TranslationContext[],
+    timeoutMs: number,
+  ): Promise<string[]> => {
+    const sessionId = request?.sessionId;
+    if (!sessionId) throw new Error('inactive_session');
+    const response = await withDeadline(send({
+      target: 'background',
+      type: 'READ_AHEAD_GROQ_TRANSLATE',
+      payload: { context, sessionId, ...languages, texts, timeoutMs },
+    }), timeoutMs + 500, 'timeout') as {
+      detail?: string;
+      error?: string;
+      ok?: boolean;
+      translations?: string[];
+    } | undefined;
+    if (!response?.ok || !Array.isArray(response.translations)) {
+      const code = response?.error ?? 'invalid_response';
+      throw new Error(response?.detail ? `${code}: ${response.detail}` : code);
     }
+    return response.translations;
   };
 
-  const reportStatus = (sessionId: string, status?: ReadAheadStatus | 'needs_site_access' | 'unsupported') =>
+  // The chunk translation chain for one video (ADR 0006, issue #29): Groq
+  // (Qwen) when chosen, Chrome's on-device Translator, Google's web
+  // translation. A fresh one per video, so its context starts empty.
+  const pageTranslationFor = (active: ReadAheadStartRequest) => new PageTranslation({
+    chrome: (sentences, languages) => chromeTranslation.translate(sentences, languages),
+    groq: translateWithGroq,
+    now: () => Date.now(),
+    web: translateOnWeb,
+  }, active.translator);
+
+  // What the page last told the overlay, so a passing notice never covers a
+  // hold or a failure.
+  let shownStatus: string | undefined;
+  let fallbackShown: PageTranslationResult['fallback'];
+  let fallbackNotice: number | undefined;
+  // After a chunk Groq (Qwen) could not translate: a short notice that
+  // Chrome's Translator stood in, once per run of such chunks. Posted after
+  // the session has taken the chunk (and cleared its own status).
+  const noteTranslator = (sessionId: string, result: PageTranslationResult) => {
+    if (!result.fallback) {
+      if (result.translator === 'groq') fallbackShown = undefined;
+      return;
+    }
+    console.warn(LOG_PREFIX, 'Groq (Qwen) did not translate this chunk', JSON.stringify({
+      reason: result.fallbackReason,
+      translator: result.translator,
+    }));
+    if (fallbackShown === result.fallback) return;
+    fallbackShown = result.fallback;
+    const status = result.fallback === 'quota' ? 'translator_quota_fallback' : 'translator_fallback';
+    view.setTimeout(() => {
+      if (shownStatus !== undefined || request?.sessionId !== sessionId) return;
+      reportStatus(sessionId, status);
+      view.clearTimeout(fallbackNotice);
+      fallbackNotice = view.setTimeout(() => {
+        if (shownStatus === status && request?.sessionId === sessionId) reportStatus(sessionId);
+      }, TRANSLATOR_NOTICE_MS);
+    }, 0);
+  };
+
+  const reportStatus = (sessionId: string, status?: ReadAheadStatusCode) => {
+    shownStatus = status;
     void send({
       target: 'background',
       type: 'READ_AHEAD_STATUS',
       payload: { sessionId, ...(status ? { status } : {}) },
     }).catch(() => undefined);
+  };
 
   // Why read-ahead cannot run here at all, or undefined when it may.
   const unsupportedReason = (video: HTMLVideoElement | undefined): string | undefined => {
@@ -374,6 +419,7 @@ export function installReadAhead(document: Document): void {
     };
     // The session's own status, so the notice never hides a hold or failure.
     let sessionStatus: ReadAheadStatus;
+    const pageTranslation = pageTranslationFor(active);
     const session = new CaptionTrackSession({
       main: mainPlayer(video),
       sameLanguage: tracks.sameLanguage,
@@ -388,7 +434,7 @@ export function installReadAhead(document: Document): void {
         : {}),
       async translate(texts) {
         const started = Date.now();
-        const translated = await translateInPage(
+        const translated = await pageTranslation.translate(
           texts.map((original) => ({
             cut: false,
             end: 0,
@@ -408,7 +454,8 @@ export function installReadAhead(document: Document): void {
           });
           throw error;
         });
-        return translated.map((sentence) => sentence.translation);
+        noteTranslator(sessionId, translated);
+        return translated.sentences.map((sentence) => sentence.translation);
       },
     });
     if (tracks.site === 'youtube') setYouTubeCaptionsHidden(true);
@@ -462,6 +509,7 @@ export function installReadAhead(document: Document): void {
         session?.acceptAudio(block));
     }
 
+    const pageTranslation = pageTranslationFor(active);
     session = new ReadAheadSession({
       main: mainPlayer(video),
       showCue: showCue(sessionId),
@@ -486,12 +534,14 @@ export function installReadAhead(document: Document): void {
             throw new Error(response?.error ?? 'translation_failed');
           }
           if (!response.translateInPage) return response.sentences;
-          return await translateInPage(
+          const translated = await pageTranslation.translate(
             response.sentences,
             response.translateInPage,
             started,
             PAGE_DEADLINE_MS,
           );
+          noteTranslator(sessionId, translated);
+          return translated.sentences;
         } catch (error) {
           // Logged so a failing chunk can be diagnosed from the page console.
           console.warn(LOG_PREFIX, 'chunk failed', {
@@ -588,6 +638,9 @@ export function installReadAhead(document: Document): void {
     running = undefined;
     starting = undefined;
     request = undefined;
+    fallbackShown = undefined;
+    if (fallbackNotice !== undefined) view.clearTimeout(fallbackNotice);
+    fallbackNotice = undefined;
     if (watchdog !== undefined) view.clearInterval(watchdog);
     watchdog = undefined;
   };

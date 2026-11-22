@@ -6,6 +6,7 @@ import {
   DEFAULT_SETTINGS,
   migrateStoredSettings,
   normalizeSettings,
+  effectiveTranslator,
   requiredApiKeys,
   validateSettingsForStart,
 } from '../../src/core/settings';
@@ -174,6 +175,31 @@ describe('read-ahead services', () => {
     expect(requiredApiKeys({ ...DEFAULT_SETTINGS, readAheadRecognizer: 'groq' })).toEqual(['geminiApiKey']);
     expect(validateSettingsForStart({ ...readAhead, readAheadRecognizer: 'groq' }))
       .toEqual({ groqApiKey: '請輸入 Groq API Key' });
+  });
+
+  it('asks for the Groq key when Groq (Qwen) translates, even with Local Whisper', () => {
+    const readAhead = { ...DEFAULT_SETTINGS, transcriber: 'gemini-read-ahead' } as const;
+    expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'local' })).toEqual([]);
+    expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'local', readAheadTranslator: 'groq' }))
+      .toEqual(['groqApiKey']);
+    // Gemini translates by itself; the translator choice does not apply.
+    expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'gemini', readAheadTranslator: 'groq' }))
+      .toEqual(['geminiApiKey']);
+  });
+});
+
+describe('readAheadTranslator', () => {
+  it("defaults to Chrome's built-in Translator, also for stored settings without it or with an unknown one", () => {
+    expect(DEFAULT_SETTINGS.readAheadTranslator).toBe('chrome');
+    expect(normalizeSettings({}).readAheadTranslator).toBe('chrome');
+    expect(normalizeSettings({ readAheadTranslator: 'deepl' as never }).readAheadTranslator).toBe('chrome');
+    expect(normalizeSettings({ readAheadTranslator: 'groq' }).readAheadTranslator).toBe('groq');
+  });
+
+  it('applies only with a Whisper recognizer', () => {
+    expect(effectiveTranslator({ readAheadRecognizer: 'local', readAheadTranslator: 'groq' })).toBe('groq');
+    expect(effectiveTranslator({ readAheadRecognizer: 'groq', readAheadTranslator: 'groq' })).toBe('groq');
+    expect(effectiveTranslator({ readAheadRecognizer: 'gemini', readAheadTranslator: 'groq' })).toBe('chrome');
   });
 });
 

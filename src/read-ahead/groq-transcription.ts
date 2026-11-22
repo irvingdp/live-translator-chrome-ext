@@ -161,7 +161,7 @@ export function isWord(value: unknown): value is GroqWord {
     typeof row!.end === 'number';
 }
 
-async function errorForResponse(response: Response): Promise<ChunkTranslationError> {
+export async function groqErrorForResponse(response: Response): Promise<ChunkTranslationError> {
   const { status } = response;
   if (status === 401 || status === 403) return new ChunkTranslationError('invalid_credentials', status);
   if (status === 429) {
@@ -209,7 +209,7 @@ async function requestTranscription(
     if (signal.aborted) throw error;
     throw new ChunkTranslationError('network_error');
   }
-  if (!response.ok) throw await errorForResponse(response);
+  if (!response.ok) throw await groqErrorForResponse(response);
   let body: { language?: unknown; segments?: unknown; words?: unknown };
   try {
     body = await response.json() as typeof body;

@@ -61,7 +61,7 @@ The recognizer that runs a Whisper model on the viewer's own computer, in the br
 _Avoid_: Offline mode, on-device ASR
 
 **Translator** (翻譯):
-The read-ahead service that translates the recognizer's sentences when the recognizer does not: Chrome's built-in Translator, or where it cannot, Google's web translation.
+The read-ahead service that translates the recognizer's sentences when the recognizer does not, chosen by the viewer: Chrome's built-in Translator (the default, no key; where it cannot, Google's web translation), or Groq (Qwen), a language model that reads the neighbouring sentences and needs the viewer's Groq key. A chunk Groq (Qwen) cannot translate falls back to Chrome's built-in Translator; the viewer's choice does not change.
 _Avoid_: Translation provider, MT
 
 **Cue** (定時字幕):

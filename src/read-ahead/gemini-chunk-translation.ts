@@ -72,7 +72,7 @@ const RESPONSE_SCHEMA = {
   },
 } as const;
 
-function languageName(code: string): string {
+export function languageName(code: string): string {
   const option = GEMINI_LANGUAGE_OPTIONS.find((item) => item.code === code);
   return option ? `${option.label} (${code})` : code;
 }

@@ -10,6 +10,7 @@ Chrome 116+ 的 Manifest V3 擴充功能：在影片上顯示原文與譯文兩�
     - **Gemini（含翻譯）**：一把 Gemini API Key
     - **Groq Whisper** 辨識，搭配 **Chrome 內建翻譯**（在本機執行，不需要金鑰；這台電腦或這組語言無法使用時，自動改用 Google 網頁翻譯。這不是官方 API，可能隨時失效）：Gemini 每天 500 次的免費額度用完時可以改用；Gemini 額度用完或無法回應時，字幕上的「改用 Groq Whisper」按鈕會直接切換
     - **本地 Whisper**：在這台電腦用 WebGPU 執行 Whisper，不需要金鑰、沒有額度。模型（large-v3-turbo 566 MB 或 small 325 MB）在 popup 確認大小後下載一次；翻譯同樣交給 Chrome 內建翻譯。沒有 WebGPU 的電腦不能使用（見 [ADR 0008](docs/adr/0008-本地Whisper在offscreen-document執行.md)）
+    - **Groq（Qwen）翻譯**：搭配任一種 Whisper 時，翻譯可以改選 Groq 上的 Qwen 語言模型。它會參考前後句，成語照意思翻、用語一致，品質明顯比 Chrome 內建翻譯好。使用你的 Groq 金鑰（與 Groq Whisper 共用），每天約 1,000 個片段；翻不了的片段自動改用 Chrome 內建翻譯（見 [ADR 0011](docs/adr/0011-預讀翻譯可選用Groq的Qwen.md)）
     - **逐字標示**：用 Groq 或本地 Whisper 辨識時，原文整句先顯示，講者講到哪個字就標示哪個字（已講的正常、正在講的加底色、還沒講的變淡）。浮動字幕和 Side Panel 都有。Gemini 和字幕軌沒有逐字時間，只顯示整句。popup 可以關掉
     - **字幕軌優先**：影片有上傳者提供的字幕時，直接讀字幕，不呼叫語音辨識；也有你的目標語言字幕時，連翻譯也不用。popup 可以關掉「優先使用影片字幕軌」改用語音辨識。YouTube 自動產生的字幕和自動翻譯不算（見 [ADR 0007](docs/adr/0007-預讀優先使用上傳者的字幕軌.md)）
 - YouTube、Netflix、Disney+ 與一般 HTML5 影片的頁內字幕
@@ -128,7 +129,7 @@ npm run dev                          # 本機預覽官網
 
 ## 隱私與費用
 
-Gemini live 把目前分頁的音訊傳送至 Google Gemini。預讀模式在影片有上傳者提供的字幕時只讀字幕，不傳送音訊；沒有字幕時，把播放器已載入的音訊片段傳送至你選的語音辨識服務（Google Gemini 或 Groq），選本地 Whisper 時音訊不離開這台電腦；改用 Groq 或本地 Whisper 時，辨識出的文字由 Chrome 內建翻譯在本機翻譯（字幕軌沒有目標語言時，字幕文字也一樣）；Chrome 內建翻譯無法使用時，改送至 Google 網頁翻譯。使用者需自行提供並負擔所選服務的 API 額度：Gemini Live 按每分鐘 token 計費，語音約 25 tokens/秒，也就是一條連線持續消耗約 1500 input tokens/分鐘，即使沒人說話也一樣。API Key 不會同步到其他裝置，但能存取這個 Chrome profile 的人或程式仍可能讀取本機擴充功能資料。
+Gemini live 把目前分頁的音訊傳送至 Google Gemini。預讀模式在影片有上傳者提供的字幕時只讀字幕，不傳送音訊；沒有字幕時，把播放器已載入的音訊片段傳送至你選的語音辨識服務（Google Gemini 或 Groq），選本地 Whisper 時音訊不離開這台電腦；改用 Groq 或本地 Whisper 時，辨識出的文字由 Chrome 內建翻譯在本機翻譯（字幕軌沒有目標語言時，字幕文字也一樣）；Chrome 內建翻譯無法使用時，改送至 Google 網頁翻譯；翻譯選 Groq（Qwen）時，這些文字連同前兩句改送至 Groq。使用者需自行提供並負擔所選服務的 API 額度：Gemini Live 按每分鐘 token 計費，語音約 25 tokens/秒，也就是一條連線持續消耗約 1500 input tokens/分鐘，即使沒人說話也一樣。API Key 不會同步到其他裝置，但能存取這個 Chrome profile 的人或程式仍可能讀取本機擴充功能資料。
 
 ## 授權
 

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { isWideCharacter, splitIntoSentences } from '../../src/core/sentence-splitter';
+import {
+  isWideCharacter,
+  isWrittenWithoutSpaces,
+  spaceBetween,
+  splitIntoSentences,
+} from '../../src/core/sentence-splitter';
 
 const texts = (text: string) => splitIntoSentences(text).map((span) => span.text);
 
@@ -44,5 +49,17 @@ describe('isWideCharacter', () => {
     expect(isWideCharacter('。')).toBe(true);
     expect(isWideCharacter('한')).toBe(true);
     expect(isWideCharacter('a')).toBe(false);
+  });
+});
+
+describe('spaceBetween', () => {
+  it('puts no space between Chinese or Japanese characters, but keeps one between Korean words', () => {
+    expect(isWrittenWithoutSpaces('中')).toBe(true);
+    expect(isWrittenWithoutSpaces('か')).toBe(true);
+    expect(isWrittenWithoutSpaces('한')).toBe(false);
+    expect(spaceBetween('我們', '研究')).toBe(false);
+    expect(spaceBetween('어우', '너무')).toBe(true);
+    expect(spaceBetween('Hello', '世界')).toBe(true);
+    expect(spaceBetween('', '어우')).toBe(false);
   });
 });

@@ -20,6 +20,7 @@ const settings: SessionSettings = {
   wordHighlight: true,
   maxLineWidth: 90,
   readAheadRecognizer: 'gemini',
+  readAheadTranslator: 'chrome',
   transcriber: 'gemini',
   originalFontSize: 24,
   originalTextColor: '#ffffff',
@@ -40,6 +41,7 @@ function createHarness() {
     translateChunk: vi.fn().mockResolvedValue([]),
     transcribeChunk: vi.fn().mockResolvedValue({ sentences: [] }),
     translateOnWeb: vi.fn().mockResolvedValue([]),
+    translateWithGroq: vi.fn().mockResolvedValue([]),
   };
   return {
     controller: new CaptureSessionController(dependencies),
@@ -492,6 +494,7 @@ describe('CaptureSessionController read-ahead mode', () => {
       preferCaptionTracks: true,
       sessionId: expect.any(String),
       targetLanguage: 'zh-Hant',
+      translator: 'chrome',
     });
     expect(harness.controller.status()).toEqual({ state: 'running', tabId: 42 });
   });
@@ -614,6 +617,39 @@ describe('CaptureSessionController read-ahead mode', () => {
       expect(harness.dependencies.translateOnWeb).toHaveBeenCalledWith(texts, 5_000);
       await expect(harness.controller.translateReadAheadTexts(sessionId, 7, texts, 5_000)).rejects.toThrow();
       await expect(harness.controller.translateReadAheadTexts('other', 42, texts, 5_000)).rejects.toThrow();
+    });
+
+    it("translates with Groq (Qwen) and the viewer's Groq key, only when it was chosen", async () => {
+      const harness = createHarness();
+      const sessionId = await startReadAhead(harness, { ...groq, groqApiKey: 'gsk-test', readAheadTranslator: 'groq' });
+      vi.mocked(harness.dependencies.translateWithGroq).mockResolvedValue(['你好。']);
+      const request = {
+        context: [{ original: 'Hi.', translation: '嗨。' }],
+        sourceLanguage: 'en',
+        targetLanguage: 'zh-Hant',
+        texts: ['Hello.'],
+      };
+
+      await expect(harness.controller.translateReadAheadWithGroq(sessionId, 42, request, 4_000))
+        .resolves.toEqual(['你好。']);
+      expect(harness.dependencies.translateWithGroq).toHaveBeenCalledWith({ ...request, apiKey: 'gsk-test' }, 4_000);
+      await expect(harness.controller.translateReadAheadWithGroq(sessionId, 7, request, 4_000)).rejects.toThrow();
+
+      const chrome = createHarness();
+      const chromeSession = await startReadAhead(chrome, groq);
+      await expect(chrome.controller.translateReadAheadWithGroq(chromeSession, 42, request, 4_000))
+        .rejects.toThrow('translator_not_chosen');
+      expect(chrome.dependencies.translateWithGroq).not.toHaveBeenCalled();
+    });
+
+    it('tells the page which translator to use: Groq (Qwen) only with a Whisper recognizer', async () => {
+      const whisper = createHarness();
+      await startReadAhead(whisper, { ...groq, readAheadTranslator: 'groq' });
+      expect(whisper.dependencies.startReadAhead).toHaveBeenCalledWith(42, expect.objectContaining({ translator: 'groq' }));
+
+      const gemini = createHarness();
+      await startReadAhead(gemini, { readAheadTranslator: 'groq' });
+      expect(gemini.dependencies.startReadAhead).toHaveBeenCalledWith(42, expect.objectContaining({ translator: 'chrome' }));
     });
 
     it('tags a Gemini failure as Gemini', async () => {

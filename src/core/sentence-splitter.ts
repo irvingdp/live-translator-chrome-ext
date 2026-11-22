@@ -93,9 +93,28 @@ export function splitIntoSentences(text: string): SentenceSpan[] {
   return spans;
 }
 
+// Hangul is drawn wide but, unlike Chinese and Japanese, written with spaces
+// between words.
+function isHangul(character: string): boolean {
+  const code = character.codePointAt(0) ?? 0;
+  return (
+    (code >= 0x1100 && code <= 0x11ff) ||
+    (code >= 0x3130 && code <= 0x318f) ||
+    (code >= 0xa960 && code <= 0xa97f) ||
+    (code >= 0xac00 && code <= 0xd7ff)
+  );
+}
+
+// A character of a script written without spaces between words (Chinese,
+// Japanese, their full-width punctuation).
+export function isWrittenWithoutSpaces(character: string): boolean {
+  return isWideCharacter(character) && !isHangul(character);
+}
+
 // Whether a space goes between text so far and the next word: not at the
 // start, and not between two characters of a script written without spaces.
 export function spaceBetween(before: string, next: string): boolean {
   const previous = before.at(-1);
-  return Boolean(previous) && !(isWideCharacter(previous!) && isWideCharacter(next[0] ?? ''));
+  return Boolean(previous) &&
+    !(isWrittenWithoutSpaces(previous!) && isWrittenWithoutSpaces(next[0] ?? ''));
 }

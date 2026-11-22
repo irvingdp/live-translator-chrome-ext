@@ -412,9 +412,48 @@ describe('PopupApp', () => {
       expect(screen.queryByLabelText('Gemini API Key')).not.toBeInTheDocument();
       expect(screen.getByRole('link', { name: /console\.groq\.com/ }))
         .toHaveAttribute('href', 'https://console.groq.com/keys');
-      // Chrome's built-in translation is the only translation with Whisper.
-      expect(screen.getByLabelText('翻譯服務')).toBeDisabled();
-      expect(screen.getByLabelText('翻譯服務')).toHaveValue('chrome');
+      // With Whisper the viewer picks the translator; Chrome's is the default.
+      const translator = screen.getByLabelText('翻譯服務');
+      expect(translator).toBeEnabled();
+      expect(translator).toHaveValue('chrome');
+      expect([...translator.querySelectorAll('option')].map((option) => option.textContent))
+        .toEqual(['Chrome 內建翻譯', 'Groq（Qwen）']);
+    });
+
+    it('asks for the Groq permission and key when Groq (Qwen) translates for Local Whisper', async () => {
+      const api = readAheadApi({ readAheadRecognizer: 'local' });
+      render(<PopupApp api={api} />);
+      expect(screen.queryByLabelText('Groq API Key')).not.toBeInTheDocument();
+
+      fireEvent.change(await screen.findByLabelText('翻譯服務'), { target: { value: 'groq' } });
+
+      await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ readAheadTranslator: 'groq' }),
+      ));
+      expect(api.requestPermission).toHaveBeenCalledWith('groq');
+      expect(screen.getByLabelText('Groq API Key')).toBeInTheDocument();
+      expect(screen.getByText(/用 Groq 上的 Qwen 語言模型翻譯/)).toBeVisible();
+    });
+
+    it("keeps Chrome's built-in translation when the Groq permission is declined", async () => {
+      const api = readAheadApi(
+        { readAheadRecognizer: 'local' },
+        { requestPermission: vi.fn().mockResolvedValue(false) },
+      );
+      render(<PopupApp api={api} />);
+
+      fireEvent.change(await screen.findByLabelText('翻譯服務'), { target: { value: 'groq' } });
+
+      expect(await screen.findByText('Groq（Qwen）需要連線到 api.groq.com 的權限。')).toBeVisible();
+      expect(api.saveSettings).not.toHaveBeenCalled();
+    });
+
+    it('locks the translator to Gemini even when Groq (Qwen) was chosen before', async () => {
+      render(<PopupApp api={readAheadApi({ readAheadTranslator: 'groq' })} />);
+      const translator = await screen.findByLabelText('翻譯服務');
+      expect(translator).toBeDisabled();
+      expect(translator).toHaveValue('gemini');
+      expect(screen.queryByText(/用 Groq 上的 Qwen 語言模型翻譯/)).not.toBeInTheDocument();
     });
 
     it('stays on Gemini when the Groq permission is declined', async () => {
