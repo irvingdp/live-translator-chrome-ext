@@ -1,6 +1,7 @@
 import type { CaptionPair } from '../core/caption-window';
 import { currentWordIndex, wordState } from '../core/word-highlight';
 import { spaceBetween } from '../core/sentence-splitter';
+import { PROVIDER_NAMES, statusPresentation } from './caption-status';
 import { t, type MessageKey } from '../core/i18n';
 import {
   normalizeOverlayLayout,
@@ -44,11 +45,6 @@ const SESSION_ERROR_KEYS: Record<string, MessageKey> = {
 
 // A read-ahead provider's failure ('groq_rate_limited') without a message of
 // its own: the reason's message, naming the service.
-const PROVIDER_NAMES: Record<string, string> = {
-  gemini: 'Gemini',
-  groq: 'Groq Whisper',
-  local: '本地 Whisper',
-};
 const PROVIDER_REASON_KEYS: Record<string, MessageKey> = {
   invalid_credentials: 'errorProviderInvalidCredentials',
   invalid_response: 'errorProviderInvalidResponse',
@@ -68,6 +64,11 @@ export function sessionErrorText(code: string): string {
 }
 
 const HIGHLIGHT_INTERVAL_MS = 80;
+// An error lights up only after lasting this long, and once lit stays at
+// least this long: a rate limit the next chunk clears is never seen, and none
+// just flashes.
+export const ERROR_SHOW_DELAY_MS = 1_500;
+export const ERROR_MIN_VISIBLE_MS = 2_000;
 
 export { currentWordIndex } from '../core/word-highlight';
 
@@ -233,13 +234,66 @@ const OVERLAY_CSS = `
   .pair[data-hidden="true"] { display: none; }
   .original { color: var(--caption-original-color, #fff); font-size: var(--caption-original-size, 16px); font-weight: 650; overflow-wrap: break-word; text-shadow: 0 1px 2px #000; }
   .translation { color: var(--caption-translation-color, #fde68a); font-size: var(--caption-translation-size, 16px); font-weight: 550; margin-top: 3px; overflow-wrap: break-word; text-shadow: 0 1px 2px #000; }
-  .status-message { color: #fca5a5; flex: 0 0 auto; font-size: 16px; font-weight: 600; margin-top: 5px; overflow-wrap: anywhere; pointer-events: none; text-shadow: 0 1px 2px #000; }
-  .original:empty, .translation:empty, .status-message:empty { display: none; }
+  .original:empty, .translation:empty { display: none; }
   .word { border-radius: 3px; transition: opacity 120ms linear; }
   .word[data-state="upcoming"] { opacity: 0.45; }
   .word[data-state="current"] { background: var(--caption-translation-color, #fde68a); color: #111827; text-shadow: none; }
-  .status-action { align-self: flex-start; background: rgba(17, 24, 39, 0.9); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 6px; color: #fff; cursor: pointer; font: 600 14px system-ui, sans-serif; margin-top: 6px; padding: 4px 10px; pointer-events: auto; }
-  .status-action:hover { background: rgba(55, 65, 81, 0.95); }
+  /* The status light inside the caption box, under the captions, and the
+     panel it opens; it takes its room from the captions while shown. */
+  .status-area {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    gap: 6px;
+    margin-top: 6px;
+    pointer-events: none;
+  }
+  .status-area[hidden] { display: none; }
+  .status-light {
+    align-items: center;
+    background: rgba(17, 24, 39, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
+    color: #f3f4f6;
+    cursor: pointer;
+    display: inline-flex;
+    font: 600 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    gap: 7px;
+    max-width: 100%;
+    padding: 4px 10px 4px 8px;
+    pointer-events: auto;
+  }
+  .status-light[data-tone="wait"] { cursor: default; }
+  .status-light:focus-visible { box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.35); outline: 1px solid #5eead4; }
+  .status-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-dot { border-radius: 50%; flex: none; height: 8px; width: 8px; }
+  [data-tone="error"] .status-dot { background: #f87171; box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.3); }
+  [data-tone="action"] .status-dot { background: #fbbf24; box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.3); }
+  [data-tone="info"] .status-dot { background: #60a5fa; }
+  [data-tone="wait"] .status-dot { animation: status-pulse 1.2s ease-in-out infinite; background: #4ade80; }
+  @keyframes status-pulse { 50% { opacity: 0.3; } }
+  @media (prefers-reduced-motion: reduce) { [data-tone="wait"] .status-dot { animation: none; } }
+  .status-panel {
+    background: #f9fafb;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    box-sizing: border-box;
+    color: #111827;
+    font: 13px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 12px 14px;
+    pointer-events: auto;
+    max-width: 420px;
+    text-align: left;
+    width: 100%;
+  }
+  .status-panel[hidden] { display: none; }
+  .status-title { font-weight: 650; margin-bottom: 2px; }
+  .status-message { overflow-wrap: anywhere; }
+  .status-action { background: #111827; border: 0; border-radius: 7px; color: #f9fafb; cursor: pointer; font: 600 13px system-ui, sans-serif; margin-top: 10px; padding: 6px 12px; }
+  .status-action:hover { background: #374151; }
+  .status-action:disabled { cursor: default; opacity: 0.6; }
   .status-action[hidden] { display: none; }
   .caption-toolbar {
     align-items: center;
@@ -388,6 +442,17 @@ export class CaptionOverlay {
   private statusElement?: HTMLElement;
   private statusTextValue = '';
   private statusActionElement?: HTMLButtonElement;
+  private statusAreaElement?: HTMLElement;
+  private statusLightElement?: HTMLButtonElement;
+  private statusLabelElement?: HTMLElement;
+  private statusTitleElement?: HTMLElement;
+  private statusPanelElement?: HTMLElement;
+  private statusCode?: string;
+  private statusPanelOpen = false;
+  private statusShownAt = 0;
+  private pendingStatus?: { action?: SessionErrorAction; code: string };
+  private statusShowTimer?: number;
+  private statusClearTimer?: number;
   private statusAction?: SessionErrorAction;
   private trackElement?: HTMLElement;
   private transitionSuspended = false;
@@ -490,12 +555,21 @@ export class CaptionOverlay {
     this.captionsElement = undefined;
     this.statusElement = undefined;
     this.statusActionElement = undefined;
+    this.statusAreaElement = undefined;
+    this.statusLightElement = undefined;
+    this.statusLabelElement = undefined;
+    this.statusTitleElement = undefined;
+    this.statusPanelElement = undefined;
     this.trackElement = undefined;
     this.viewportElement = undefined;
     this.pairElements.clear();
     this.pairs = [];
     this.statusTextValue = '';
     this.statusAction = undefined;
+    this.statusCode = undefined;
+    this.statusPanelOpen = false;
+    this.cancelStatusShow();
+    this.cancelStatusClear();
   }
 
   suspendForFullscreenTransition(): void {
@@ -650,30 +724,99 @@ export class CaptionOverlay {
 
   setSessionError(code: string, action?: SessionErrorAction): void {
     this.clearWhenPointerLeaves = false;
+    this.cancelStatusClear();
+    const presentation = statusPresentation(code, sessionErrorText(code));
+    // An error lights up only once it has lasted ERROR_SHOW_DELAY_MS: one
+    // rate-limited chunk the next one clears is never seen. Once a status is
+    // shown, a change shows at once.
+    if (presentation.tone === 'error' && !this.statusCode) {
+      this.pendingStatus = { code, ...(action ? { action } : {}) };
+      this.statusShowTimer ??= this.document.defaultView?.setTimeout(() => {
+        this.statusShowTimer = undefined;
+        const pending = this.pendingStatus;
+        this.pendingStatus = undefined;
+        if (pending) this.showStatus(pending.code, pending.action);
+      }, ERROR_SHOW_DELAY_MS);
+      return;
+    }
+    this.cancelStatusShow();
+    this.showStatus(code, action);
+  }
+
+  private showStatus(code: string, action?: SessionErrorAction): void {
     this.statusTextValue = sessionErrorText(code);
-    if (this.statusElement) this.statusElement.textContent = this.statusTextValue;
+    // A new status opens its panel when the viewer has to do something; the
+    // same status again keeps the panel as the viewer left it.
+    if (code !== this.statusCode) {
+      this.statusPanelOpen = statusPresentation(code, this.statusTextValue).urgent;
+      this.statusShownAt = Date.now();
+    }
+    this.statusCode = code;
     this.statusAction = action;
-    this.syncStatusAction();
+    this.syncStatus();
     this.syncNativeCue();
     this.updateVisiblePairs();
   }
 
   clearSessionError(): void {
+    // An error that never lit up just does not.
+    this.cancelStatusShow();
+    if (!this.statusCode) return;
     // A notice offering a button waits while the viewer is reaching for it.
     if (this.statusAction && this.pointerOverCaptions) {
       this.clearWhenPointerLeaves = true;
       return;
     }
+    // An error that lit up stays at least ERROR_MIN_VISIBLE_MS, so it never
+    // just flashes.
+    const tone = statusPresentation(this.statusCode, this.statusTextValue).tone;
+    const left = ERROR_MIN_VISIBLE_MS - (Date.now() - this.statusShownAt);
+    if (tone === 'error' && left > 0) {
+      this.statusClearTimer ??= this.document.defaultView?.setTimeout(() => {
+        this.statusClearTimer = undefined;
+        this.clearSessionError();
+      }, left);
+      return;
+    }
     this.clearWhenPointerLeaves = false;
     this.statusTextValue = '';
-    if (this.statusElement) this.statusElement.textContent = '';
+    this.statusCode = undefined;
+    this.statusPanelOpen = false;
     this.statusAction = undefined;
-    this.syncStatusAction();
+    this.syncStatus();
     this.syncNativeCue();
     this.updateVisiblePairs();
   }
 
-  private syncStatusAction(): void {
+  private cancelStatusShow(): void {
+    this.pendingStatus = undefined;
+    if (this.statusShowTimer !== undefined) this.document.defaultView?.clearTimeout(this.statusShowTimer);
+    this.statusShowTimer = undefined;
+  }
+
+  private cancelStatusClear(): void {
+    if (this.statusClearTimer !== undefined) this.document.defaultView?.clearTimeout(this.statusClearTimer);
+    this.statusClearTimer = undefined;
+  }
+
+  // The light shows the status's colour and short label; its panel the full
+  // message and the action, when there is one.
+  private syncStatus(): void {
+    const area = this.statusAreaElement;
+    const light = this.statusLightElement;
+    if (!area || !light) return;
+    const code = this.statusCode;
+    area.hidden = !code;
+    const presentation = code ? statusPresentation(code, this.statusTextValue) : undefined;
+    const openable = Boolean(presentation && presentation.tone !== 'wait');
+    light.dataset.tone = presentation?.tone ?? '';
+    area.dataset.tone = presentation?.tone ?? '';
+    if (this.statusLabelElement) this.statusLabelElement.textContent = presentation?.label ?? '';
+    light.title = openable ? t('statusLightHint') : '';
+    light.setAttribute('aria-expanded', String(openable && this.statusPanelOpen));
+    if (this.statusPanelElement) this.statusPanelElement.hidden = !(openable && this.statusPanelOpen);
+    if (this.statusTitleElement) this.statusTitleElement.textContent = presentation?.label ?? '';
+    if (this.statusElement) this.statusElement.textContent = this.statusTextValue;
     const button = this.statusActionElement;
     if (!button) return;
     button.hidden = !this.statusAction;
@@ -1194,6 +1337,34 @@ export class CaptionOverlay {
     const track = this.document.createElement('div');
     track.className = 'track';
     viewport.append(track);
+    const statusArea = this.document.createElement('div');
+    statusArea.className = 'status-area';
+    statusArea.hidden = true;
+    const statusLight = this.document.createElement('button');
+    statusLight.className = 'status-light';
+    statusLight.type = 'button';
+    statusLight.setAttribute('aria-live', 'polite');
+    const statusDot = this.document.createElement('span');
+    statusDot.className = 'status-dot';
+    statusDot.setAttribute('aria-hidden', 'true');
+    const statusLabel = this.document.createElement('span');
+    statusLabel.className = 'status-label';
+    statusLight.append(statusDot, statusLabel);
+    statusLight.addEventListener('pointerdown', (event) => event.stopPropagation());
+    statusLight.addEventListener('click', () => {
+      if (!this.statusCode || statusLight.dataset.tone === 'wait') return;
+      this.statusPanelOpen = !this.statusPanelOpen;
+      this.syncStatus();
+      // The panel takes its room from the captions.
+      this.updateVisiblePairs();
+    });
+    const statusPanel = this.document.createElement('div');
+    statusPanel.className = 'status-panel';
+    statusPanel.hidden = true;
+    statusPanel.setAttribute('role', 'dialog');
+    statusPanel.addEventListener('pointerdown', (event) => event.stopPropagation());
+    const statusTitle = this.document.createElement('div');
+    statusTitle.className = 'status-title';
     const status = this.document.createElement('div');
     status.className = 'status-message';
     status.textContent = this.statusTextValue;
@@ -1208,7 +1379,9 @@ export class CaptionOverlay {
         .catch(() => undefined)
         .finally(() => { statusAction.disabled = false; });
     });
-    body.append(viewport, status, statusAction);
+    statusPanel.append(statusTitle, status, statusAction);
+    statusArea.append(statusLight, statusPanel);
+    body.append(viewport, statusArea);
     captions.append(toolbar, body);
     for (const direction of ['nw', 'ne', 'se', 'sw'] as const) {
       const handle = this.document.createElement('span');
@@ -1224,7 +1397,12 @@ export class CaptionOverlay {
     this.captionsElement = captions;
     this.statusElement = status;
     this.statusActionElement = statusAction;
-    this.syncStatusAction();
+    this.statusAreaElement = statusArea;
+    this.statusLightElement = statusLight;
+    this.statusLabelElement = statusLabel;
+    this.statusTitleElement = statusTitle;
+    this.statusPanelElement = statusPanel;
+    this.syncStatus();
     this.trackElement = track;
     this.viewportElement = viewport;
     this.document.addEventListener('pointermove', this.trackPointerProximity, {

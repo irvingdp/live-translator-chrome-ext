@@ -5,6 +5,8 @@ import {
   findLargestVisiblePlayerFrame,
   findLargestVisibleVideo,
   currentWordIndex,
+  ERROR_MIN_VISIBLE_MS,
+  ERROR_SHOW_DELAY_MS,
   sessionErrorText,
 } from '../../src/content/caption-overlay';
 import type { OverlayLayout } from '../../src/core/overlay-layout';
@@ -198,7 +200,10 @@ describe('CaptionOverlay', () => {
     overlay.show(appearance, layout);
     const button = () => shadow()!.querySelector<HTMLButtonElement>('.status-action')!;
 
+    vi.useFakeTimers();
     overlay.setSessionError('read_ahead_failed');
+    vi.advanceTimersByTime(ERROR_SHOW_DELAY_MS);
+    vi.useRealTimers();
     expect(button().hidden).toBe(true);
 
     overlay.setSessionError('gemini_quota_exceeded', 'switch_to_groq');
@@ -219,8 +224,73 @@ describe('CaptionOverlay', () => {
     button().click();
     expect(onSessionAction).toHaveBeenLastCalledWith('switch_to_local');
 
+    vi.useFakeTimers();
     overlay.clearSessionError();
+    vi.advanceTimersByTime(ERROR_MIN_VISIBLE_MS);
+    vi.useRealTimers();
     expect(button().hidden).toBe(true);
+  });
+
+  it('shows a status as a light with a short label, its panel opening by itself only when urgent', () => {
+    vi.useFakeTimers();
+    try {
+      const overlay = new CaptionOverlay(document);
+      overlay.show(appearance, layout);
+      const area = () => shadow()!.querySelector<HTMLElement>('.status-area')!;
+      const light = () => shadow()!.querySelector<HTMLButtonElement>('.status-light')!;
+      const panel = () => shadow()!.querySelector<HTMLElement>('.status-panel')!;
+      expect(area().hidden).toBe(true);
+
+      // A rate limit usually clears with the next chunk: the light only.
+      overlay.setSessionError('gemini_rate_limited', 'switch_to_groq');
+      vi.advanceTimersByTime(ERROR_SHOW_DELAY_MS);
+      expect(area().hidden).toBe(false);
+      expect(light().dataset.tone).toBe('error');
+      expect(light().textContent).toBe('Gemini 限流中');
+      expect(panel().hidden).toBe(true);
+      light().click();
+      expect(panel().hidden).toBe(false);
+      expect(panel().querySelector('.status-message')!.textContent).toMatch(/^Gemini 請求太頻繁/);
+      expect(panel().querySelector('.status-action')!.textContent).toBe('改用 Groq Whisper');
+
+      // A used-up quota needs the viewer: its panel opens by itself.
+      overlay.setSessionError('gemini_quota_exceeded', 'switch_to_groq');
+      expect(light().textContent).toBe('Gemini 額度用完');
+      expect(panel().hidden).toBe(false);
+      // The viewer closes it; the same status again leaves it closed.
+      light().click();
+      expect(panel().hidden).toBe(true);
+      overlay.setSessionError('gemini_quota_exceeded', 'switch_to_groq');
+      expect(panel().hidden).toBe(true);
+
+      vi.advanceTimersByTime(ERROR_MIN_VISIBLE_MS);
+      overlay.clearSessionError();
+      expect(area().hidden).toBe(true);
+      overlay.hide();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a notice to the light until clicked, and a hold to the light only', () => {
+    const overlay = new CaptionOverlay(document);
+    overlay.show(appearance, layout);
+    const light = () => shadow()!.querySelector<HTMLButtonElement>('.status-light')!;
+    const panel = () => shadow()!.querySelector<HTMLElement>('.status-panel')!;
+
+    overlay.setSessionError('read_ahead_translator_fallback');
+    expect(light().dataset.tone).toBe('info');
+    expect(panel().hidden).toBe(true);
+    light().click();
+    expect(panel().hidden).toBe(false);
+
+    overlay.setSessionError('read_ahead_loading');
+    expect(light().dataset.tone).toBe('wait');
+    expect(light().textContent).toBe('讀取音訊中…');
+    expect(panel().hidden).toBe(true);
+    light().click();
+    expect(panel().hidden).toBe(true);
+    overlay.hide();
   });
 
   it('renders bilingual pairs and only visual appearance variables', () => {
@@ -591,15 +661,66 @@ describe('CaptionOverlay', () => {
   });
 
   it('shows and clears a translated session error', () => {
-    const overlay = new CaptionOverlay(document);
-    overlay.show(appearance, layout);
-    overlay.setSessionError('groq_quota_exceeded');
-    expect(shadow()?.querySelector('.status-message')?.textContent).toBe(
-      'Groq 今日額度已用完（每天約 2000 次）。建議：改用本地 Whisper 或「Gemini（含翻譯）」，或明天再用。',
-    );
+    vi.useFakeTimers();
+    try {
+      const overlay = new CaptionOverlay(document);
+      overlay.show(appearance, layout);
+      overlay.setSessionError('groq_quota_exceeded');
+      vi.advanceTimersByTime(ERROR_SHOW_DELAY_MS);
+      expect(shadow()?.querySelector('.status-message')?.textContent).toBe(
+        'Groq 今日額度已用完（每天約 2000 次）。建議：改用本地 Whisper 或「Gemini（含翻譯）」，或明天再用。',
+      );
 
-    overlay.clearSessionError();
-    expect(shadow()?.querySelector('.status-message')?.textContent).toBe('');
+      vi.advanceTimersByTime(ERROR_MIN_VISIBLE_MS);
+      overlay.clearSessionError();
+      expect(shadow()?.querySelector('.status-message')?.textContent).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never shows an error the next chunk clears within the delay', () => {
+    vi.useFakeTimers();
+    try {
+      const overlay = new CaptionOverlay(document);
+      overlay.show(appearance, layout);
+      const area = () => shadow()!.querySelector<HTMLElement>('.status-area')!;
+
+      overlay.setSessionError('gemini_rate_limited', 'switch_to_groq');
+      vi.advanceTimersByTime(ERROR_SHOW_DELAY_MS - 100);
+      expect(area().hidden).toBe(true);
+      overlay.clearSessionError();
+      vi.advanceTimersByTime(5_000);
+      expect(area().hidden).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a lit error at least its minimum time, then clears it', () => {
+    vi.useFakeTimers();
+    try {
+      const overlay = new CaptionOverlay(document);
+      overlay.show(appearance, layout);
+      const area = () => shadow()!.querySelector<HTMLElement>('.status-area')!;
+
+      overlay.setSessionError('gemini_rate_limited');
+      vi.advanceTimersByTime(ERROR_SHOW_DELAY_MS);
+      expect(area().hidden).toBe(false);
+      overlay.clearSessionError();
+      vi.advanceTimersByTime(ERROR_MIN_VISIBLE_MS - 100);
+      expect(area().hidden).toBe(false);
+      vi.advanceTimersByTime(100);
+      expect(area().hidden).toBe(true);
+
+      // A hold is shown at once and goes at once.
+      overlay.setSessionError('read_ahead_loading');
+      expect(area().hidden).toBe(false);
+      overlay.clearSessionError();
+      expect(area().hidden).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('moves into an element fullscreen tree', () => {
