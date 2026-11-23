@@ -42,8 +42,7 @@ services, with no intermediary server:
 | --- | --- | --- |
 | Gemini live translate 3.5 (default) | The tab's audio, as it plays | Google (`generativelanguage.googleapis.com`) |
 | Read-ahead on a video with uploader captions | Nothing: the captions YouTube's player (or the page's video) already loaded are read in the page; no audio is sent | — |
-| Read-ahead with Gemini | Audio the page's video player has already loaded, in 10–15 second pieces, a little ahead of what is playing | Google (`generativelanguage.googleapis.com`) |
-| Read-ahead with Groq Whisper | The same audio pieces | Groq (`api.groq.com`) |
+| Read-ahead with Groq Whisper | Audio the page's video player has already loaded, in 10–15 second pieces, a little ahead of what is playing | Groq (`api.groq.com`) |
 | Read-ahead with Local Whisper | Nothing: the audio pieces are recognized on your computer. Only the model is downloaded once, when you press its download button | The model comes from Hugging Face (`huggingface.co`); nothing is sent to it but the download request |
 | …translated by Groq (Qwen), when you choose it as the translator | The text Groq or Local Whisper recognized (or the uploader's captions when there are none in your language), with the two sentences translated just before it as context | Groq (`api.groq.com`) |
 | …translated by Chrome's built-in translation | The text Groq or Local Whisper recognized, or the uploader's captions when there are none in your language | Nowhere: Chrome translates it on your device |

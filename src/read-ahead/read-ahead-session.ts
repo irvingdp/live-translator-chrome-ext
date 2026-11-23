@@ -93,7 +93,7 @@ export interface DisplayedCue {
 // of audio already read. Shown differently so a long hold says which it is.
 // A failed chunk shows 'failed', or, when the error says why, the reason: which
 // provider failed and how, or that no translator could translate it.
-export const READ_AHEAD_PROVIDERS = ['gemini', 'groq', 'local'] as const;
+export const READ_AHEAD_PROVIDERS = ['groq', 'local'] as const;
 export type ReadAheadProvider = (typeof READ_AHEAD_PROVIDERS)[number];
 // Why a provider's request failed (ChunkTranslationErrorCode).
 export const PROVIDER_FAILURE_REASONS = [
@@ -423,13 +423,23 @@ export class ReadAheadSession {
   }
 
   private recoverStall(time: number): void {
+    // Where the hold waits: the end of the chunks that carry the viewer on,
+    // the viewer's own position when none does. The viewer can be held just
+    // before a hole, still inside the chunk before it.
+    const waitingAt = this.chainEnd(time, true);
+    // Reading moved on past that point (it skipped a hole there): go back
+    // and read it, now that the viewer needs it.
+    if (this.holding && this.cursor > waitingAt + CONTIGUITY_SECONDS) {
+      this.cursor = waitingAt;
+      this.cursorIsHard = true;
+    }
     // Nothing to read at the cursor, or nothing at all where the viewer is
     // held (audio missing there while the cursor moved on past it).
     const cursorStarving = !this.chunkAt(this.cursor, true) &&
       !this.contiguousFrom(this.cursor) &&
       !this.segments.some((segment) =>
         segment.start > this.cursor && segment.start - this.cursor <= SEEK_LOOKBACK_SECONDS + 1);
-    const viewerUncovered = !this.chunkAt(time, true) && !this.contiguousFrom(time);
+    const viewerUncovered = !this.chunkAt(waitingAt, true) && !this.contiguousFrom(waitingAt);
     if (!this.holding || !(cursorStarving || viewerUncovered)) {
       this.starvedSince = undefined;
       return;
@@ -439,8 +449,9 @@ export class ReadAheadSession {
     if (now - this.starvedSince < STALL_MS) return;
     this.starvedSince = now;
     if (viewerUncovered) {
-      // Read again from just before the viewer once the audio comes back.
-      this.cursor = this.rereadPoint(time);
+      // Read again from just before where the hold waits once the audio
+      // comes back.
+      this.cursor = this.rereadPoint(waitingAt);
       this.cursorIsHard = true;
     }
     this.dependencies.source.refill(time);
@@ -482,7 +493,8 @@ export class ReadAheadSession {
         const next = this.segments.find((segment) =>
           segment.start > this.cursor && segment.start - this.cursor <= SEEK_LOOKBACK_SECONDS + 1);
         // Never skip a hole the viewer is in: that audio is needed, and a
-        // refill brings it back.
+        // refill brings it back. A hole further on is skipped; if the viewer
+        // is later held before it, recoverStall brings reading back to it.
         if (!next || (this.cursor <= time && time < next.start)) return;
         this.cursor = next.start;
         this.cursorIsHard = true;

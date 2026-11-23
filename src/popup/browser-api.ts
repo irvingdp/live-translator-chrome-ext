@@ -6,7 +6,6 @@ import type { ExtensionMessage, LocalWhisperDownload } from '../core/messages';
 import {
   DEEPGRAM_REMOVED_NOTICE_KEY,
   DEFAULT_SETTINGS,
-  initialRecognizer,
   normalizeSettings,
   type AppSettings,
 } from '../core/settings';
@@ -135,11 +134,7 @@ export const browserPopupApi: PopupApi = {
   sendFeedback: (payload) => sendFeedback(payload),
   async loadSettings() {
     const stored = (await chrome.storage.local.get('settings')).settings as Partial<AppSettings> | undefined;
-    const settings = normalizeSettings(stored ?? DEFAULT_SETTINGS);
-    return {
-      ...settings,
-      readAheadRecognizer: initialRecognizer(stored, await browserPopupApi.webGpuAvailable()),
-    };
+    return normalizeSettings(stored ?? DEFAULT_SETTINGS);
   },
   async saveSettings(settings) {
     await chrome.storage.local.set({ settings });

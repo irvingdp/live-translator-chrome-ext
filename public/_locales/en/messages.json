@@ -63,6 +63,9 @@
     "message": "Reset",
     "description": "Link that reveals a configured API Key field so it can be replaced."
   },
+  "captionSizeControl": { "message": "Caption size", "description": "Caption toolbar control dragged left or right to set both font sizes." },
+  "captionBackgroundControl": { "message": "Caption background", "description": "Caption toolbar control dragged left or right to set the background opacity." },
+  "captionScrubHint": { "message": "Drag left or right · double-click to reset", "description": "Hint under a caption toolbar drag control." },
   "increaseCaptionFont": { "message": "Increase original and translation font sizes", "description": "Caption toolbar action that increases both font sizes." },
   "decreaseCaptionFont": { "message": "Decrease original and translation font sizes", "description": "Caption toolbar action that decreases both font sizes." },
   "increaseCaptionBackground": { "message": "Increase caption background opacity", "description": "Caption toolbar action that increases background opacity." },
@@ -663,10 +666,6 @@
     "message": "Marks each word of the original as it is said. Only with Groq or Local Whisper recognition.",
     "description": "Popup note under the word highlight switch."
   },
-  "wordHighlightGeminiHint": {
-    "message": "Gemini has no word highlight; choose Groq or Local Whisper for it.",
-    "description": "Popup hint when word highlight is on and the recognizer is Gemini."
-  },
   "preferCaptionTracksLabel": {
     "message": "Prefer the video's caption tracks",
     "description": "Popup switch: use the uploader's caption track instead of speech recognition when there is one (read-ahead)."
@@ -750,10 +749,6 @@
   "captionModeLabel": {
     "message": "Translation mode",
     "description": "Label for the dropdown that picks Gemini live or read-ahead mode."
-  },
-  "recognizerGemini": {
-    "message": "Gemini (translates too)",
-    "description": "Read-ahead speech recognition option: Gemini, which also translates."
   },
   "translatorLabel": {
     "message": "Translation service",

@@ -171,9 +171,8 @@ export function PopupApp({ api }: { api: PopupApi }) {
     return () => { current = false; };
   }, [api, localModel, downloadState]);
 
-  // A Whisper recognizer leaves the translation to a separate service.
-  const usesWhisper = settings?.transcriber === 'gemini-read-ahead' &&
-    settings.readAheadRecognizer !== 'gemini';
+  // Read-ahead leaves the translation to a separate service.
+  const usesWhisper = settings?.transcriber === 'gemini-read-ahead';
   const statusSource = settings?.geminiSourceLanguage;
   const statusTarget = settings?.geminiTargetLanguage;
   useEffect(() => {
@@ -398,8 +397,7 @@ export function PopupApp({ api }: { api: PopupApi }) {
           <option value="gemini-read-ahead">{t('transcriberReadAhead')}</option>
         </select>
 
-        {/* Read-ahead picks recognition and translation separately; Gemini
-            does both in one request, so with it the translator is fixed. */}
+        {/* Read-ahead picks recognition and translation separately. */}
         {isReadAhead && (
           <>
             <label htmlFor="recognizer">{t('transcriberLabel')}</label>
@@ -409,10 +407,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
               value={recognizer}
               onChange={(event) => {
                 const next = event.target.value as ReadAheadRecognizer;
-                if (next === 'gemini') {
-                  update('readAheadRecognizer', next);
-                  return;
-                }
                 // Asked inside the change's user gesture.
                 void prepareChromeTranslation(settings.geminiSourceLanguage, settings.geminiTargetLanguage);
                 void api.requestPermission(next).then((granted) => {
@@ -427,7 +421,6 @@ export function PopupApp({ api }: { api: PopupApi }) {
                 {t('recognizerLocal')}
               </option>
               <option value="groq">Groq Whisper</option>
-              <option value="gemini">{t('recognizerGemini')}</option>
             </select>
             {webGpu === false && (
               <p className="field-hint" role="note">{t('localWhisperNoWebGpu')}</p>
@@ -465,19 +458,14 @@ export function PopupApp({ api }: { api: PopupApi }) {
               label={t('wordHighlightLabel')}
               onChange={(checked) => update('wordHighlight', checked)}
             />
-            {settings.wordHighlight && recognizer === 'gemini' && (
-              <p className="field-hint" role="note">{t('wordHighlightGeminiHint')}</p>
-            )}
-            {/* With a Whisper recognizer the viewer picks the translator
-                (issue #29): Chrome's built-in Translator (where it cannot,
-                Google's web translation does, automatically), or Groq
-                (Qwen). Gemini translates by itself, so with it the
-                translator is fixed. */}
+            {/* The viewer picks the translator (issue #29): Chrome's
+                built-in Translator (where it cannot, Google's web
+                translation does, automatically), or Groq (Qwen). */}
             <label htmlFor="translator">{t('translatorLabel')}</label>
             <select
               id="translator"
-              disabled={running || recognizer === 'gemini'}
-              value={recognizer === 'gemini' ? 'gemini' : settings.readAheadTranslator}
+              disabled={running}
+              value={settings.readAheadTranslator}
               onChange={(event) => {
                 const next = event.target.value as ReadAheadTranslator;
                 if (next === 'chrome') {
@@ -491,21 +479,15 @@ export function PopupApp({ api }: { api: PopupApi }) {
                 });
               }}
             >
-              {recognizer === 'gemini' ? (
-                <option value="gemini">Gemini</option>
-              ) : (
-                <>
-                  <option value="chrome">
-                    {chromeBlocked ? t('translatorWebFallback') : t('translatorChrome')}
-                  </option>
-                  <option value="groq">{t('translatorGroq')}</option>
-                </>
-              )}
+              <option value="chrome">
+                {chromeBlocked ? t('translatorWebFallback') : t('translatorChrome')}
+              </option>
+              <option value="groq">{t('translatorGroq')}</option>
             </select>
-            {recognizer !== 'gemini' && settings.readAheadTranslator === 'groq' && (
+            {settings.readAheadTranslator === 'groq' && (
               <p className="field-hint" role="note">{t('translatorGroqHint')}</p>
             )}
-            {recognizer !== 'gemini' && settings.readAheadTranslator === 'chrome' && chromeBlocked && (
+            {settings.readAheadTranslator === 'chrome' && chromeBlocked && (
               <p className="field-hint" role="note">
                 {t(chromeStatus === 'unsupported'
                   ? 'translatorWebFallbackHintComputer'

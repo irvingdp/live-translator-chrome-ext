@@ -368,13 +368,13 @@ describe('ReadAheadSession', () => {
 
   it('says the quota is used up when that is why a chunk failed', async () => {
     const t = setup();
-    t.translate.mockRejectedValue(new Error('gemini_quota_exceeded'));
+    t.translate.mockRejectedValue(new Error('groq_quota_exceeded'));
     t.session.acceptAudio({ samples: audio([3, 0.5, 1]), start: 0 });
     t.at(0);
     await t.settle();
     expect(t.main.isPaused).toBe(false);
     t.at(1);
-    expect(t.statuses.at(-1)).toBe('gemini_quota_exceeded');
+    expect(t.statuses.at(-1)).toBe('groq_quota_exceeded');
   });
 
   it('names the provider and reason of any failure the error says, for the overlay to explain', async () => {
@@ -511,6 +511,43 @@ describe('ReadAheadSession', () => {
     await t.settle();
     t.at(3);
     expect(t.main.isPaused).toBe(false);
+  });
+
+  it('re-reads a hole the viewer is held just before, still inside the chunk before it', async () => {
+    const t = setup({ autoTranslate: true });
+    t.at(0);
+    t.session.acceptAudio({ samples: audio([2.75]), start: 0 });
+    t.session.acceptAudio({ samples: audio([2.5, 0.5, 4, 0.5, 4, 0.5]), start: 4.75 });
+    await t.settle();
+
+    // 0.05 s before the hole: the chunk before it still covers the viewer,
+    // but not far enough to play on.
+    t.at(2.7);
+    expect(t.main.isPaused).toBe(true);
+    t.clock.now = 3100;
+    t.at(2.7);
+    expect(t.source.refill).toHaveBeenCalledWith(2.7);
+    t.session.acceptAudio({ samples: audio([2]), start: 2.75 });
+    await t.settle();
+    t.at(2.7);
+    expect(t.main.isPaused).toBe(false);
+  });
+
+  it('reads a hole the cursor skipped once its audio arrives, when the viewer is held before it', async () => {
+    const t = setup({ autoTranslate: true });
+    t.at(0);
+    t.session.acceptAudio({ samples: audio([2.75]), start: 0 });
+    t.session.acceptAudio({ samples: audio([2.5, 0.5, 4, 0.5, 4, 0.5]), start: 4.75 });
+    await t.settle();
+    // The hole's audio comes late, after reading moved past it.
+    t.session.acceptAudio({ samples: audio([2]), start: 2.75 });
+    await t.settle();
+
+    t.at(2.7);
+    await t.settle();
+    t.at(2.7);
+    expect(t.main.isPaused).toBe(false);
+    expect(t.source.refill).not.toHaveBeenCalled();
   });
 
   it('dispose resumes a player it was holding', () => {

@@ -10,7 +10,7 @@ status: accepted
 - **提供的模型：** `large-v3-turbo`（預設，566 MB）與 `small`（325 MB）。它們是 `onnx-community/whisper-*_timestamped`，也就是帶有逐字時間戳的匯出版本。
 - **下載：** 觀眾在 popup 按下「下載模型（N MB）」之前，什麼都不會下載。下載在 offscreen document 中進行，所以關閉 popup 不會中斷。它以訊息回報自己的進度與結束，背景再寫入 `chrome.storage.session`。service worker 從不等待它：Chrome 會停止在單一訊息上花超過 5 分鐘的 worker。第一版確實在等，結果卡在 566 MB 中的 394 MB。超過 2 分鐘沒有消息的下載視為已停止，可以重新開始。已完成的檔案會保留在快取中，所以重新開始只會抓缺少的部分。檔案存放在擴充功能的 Cache Storage（`transformers-cache`），popup 可以刪除它們。
 - **開始：** 使用本地 Whisper 的 session 只有在所選模型完整快取後才會開始。預讀開始前，模型會先載入 GPU，讓最初的片段不必等待。
-- **預設語音辨識：** 從未選擇過的觀眾，若電腦有 WebGPU 就預設本地 Whisper，否則為 Groq Whisper。兩種情況都由 Chrome 內建的 Translator 翻譯。這是使用者的決定，目的是讓預讀不依賴 Gemini 每天 500 次的額度。已儲存的選擇絕不更改。1.5.0 以前的設定沒有儲存選擇，所以這些觀眾會得到新的預設值。
+- **預設語音辨識：** ~~從未選擇過的觀眾，若電腦有 WebGPU 就預設本地 Whisper，否則為 Groq Whisper，都由 Chrome 內建的 Translator 翻譯。~~ 2026-11-24 使用者改為：從未選擇過的觀眾一律預設 Groq Whisper 辨識、Groq（Qwen）翻譯（ADR 0011、0012），只需要一把 Groq 金鑰，不必先下載模型。本地 Whisper 與 Chrome 內建翻譯由觀眾自己選。已儲存的選擇絕不更改。
 - **沒有 WebGPU 就沒有本地 Whisper：** 該選項會停用並說明原因。沒有 CPU 備援。
 - **不自動切換。** 片段超過 7 秒時顯示「本地 Whisper 在 7 秒內沒有辨識完」，並建議改用較小的模型或 Groq。字幕上提供「改用 Groq Whisper」。反過來，當 Groq 無法服務（太慢、限流、無法使用或額度用完）時，字幕上提供「改用本地 Whisper」，但前提是電腦有 WebGPU（由 service worker 檢查）。模型已下載時，按鈕會載入模型，並從觀眾所在位置以本地 Whisper 重新開始 session。模型未下載時，按鈕會停止字幕，並打開已切到本地 Whisper、停在下載按鈕的 popup。所以按鈕的順序是 Gemini → Groq → 本地 Whisper。
 

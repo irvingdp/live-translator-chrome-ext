@@ -9,7 +9,7 @@ import {
   type OverlayLayout,
   type OverlayPlacement,
 } from '../core/overlay-layout';
-import { SETTING_RANGES, type CaptionAppearance } from '../core/settings';
+import { DEFAULT_SETTINGS, SETTING_RANGES, type CaptionAppearance } from '../core/settings';
 import type { SessionErrorAction } from '../core/capture-session-controller';
 
 const SESSION_ACTION_KEYS: Record<SessionErrorAction, MessageKey> = {
@@ -75,6 +75,13 @@ export { currentWordIndex } from '../core/word-highlight';
 const VIEWPORT_MARGIN = 8;
 const TITLEBAR_HEIGHT = 32;
 const RESIZE_HANDLE_OFFSET = 10;
+// A scrub across this many pixels covers a control's whole range.
+const SCRUB_DRAG_PX = 220;
+type ScrubControl = 'background' | 'font';
+const SCRUB_RANGES: Record<ScrubControl, { max: number; min: number; step: number }> = {
+  background: { ...SETTING_RANGES.backgroundOpacity, step: 5 },
+  font: { ...SETTING_RANGES.originalFontSize, step: 1 },
+};
 const HOVER_BUFFER = 18;
 const MIN_WIDTH = 280;
 const MIN_HEIGHT = 80;
@@ -345,9 +352,32 @@ const OVERLAY_CSS = `
   .toolbar-button:disabled { color: rgba(255, 255, 255, 0.28); cursor: default; }
   .toolbar-button:disabled:hover { background: transparent; }
   .toolbar-button:focus-visible { box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.35); outline: 1px solid #5eead4; }
-  .appearance-button { padding: 0; width: 28px; }
-  .symbol-appearance-button { gap: 1px; padding: 0 4px; width: auto; }
-  .appearance-symbol { font: 700 13px/1 system-ui, sans-serif; }
+  .captions.scrubbing .caption-toolbar { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  .scrub-control { cursor: ew-resize; gap: 3px; padding: 0 6px; position: relative; touch-action: none; width: auto; }
+  .scrub-control.dragging { background: rgba(255, 255, 255, 0.1); color: #fff; }
+  .scrub-arrows { font: 700 8px/1 system-ui, sans-serif; letter-spacing: -1px; opacity: 0.5; }
+  .scrub-bubble {
+    background: #f8fafc;
+    border-radius: 9px;
+    bottom: calc(100% + 10px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    color: #111827;
+    font: 600 12px/1.3 system-ui, sans-serif;
+    left: 50%;
+    opacity: 0;
+    padding: 8px 10px 9px;
+    pointer-events: none;
+    position: absolute;
+    text-align: left;
+    transform: translateX(-50%);
+    transition: opacity 120ms ease-out;
+    white-space: nowrap;
+  }
+  .scrub-control:hover .scrub-bubble, .scrub-control.dragging .scrub-bubble, .scrub-control:focus-visible .scrub-bubble { opacity: 1; }
+  .scrub-value { color: #0f766e; margin-left: 6px; }
+  .scrub-track { background: #e2e8f0; border-radius: 2px; height: 4px; margin-top: 6px; position: relative; width: 120px; }
+  .scrub-fill { background: #0f766e; border-radius: 2px; bottom: 0; left: 0; position: absolute; top: 0; }
+  .scrub-hint { color: #64748b; display: block; font-weight: 500; margin-top: 5px; }
   .side-panel-button { color: #99f6e4; }
   .toolbar-icon { fill: none; height: 16px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; width: 16px; }
   .resize-handle {
@@ -423,6 +453,10 @@ export interface CaptionOverlayCallbacks {
 export class CaptionOverlay {
   private appearance?: CaptionAppearance;
   private captionsElement?: HTMLElement;
+  // The box as the viewer sized it. A sentence taller than that grows the
+  // box upward for as long as it shows (updateVisiblePairs); this stays the
+  // size to come back to, and the one a drag or resize starts from.
+  private baseRect?: PixelRect;
   private host?: HTMLElement;
   private interaction?: Interaction;
   private layout?: OverlayLayout;
@@ -595,34 +629,46 @@ export class CaptionOverlay {
     style.setProperty('--caption-translation-color', appearance.translationTextColor);
     style.setProperty('--caption-bg-opacity', `${appearance.backgroundOpacity / 100}`);
     this.updateVisiblePairs();
-    this.updateAppearanceButtons();
+    this.updateScrubControls();
   }
 
-  private adjustFontSize(delta: number): void {
-    if (!this.appearance) return;
-    this.changeAppearance({
-      originalFontSize: clamp(
-        this.appearance.originalFontSize + delta,
-        SETTING_RANGES.originalFontSize.min,
-        SETTING_RANGES.originalFontSize.max,
-      ),
+  // The caption size, original and translation together: both move by the
+  // same amount, so a gap the viewer set between them stays.
+  private withFontSize(originalFontSize: number): Partial<CaptionAppearance> {
+    if (!this.appearance) return {};
+    const { min, max } = SETTING_RANGES.originalFontSize;
+    const delta = clamp(Math.round(originalFontSize), min, max) - this.appearance.originalFontSize;
+    return {
+      originalFontSize: this.appearance.originalFontSize + delta,
       translationFontSize: clamp(
         this.appearance.translationFontSize + delta,
         SETTING_RANGES.translationFontSize.min,
         SETTING_RANGES.translationFontSize.max,
       ),
-    });
+    };
   }
 
-  private adjustBackground(delta: number): void {
+  private scrubPatch(control: ScrubControl, value: number): Partial<CaptionAppearance> {
+    return control === 'font'
+      ? this.withFontSize(value)
+      : {
+          backgroundOpacity: clamp(
+            Math.round(value),
+            SETTING_RANGES.backgroundOpacity.min,
+            SETTING_RANGES.backgroundOpacity.max,
+          ),
+        };
+  }
+
+  private scrubValue(control: ScrubControl): number {
+    if (!this.appearance) return 0;
+    return control === 'font' ? this.appearance.originalFontSize : this.appearance.backgroundOpacity;
+  }
+
+  // Shown while dragging, saved once the drag ends (one storage write).
+  private previewAppearance(patch: Partial<CaptionAppearance>): void {
     if (!this.appearance) return;
-    this.changeAppearance({
-      backgroundOpacity: clamp(
-        this.appearance.backgroundOpacity + delta,
-        SETTING_RANGES.backgroundOpacity.min,
-        SETTING_RANGES.backgroundOpacity.max,
-      ),
-    });
+    this.setAppearance({ ...this.appearance, ...patch });
   }
 
   private changeAppearance(patch: Partial<CaptionAppearance>): void {
@@ -632,27 +678,19 @@ export class CaptionOverlay {
     this.callbacks.onAppearanceChanged?.({ ...next });
   }
 
-  private updateAppearanceButtons(): void {
+  private updateScrubControls(): void {
     if (!this.appearance || !this.host?.shadowRoot) return;
-    const atMinimumFont =
-      this.appearance.originalFontSize <= SETTING_RANGES.originalFontSize.min &&
-      this.appearance.translationFontSize <= SETTING_RANGES.translationFontSize.min;
-    const atMaximumFont =
-      this.appearance.originalFontSize >= SETTING_RANGES.originalFontSize.max &&
-      this.appearance.translationFontSize >= SETTING_RANGES.translationFontSize.max;
-    const states: Record<string, boolean> = {
-      'font-decrease': atMinimumFont,
-      'font-increase': atMaximumFont,
-      'background-decrease':
-        this.appearance.backgroundOpacity <= SETTING_RANGES.backgroundOpacity.min,
-      'background-increase':
-        this.appearance.backgroundOpacity >= SETTING_RANGES.backgroundOpacity.max,
-    };
-    for (const [action, disabled] of Object.entries(states)) {
-      const button = this.host.shadowRoot.querySelector<HTMLButtonElement>(
-        `[data-appearance-action="${action}"]`,
-      );
-      if (button) button.disabled = disabled;
+    for (const control of ['font', 'background'] as const) {
+      const element = this.host.shadowRoot.querySelector<HTMLElement>(`[data-scrub="${control}"]`);
+      if (!element) continue;
+      const range = SCRUB_RANGES[control];
+      const value = this.scrubValue(control);
+      const text = control === 'font' ? `${value} px` : `${value}%`;
+      element.querySelector('.scrub-value')!.textContent = text;
+      (element.querySelector('.scrub-fill') as HTMLElement).style.width =
+        `${((value - range.min) / (range.max - range.min)) * 100}%`;
+      element.setAttribute('aria-valuenow', String(value));
+      element.setAttribute('aria-valuetext', text);
     }
   }
 
@@ -745,10 +783,13 @@ export class CaptionOverlay {
 
   private showStatus(code: string, action?: SessionErrorAction): void {
     this.statusTextValue = sessionErrorText(code);
-    // A new status opens its panel when the viewer has to do something; the
-    // same status again keeps the panel as the viewer left it.
+    // A new status opens its panel when the viewer has to do something, or
+    // when it offers another recognizer (the button is the way out, so it
+    // shows without a click); the same status again keeps the panel as the
+    // viewer left it.
     if (code !== this.statusCode) {
-      this.statusPanelOpen = statusPresentation(code, this.statusTextValue).urgent;
+      this.statusPanelOpen = statusPresentation(code, this.statusTextValue).urgent ||
+        action === 'switch_to_groq' || action === 'switch_to_local';
       this.statusShownAt = Date.now();
     }
     this.statusCode = code;
@@ -1155,6 +1196,7 @@ export class CaptionOverlay {
   private applyPixelRect(rect: PixelRect): void {
     const captions = this.captionsElement;
     if (!captions) return;
+    this.baseRect = rect;
     Object.assign(captions.style, {
       height: `${rect.height}px`,
       left: `${rect.left}px`,
@@ -1226,68 +1268,8 @@ export class CaptionOverlay {
     const toolbarActions = this.document.createElement('div');
     toolbarActions.className = 'toolbar-actions';
 
-    const appearanceButton = (
-      action: string,
-      paths: string[],
-      title: MessageKey,
-      activate: () => void,
-      symbol?: string,
-    ) => {
-      const button = this.document.createElement('button');
-      button.className = 'toolbar-button appearance-button';
-      button.dataset.appearanceAction = action;
-      button.type = 'button';
-      button.append(createIcon(this.document, paths));
-      if (symbol) {
-        button.classList.add('symbol-appearance-button');
-        const symbolElement = this.document.createElement('span');
-        symbolElement.className = 'appearance-symbol';
-        symbolElement.textContent = symbol;
-        symbolElement.setAttribute('aria-hidden', 'true');
-        button.append(symbolElement);
-      }
-      button.title = t(title);
-      button.setAttribute('aria-label', t(title));
-      button.addEventListener('pointerdown', (event) => {
-        // Pointer activation must not leave the toolbar in :focus-within;
-        // keyboard users can still Tab to the button and keep it visible.
-        event.preventDefault();
-        event.stopPropagation();
-      });
-      button.addEventListener('click', (event) => {
-        activate();
-        if (event.detail > 0) button.blur();
-      });
-      return button;
-    };
-    const fontIncreaseButton = appearanceButton(
-      'font-increase',
-      ['M5 5h14M12 5v14'],
-      'increaseCaptionFont',
-      () => this.adjustFontSize(1),
-      '+',
-    );
-    const fontDecreaseButton = appearanceButton(
-      'font-decrease',
-      ['M5 5h14M12 5v14'],
-      'decreaseCaptionFont',
-      () => this.adjustFontSize(-1),
-      '−',
-    );
-    const backgroundIncreaseButton = appearanceButton(
-      'background-increase',
-      ['M12 3S6 9.7 6 14a6 6 0 0 0 12 0c0-4.3-6-11-6-11Z'],
-      'increaseCaptionBackground',
-      () => this.adjustBackground(5),
-      '+',
-    );
-    const backgroundDecreaseButton = appearanceButton(
-      'background-decrease',
-      ['M12 3S6 9.7 6 14a6 6 0 0 0 12 0c0-4.3-6-11-6-11Z'],
-      'decreaseCaptionBackground',
-      () => this.adjustBackground(-5),
-      '−',
-    );
+    const fontControl = this.createScrubControl('font');
+    const backgroundControl = this.createScrubControl('background');
 
     const sidePanelButton = this.document.createElement('button');
     sidePanelButton.className = 'toolbar-button side-panel-button';
@@ -1319,10 +1301,8 @@ export class CaptionOverlay {
     });
 
     toolbarActions.append(
-      fontIncreaseButton,
-      fontDecreaseButton,
-      backgroundIncreaseButton,
-      backgroundDecreaseButton,
+      fontControl,
+      backgroundControl,
       clearButton,
       sidePanelButton,
     );
@@ -1500,6 +1480,8 @@ export class CaptionOverlay {
     this.captionsElement?.classList.remove('interacting', 'moving');
     this.interaction = undefined;
     this.pendingPoint = undefined;
+    // Growth waited while the viewer held the box.
+    this.updateVisiblePairs();
     if (this.layout) this.callbacks.onLayoutChanged?.(this.currentLayout());
   }
 
@@ -1518,6 +1500,8 @@ export class CaptionOverlay {
   private updateVisiblePairs(): void {
     const viewport = this.viewportElement;
     if (!viewport) return;
+    // Measured at the size the viewer chose; any growth is decided again.
+    this.restoreBaseHeight();
     const elements = this.pairs.flatMap((pair) => {
       const element = this.pairElements.get(pair.id);
       return element ? [element] : [];
@@ -1526,17 +1510,149 @@ export class CaptionOverlay {
     const available = viewport.clientHeight;
     if (available <= 0) return;
     let used = 0;
+    let newestHeight = 0;
     for (let index = elements.length - 1; index >= 0; index -= 1) {
       const element = elements[index]!;
       const pairHeight = element.offsetHeight;
-      // The newest pair always shows, even taller than the captions box (a
-      // long read-ahead sentence): the box keeps its bottom, the translation,
-      // and clips the top of the original. Only older pairs make way.
+      // The newest pair always shows; only older pairs make way.
       const newest = index === elements.length - 1;
+      if (newest) newestHeight = pairHeight;
       const fits = newest || (pairHeight > 0 && used + pairHeight <= available);
       element.dataset.hidden = fits ? 'false' : 'true';
       if (fits) used += pairHeight;
     }
+    // A sentence taller than the box (a long read-ahead sentence) grows the
+    // box upward, its bottom and the translation staying put, until the
+    // sentence fits or the box reaches the top of the video (or the page);
+    // past that the top of the original is clipped. Not while the viewer is
+    // dragging or resizing it.
+    if (newestHeight > available) this.growBy(newestHeight - available);
+  }
+
+  private restoreBaseHeight(): void {
+    const captions = this.captionsElement;
+    const base = this.baseRect;
+    if (!captions || !base || captions.dataset.grown !== 'true') return;
+    delete captions.dataset.grown;
+    Object.assign(captions.style, { height: `${base.height}px`, top: `${base.top}px` });
+  }
+
+  private growBy(extra: number): void {
+    const captions = this.captionsElement;
+    const base = this.baseRect;
+    if (!captions || !base || this.interaction) return;
+    const grow = Math.min(extra, Math.max(0, base.top - this.highestTop()));
+    if (grow <= 0) return;
+    captions.dataset.grown = 'true';
+    Object.assign(captions.style, {
+      height: `${base.height + grow}px`,
+      top: `${base.top - grow}px`,
+    });
+  }
+
+  // How high the box's top may go: below the title bar's room at the top of
+  // the video it follows, or of the page.
+  private highestTop(): number {
+    const anchor = this.mediaAnchor;
+    if (anchor?.isConnected) {
+      const bounds = anchor.getBoundingClientRect();
+      if (bounds.width > 0 && bounds.height > 0) {
+        return bounds.top + Math.min(TITLEBAR_HEIGHT + RESIZE_HANDLE_OFFSET, bounds.height / 2);
+      }
+    }
+    return Math.max(VIEWPORT_MARGIN, TITLEBAR_HEIGHT + RESIZE_HANDLE_OFFSET);
+  }
+
+  // A toolbar icon dragged left or right to set the caption size or the
+  // background (the caption-appearance prototype's version C): right is
+  // bigger or darker. The wheel and the arrow keys step it; a double-click
+  // goes back to the default.
+  private createScrubControl(control: ScrubControl): HTMLElement {
+    const range = SCRUB_RANGES[control];
+    const label = t(control === 'font' ? 'captionSizeControl' : 'captionBackgroundControl');
+    const element = this.document.createElement('div');
+    element.className = 'toolbar-button scrub-control';
+    element.dataset.scrub = control;
+    element.tabIndex = 0;
+    element.setAttribute('role', 'slider');
+    element.setAttribute('aria-label', label);
+    element.setAttribute('aria-valuemin', String(range.min));
+    element.setAttribute('aria-valuemax', String(range.max));
+    element.append(createIcon(this.document, [control === 'font'
+      ? 'M5 5h14M12 5v14'
+      : 'M12 3S6 9.7 6 14a6 6 0 0 0 12 0c0-4.3-6-11-6-11Z']));
+    const arrows = this.document.createElement('span');
+    arrows.className = 'scrub-arrows';
+    arrows.textContent = '◂▸';
+    arrows.setAttribute('aria-hidden', 'true');
+    const bubble = this.document.createElement('span');
+    bubble.className = 'scrub-bubble';
+    bubble.setAttribute('aria-hidden', 'true');
+    const name = this.document.createElement('span');
+    name.textContent = label;
+    const value = this.document.createElement('span');
+    value.className = 'scrub-value';
+    const track = this.document.createElement('span');
+    track.className = 'scrub-track';
+    const fill = this.document.createElement('span');
+    fill.className = 'scrub-fill';
+    track.append(fill);
+    const hint = this.document.createElement('span');
+    hint.className = 'scrub-hint';
+    hint.textContent = t('captionScrubHint');
+    bubble.append(name, value, track, hint);
+    element.append(arrows, bubble);
+
+    let drag: { pointerId: number; startValue: number; startX: number } | undefined;
+    const save = () => this.changeAppearance({});
+    element.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      // Not a move of the box, and no :focus-within left behind.
+      event.preventDefault();
+      event.stopPropagation();
+      drag = { pointerId: event.pointerId, startValue: this.scrubValue(control), startX: event.clientX };
+      element.setPointerCapture?.(event.pointerId);
+      element.classList.add('dragging');
+      this.captionsElement?.classList.add('scrubbing');
+    });
+    element.addEventListener('pointermove', (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const perUnit = SCRUB_DRAG_PX / (range.max - range.min);
+      this.previewAppearance(this.scrubPatch(control, drag.startValue + (event.clientX - drag.startX) / perUnit));
+    });
+    const end = (event: PointerEvent) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const changed = this.scrubValue(control) !== drag.startValue;
+      drag = undefined;
+      element.releasePointerCapture?.(event.pointerId);
+      element.classList.remove('dragging');
+      this.captionsElement?.classList.remove('scrubbing');
+      if (changed) save();
+    };
+    element.addEventListener('pointerup', end);
+    element.addEventListener('pointercancel', end);
+    const step = (direction: number) => {
+      this.changeAppearance(this.scrubPatch(control, this.scrubValue(control) + direction * range.step));
+    };
+    element.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      if (event.deltaY !== 0) step(event.deltaY < 0 ? 1 : -1);
+    }, { passive: false });
+    element.addEventListener('keydown', (event) => {
+      const direction = { ArrowDown: -1, ArrowLeft: -1, ArrowRight: 1, ArrowUp: 1 }[event.key];
+      if (direction === undefined) return;
+      event.preventDefault();
+      step(direction);
+    });
+    element.addEventListener('dblclick', () => {
+      this.changeAppearance(control === 'font'
+        ? {
+            originalFontSize: DEFAULT_SETTINGS.originalFontSize,
+            translationFontSize: DEFAULT_SETTINGS.translationFontSize,
+          }
+        : { backgroundOpacity: DEFAULT_SETTINGS.backgroundOpacity });
+    });
+    return element;
   }
 
   private createPair(pair: CaptionPair): HTMLElement {

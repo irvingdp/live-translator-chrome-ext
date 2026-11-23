@@ -4,10 +4,7 @@ import type {
   CaptionPairUpdate,
   CaptureStartRequest,
 } from '../audio/offscreen-capture-controller';
-import type {
-  ChunkSentence,
-  ChunkTranslationRequest,
-} from '../read-ahead/gemini-chunk-translation';
+import type { ChunkSentence } from '../read-ahead/gemini-chunk-translation';
 import type { RecognizedChunk } from '../read-ahead/groq-transcription';
 import type { ReadAheadStatus } from '../read-ahead/read-ahead-session';
 import type { GroqTranslationRequest } from '../read-ahead/groq-translation';
@@ -17,7 +14,6 @@ import type { ExtensionMessage } from './messages';
 import type { OverlayLayout, OverlayPlacement } from './overlay-layout';
 import {
   captionAppearance,
-  effectiveTranslator,
   type CaptionAppearance,
   type ReadAheadRecognizer,
   type ReadAheadTranslator,
@@ -116,12 +112,11 @@ function readAheadErrorCode(status: ReadAheadStatusCode): string {
 }
 
 // The next recognizer offered by a button when one cannot serve now (issue
-// #11): Gemini → Groq Whisper → Local Whisper (where this computer can run
-// it), and Local Whisper back to Groq. Only for failures
+// #11): Groq Whisper → Local Whisper (where this computer can run it), and
+// Local Whisper back to Groq. Only for failures
 // another service fixes: not a wrong key, or a reply it could not read.
 const SWITCH_ON_FAILURE = new Set(['provider_unavailable', 'quota_exceeded', 'rate_limited', 'timeout']);
 const NEXT_RECOGNIZER: Partial<Record<string, SessionErrorAction>> = {
-  gemini: 'switch_to_groq',
   groq: 'switch_to_local',
   // A computer too slow for its model can still use Groq.
   local: 'switch_to_groq',
@@ -167,7 +162,7 @@ export function whisperPrompt(sourceLanguage: string | undefined): string | unde
     : undefined;
 }
 
-function providerFailure(provider: 'gemini' | 'groq' | 'local') {
+function providerFailure(provider: 'groq' | 'local') {
   return (error: unknown): never => {
     const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
       ? error.code
@@ -196,9 +191,7 @@ export interface CaptureSessionDependencies {
   // Read-ahead mode: inject its scripts into the tab and start/stop it there.
   startReadAhead(tabId: number, request: ReadAheadStartRequest): Promise<void>;
   stopReadAhead(tabId: number, sessionId: string): Promise<void>;
-  translateChunk(request: ChunkTranslationRequest): Promise<ChunkSentence[]>;
-  // Read-ahead with a Whisper service; the page then translates with
-  // Chrome's built-in Translator.
+  // Read-ahead's recognizer; the page then translates.
   transcribeChunk(request: WhisperRecognition): Promise<RecognizedChunk>;
   // The fallback when the page's built-in Translator cannot translate:
   // Google's web translation (ADR 0006).
@@ -539,7 +532,7 @@ export class CaptureSessionController {
     timeoutMs: number,
   ): Promise<string[]> {
     if (!this.isActiveReadAhead(sessionId, tabId) || !this.settings) throw new Error('inactive_session');
-    if (effectiveTranslator(this.settings) !== 'groq') throw new Error('translator_not_chosen');
+    if (this.settings.readAheadTranslator !== 'groq') throw new Error('translator_not_chosen');
     return this.dependencies.translateWithGroq(
       { ...request, apiKey: this.settings.groqApiKey },
       timeoutMs,
@@ -556,16 +549,6 @@ export class CaptureSessionController {
     }
     const settings = this.settings;
     const { sourceLanguage, targetLanguage } = readAheadRequest(sessionId, settings);
-    if (settings.readAheadRecognizer === 'gemini') {
-      const sentences = await this.dependencies.translateChunk({
-        apiKey: settings.geminiApiKey,
-        audioBase64,
-        sourceLanguage,
-        targetLanguage,
-      }).catch(providerFailure('gemini'));
-      return { sentences };
-    }
-
     const language = sourceLanguage ? { sourceLanguage } : {};
     const prompt = whisperPrompt(sourceLanguage);
     const recognizer = settings.readAheadRecognizer;
@@ -760,6 +743,6 @@ function readAheadRequest(
     sessionId,
     ...(source && source !== 'auto' ? { sourceLanguage: source } : {}),
     targetLanguage: settings.geminiTargetLanguage,
-    translator: effectiveTranslator(settings),
+    translator: settings.readAheadTranslator,
   };
 }

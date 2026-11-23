@@ -74,7 +74,9 @@ describe('PopupApp', () => {
       target: { value: 'gemini-read-ahead' },
     });
 
-    // Read-ahead starts on Groq Whisper (DEFAULT_SETTINGS, no WebGPU).
+    // Read-ahead starts on Groq for both (DEFAULT_SETTINGS): one Groq key.
+    expect(screen.getByLabelText('語音辨識')).toHaveValue('groq');
+    expect(screen.getByLabelText('翻譯服務')).toHaveValue('groq');
     expect(screen.getByLabelText('Groq API Key')).toBeVisible();
     expect(screen.queryByLabelText('Gemini API Key')).not.toBeInTheDocument();
   });
@@ -238,10 +240,10 @@ describe('PopupApp', () => {
     const translation = screen.getByLabelText('譯文字級');
 
     expect(original).toHaveAttribute('min', '12');
-    expect(original).toHaveAttribute('max', '36');
+    expect(original).toHaveAttribute('max', '46');
     expect(original).toHaveValue('16');
     expect(translation).toHaveAttribute('min', '12');
-    expect(translation).toHaveAttribute('max', '36');
+    expect(translation).toHaveAttribute('max', '46');
     expect(translation).toHaveValue('16');
 
     fireEvent.change(original, { target: { value: '34' } });
@@ -316,18 +318,19 @@ describe('PopupApp', () => {
     );
   });
 
-  it('lets read-ahead mode pick a source language, auto-detect by default, with the shared Gemini key', async () => {
+  it('lets read-ahead mode pick a source language, auto-detect by default', async () => {
     const api = createApi({
       loadSettings: vi.fn().mockResolvedValue({
         ...DEFAULT_SETTINGS,
-        readAheadRecognizer: 'gemini',
+        readAheadRecognizer: 'groq',
         transcriber: 'gemini-read-ahead',
       }),
     });
     render(<PopupApp api={api} />);
 
     const source = await screen.findByLabelText('來源語言');
-    expect(screen.getByLabelText('Gemini API Key')).toBeInTheDocument();
+    expect(screen.getByLabelText('Groq API Key')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Gemini API Key')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Deepgram API Key')).not.toBeInTheDocument();
     expect(source).toBeEnabled();
     expect(source).toHaveValue('auto');
@@ -374,23 +377,24 @@ describe('PopupApp', () => {
       createApi({
         loadSettings: vi.fn().mockResolvedValue({
           ...DEFAULT_SETTINGS,
-          readAheadRecognizer: 'gemini',
+          readAheadRecognizer: 'local',
+          readAheadTranslator: 'chrome',
           transcriber: 'gemini-read-ahead',
           ...settings,
         }),
         ...overrides,
       });
 
-    it('shows recognition and translation only in read-ahead mode, Gemini locking the translator', async () => {
+    it('shows recognition and translation only in read-ahead mode, offering no Gemini there', async () => {
       render(<PopupApp api={readAheadApi()} />);
 
       const recognizer = await screen.findByLabelText('語音辨識');
       expect([...recognizer.querySelectorAll('option')].map((option) => option.textContent))
-        .toEqual(['本地 Whisper（在這台電腦執行）', 'Groq Whisper', 'Gemini（含翻譯）']);
+        .toEqual(['本地 Whisper（在這台電腦執行）', 'Groq Whisper']);
       const translator = screen.getByLabelText('翻譯服務');
-      expect(translator).toBeDisabled();
-      expect(translator).toHaveValue('gemini');
-      expect(screen.getByLabelText('Gemini API Key')).toBeInTheDocument();
+      expect(translator).toBeEnabled();
+      expect(translator).toHaveValue('chrome');
+      expect(screen.queryByLabelText('Gemini API Key')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('Groq API Key')).not.toBeInTheDocument();
 
       fireEvent.change(screen.getByLabelText('翻譯模式'), { target: { value: 'gemini' } });
@@ -448,15 +452,7 @@ describe('PopupApp', () => {
       expect(api.saveSettings).not.toHaveBeenCalled();
     });
 
-    it('locks the translator to Gemini even when Groq (Qwen) was chosen before', async () => {
-      render(<PopupApp api={readAheadApi({ readAheadTranslator: 'groq' })} />);
-      const translator = await screen.findByLabelText('翻譯服務');
-      expect(translator).toBeDisabled();
-      expect(translator).toHaveValue('gemini');
-      expect(screen.queryByText(/用 Groq 上的 Qwen 語言模型翻譯/)).not.toBeInTheDocument();
-    });
-
-    it('stays on Gemini when the Groq permission is declined', async () => {
+    it('stays on Local Whisper when the Groq permission is declined', async () => {
       const api = readAheadApi({}, { requestPermission: vi.fn().mockResolvedValue(false) });
       render(<PopupApp api={api} />);
 
@@ -513,15 +509,13 @@ describe('PopupApp', () => {
       expect(ready.prepareChromeTranslator).not.toHaveBeenCalled();
     });
 
-    it('notes that caption tracks come first, and readies Chrome\'s translator for them even with Gemini', async () => {
+    it('notes that caption tracks come first, and readies Chrome\'s translator for them', async () => {
       const api = readAheadApi(
-        { geminiApiKey: 'gm', readAheadRecognizer: 'gemini' },
+        { groqApiKey: 'gq', readAheadRecognizer: 'groq' },
         { chromeTranslatorStatus: vi.fn().mockResolvedValue('downloadable') },
       );
       render(<PopupApp api={api} />);
       expect(await screen.findByText(/影片有上傳者提供的字幕時優先使用/)).toBeVisible();
-      // Gemini times only sentences.
-      expect(screen.getByText('Gemini 不支援逐字標示，改用 Groq 或本地 Whisper 才有。')).toBeVisible();
       fireEvent.click(screen.getByRole('switch', { name: '開始即時字幕' }));
       await waitFor(() => expect(api.prepareChromeTranslator).toHaveBeenCalledWith('en', 'zh-Hant'));
     });
@@ -533,7 +527,6 @@ describe('PopupApp', () => {
       const highlight = screen.getByLabelText('逐字標示');
       expect(captions).toBeChecked();
       expect(highlight).toBeChecked();
-      expect(screen.queryByText(/Gemini 不支援逐字標示/)).not.toBeInTheDocument();
 
       fireEvent.click(highlight);
       await waitFor(() => expect(api.saveSettings).toHaveBeenLastCalledWith(
@@ -601,7 +594,7 @@ describe('PopupApp', () => {
     });
 
     it('cannot choose Local Whisper on a computer without WebGPU, and says why', async () => {
-      render(<PopupApp api={readAheadApi({}, { webGpuAvailable: vi.fn().mockResolvedValue(false) })} />);
+      render(<PopupApp api={readAheadApi({ readAheadRecognizer: 'groq' }, { webGpuAvailable: vi.fn().mockResolvedValue(false) })} />);
       expect(await screen.findByText(/無法使用 WebGPU/)).toBeVisible();
       expect(screen.getByRole('option', { name: '本地 Whisper（在這台電腦執行）' })).toBeDisabled();
     });

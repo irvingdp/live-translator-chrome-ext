@@ -82,14 +82,16 @@ describe('browserPopupApi', () => {
     expect(set).toHaveBeenCalledWith({ ratingPrompt: state });
   });
 
-  it("starts a viewer who never chose a recognizer on Local Whisper with WebGPU, else on Groq, keeping a choice", async () => {
+  it("starts a viewer who never chose a recognizer on Groq Whisper, WebGPU or not, keeping a choice", async () => {
     const load = async (stored: unknown, gpu: boolean) => {
       vi.stubGlobal('chrome', { storage: { local: { get: vi.fn().mockResolvedValue({ settings: stored }) } } });
       vi.stubGlobal('navigator', { gpu: { requestAdapter: vi.fn().mockResolvedValue(gpu ? {} : null) } });
       return (await browserPopupApi.loadSettings()).readAheadRecognizer;
     };
-    await expect(load(undefined, true)).resolves.toBe('local');
+    await expect(load(undefined, true)).resolves.toBe('groq');
     await expect(load({ transcriber: 'gemini' }, false)).resolves.toBe('groq');
-    await expect(load({ readAheadRecognizer: 'gemini' }, true)).resolves.toBe('gemini');
+    await expect(load({ readAheadRecognizer: 'local' }, false)).resolves.toBe('local');
+    // Gemini is no longer a read-ahead recognizer (ADR 0012).
+    await expect(load({ readAheadRecognizer: 'gemini' }, true)).resolves.toBe('groq');
   });
 });

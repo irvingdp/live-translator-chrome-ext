@@ -29,7 +29,6 @@ import {
 import {
   CHUNK_REQUEST_TIMEOUT_MS,
   ChunkTranslationError,
-  translateChunk,
   withRequestTimeout,
 } from '../src/read-ahead/gemini-chunk-translation';
 import { translateOnWeb } from '../src/read-ahead/web-translation';
@@ -102,8 +101,7 @@ export default defineBackground(() => {
     }
     const next = normalizeSettings({ ...settings, ...change });
     const recognizer = next.readAheadRecognizer;
-    // Gemini needs its key; Groq its key and permission; Local Whisper its
-    // downloaded model.
+    // Groq needs its key and permission; Local Whisper its downloaded model.
     const groqReady = async () => next.groqApiKey.trim() !== '' && await chrome.permissions.contains({
       origins: [GROQ_ORIGIN],
     }).catch(() => false);
@@ -111,9 +109,7 @@ export default defineBackground(() => {
     const ready = recognizer === 'local'
       ? isModelCached(next.localWhisperModel, await cachedModelUrls().catch(() => [])) &&
         (next.readAheadTranslator !== 'groq' || await groqReady())
-      : recognizer === 'gemini'
-        ? next.geminiApiKey.trim() !== ''
-        : await groqReady();
+      : await groqReady();
     await chrome.storage.local.set({ settings: next });
     if (!ready) {
       await stopSession();
@@ -236,7 +232,6 @@ export default defineBackground(() => {
         payload: { sessionId },
       });
     },
-    translateChunk: (request) => translateChunk(request),
     translateOnWeb: (request, timeoutMs) =>
       withRequestTimeout((signal) => translateOnWeb(request, signal), timeoutMs),
     translateWithGroq: (request, timeoutMs) => translateWithGroq(request, undefined, timeoutMs),

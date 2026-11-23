@@ -9,7 +9,7 @@ import {
   ERROR_SHOW_DELAY_MS,
   sessionErrorText,
 } from '../../src/content/caption-overlay';
-import type { OverlayLayout } from '../../src/core/overlay-layout';
+import { normalizeOverlayLayout, type OverlayLayout } from '../../src/core/overlay-layout';
 
 function rect(
   width: number,
@@ -135,63 +135,65 @@ describe('findLargestVisiblePlayerFrame', () => {
 });
 
 describe('CaptionOverlay', () => {
-  it('adjusts both font sizes and background opacity from the hover toolbar', () => {
+  it('sets the caption size and background by dragging their toolbar icons, saving once the drag ends', () => {
     const onAppearanceChanged = vi.fn();
     const overlay = new CaptionOverlay(document, { onAppearanceChanged });
     overlay.show(appearance, layout);
+    const control = (name: string) => shadow()!.querySelector<HTMLElement>(`[data-scrub="${name}"]`)!;
+    const pointer = (target: HTMLElement, type: string, clientX: number) => {
+      const event = new MouseEvent(type, { bubbles: true, button: 0, cancelable: true, clientX });
+      target.dispatchEvent(event);
+      return event;
+    };
+    const size = () => shadow()!.host as HTMLElement;
 
-    const buttons = shadow()?.querySelectorAll<HTMLButtonElement>(
-      '[data-appearance-action]',
-    );
-    expect([...buttons ?? []].map((button) => button.getAttribute('aria-label'))).toEqual([
-      '同時加大原文與譯文字體',
-      '同時縮小原文與譯文字體',
-      '增加字幕背景透明度',
-      '減少字幕背景透明度',
-    ]);
-    expect([...buttons ?? []].every((button) => button.querySelector('svg')))
-      .toBe(true);
-    expect([...buttons ?? []].map((button) =>
-      button.querySelector('.appearance-symbol')?.textContent
-    )).toEqual(['+', '−', '+', '−']);
-    expect([...buttons ?? []].every((button) =>
-      button.classList.contains('symbol-appearance-button')
-    )).toBe(true);
+    expect(control('font')).toHaveAttribute('role', 'slider');
+    expect(control('font')).toHaveAttribute('aria-label', '字幕大小');
+    expect(control('font')).toHaveAttribute('aria-valuemax', '46');
+    expect(control('background')).toHaveAttribute('aria-label', '字幕背景');
+    expect(control('font').querySelector('.scrub-value')).toHaveTextContent('30 px');
+    expect(control('font').querySelector('.scrub-hint')).toHaveTextContent('左右拖曳調整・雙擊恢復預設');
+    // The four +/− buttons are gone.
+    expect(shadow()!.querySelector('[data-appearance-action]')).toBeNull();
 
-    const pointerDown = new Event('pointerdown', {
-      bubbles: true,
-      cancelable: true,
-    });
-    buttons?.[0]?.dispatchEvent(pointerDown);
-    expect(pointerDown.defaultPrevented).toBe(true);
-
-    shadow()?.querySelector<HTMLButtonElement>(
-      '[data-appearance-action="font-increase"]',
-    )?.click();
+    // 220 px covers 12–46 px: dragging 65 px right adds 10 px to both.
+    const down = pointer(control('font'), 'pointerdown', 100);
+    expect(down.defaultPrevented).toBe(true);
+    pointer(control('font'), 'pointermove', 165);
+    expect(size().style.getPropertyValue('--caption-original-size')).toBe('40px');
+    expect(size().style.getPropertyValue('--caption-translation-size')).toBe('30px');
+    expect(control('font').querySelector('.scrub-value')).toHaveTextContent('40 px');
+    expect(onAppearanceChanged).not.toHaveBeenCalled();
+    // Past the end it stops at 46 px.
+    pointer(control('font'), 'pointermove', 900);
+    pointer(control('font'), 'pointerup', 900);
+    expect(onAppearanceChanged).toHaveBeenCalledOnce();
     expect(onAppearanceChanged).toHaveBeenLastCalledWith({
       ...appearance,
-      originalFontSize: 31,
-      translationFontSize: 21,
+      originalFontSize: 46,
+      translationFontSize: 36,
     });
 
-    shadow()?.querySelector<HTMLButtonElement>(
-      '[data-appearance-action="background-decrease"]',
-    )?.click();
-    expect(onAppearanceChanged).toHaveBeenLastCalledWith({
-      ...appearance,
-      backgroundOpacity: 45,
-      originalFontSize: 31,
-      translationFontSize: 21,
-    });
+    // The background: left is lighter.
+    pointer(control('background'), 'pointerdown', 300);
+    pointer(control('background'), 'pointermove', 256);
+    pointer(control('background'), 'pointerup', 256);
+    expect(onAppearanceChanged).toHaveBeenLastCalledWith(expect.objectContaining({ backgroundOpacity: 30 }));
 
-    const fontButton = buttons?.[0];
-    fontButton?.focus();
-    expect(shadow()?.activeElement).toBe(fontButton);
-    fontButton?.dispatchEvent(new MouseEvent('click', {
-      bubbles: true,
-      detail: 1,
+    // The wheel and the arrow keys step; a double-click resets.
+    control('background').dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -100 }));
+    expect(onAppearanceChanged).toHaveBeenLastCalledWith(expect.objectContaining({ backgroundOpacity: 35 }));
+    control('font').dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowLeft' }));
+    expect(onAppearanceChanged).toHaveBeenLastCalledWith(expect.objectContaining({
+      originalFontSize: 45,
+      translationFontSize: 35,
     }));
-    expect(shadow()?.activeElement).not.toBe(fontButton);
+    control('font').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(onAppearanceChanged).toHaveBeenLastCalledWith(expect.objectContaining({
+      originalFontSize: 16,
+      translationFontSize: 16,
+    }));
+    overlay.hide();
   });
 
   it('offers a button with a session error that has an action, and hides it when cleared', async () => {
@@ -231,7 +233,7 @@ describe('CaptionOverlay', () => {
     expect(button().hidden).toBe(true);
   });
 
-  it('shows a status as a light with a short label, its panel opening by itself only when urgent', () => {
+  it('shows a status as a light with a short label, its panel opening by itself when urgent or offering a switch', () => {
     vi.useFakeTimers();
     try {
       const overlay = new CaptionOverlay(document);
@@ -241,14 +243,17 @@ describe('CaptionOverlay', () => {
       const panel = () => shadow()!.querySelector<HTMLElement>('.status-panel')!;
       expect(area().hidden).toBe(true);
 
-      // A rate limit usually clears with the next chunk: the light only.
-      overlay.setSessionError('gemini_rate_limited', 'switch_to_groq');
+      // A rate limit with nothing to switch to: the light only.
+      overlay.setSessionError('groq_rate_limited');
       vi.advanceTimersByTime(ERROR_SHOW_DELAY_MS);
       expect(area().hidden).toBe(false);
       expect(light().dataset.tone).toBe('error');
-      expect(light().textContent).toBe('Gemini 限流中');
+      expect(light().textContent).toBe('Groq Whisper 限流中');
       expect(panel().hidden).toBe(true);
-      light().click();
+
+      // One that offers another recognizer opens its panel, button and all.
+      overlay.setSessionError('gemini_rate_limited', 'switch_to_groq');
+      expect(light().textContent).toBe('Gemini 限流中');
       expect(panel().hidden).toBe(false);
       expect(panel().querySelector('.status-message')!.textContent).toMatch(/^Gemini 請求太頻繁/);
       expect(panel().querySelector('.status-action')!.textContent).toBe('改用 Groq Whisper');
@@ -631,6 +636,42 @@ describe('CaptionOverlay', () => {
       { hidden: 'true', id: 'old' },
       { hidden: 'false', id: 'long' },
     ]);
+  });
+
+  it('grows the box upward for a sentence taller than it, keeping its bottom, then back to the size the viewer chose', () => {
+    let pairHeight = 104;
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains('viewport') ? 77 : 0;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains('pair') ? pairHeight : 0;
+      },
+    );
+    const overlay = new CaptionOverlay(document);
+    overlay.show(appearance, layout);
+    const box = () => shadow()!.querySelector<HTMLElement>('.captions')!.style;
+    const chosen = { height: parseFloat(box().height), top: parseFloat(box().top) };
+    const bottom = chosen.top + chosen.height;
+
+    overlay.setWindow([{ id: 'long', original: 'A long sentence.', translation: '長句。' }]);
+    expect(parseFloat(box().height)).toBe(chosen.height + 27);
+    expect(parseFloat(box().top) + parseFloat(box().height)).toBe(bottom);
+    // What is saved is still the size the viewer chose.
+    expect(overlay.currentLayout()).toEqual(normalizeOverlayLayout(layout));
+
+    pairHeight = 20;
+    overlay.setWindow([{ id: 'short', original: 'Short.', translation: '短。' }]);
+    expect(parseFloat(box().height)).toBe(chosen.height);
+    expect(parseFloat(box().top)).toBe(chosen.top);
+
+    // Never past the top of the page (minus the title bar's room).
+    pairHeight = 100_000;
+    overlay.setWindow([{ id: 'huge', original: 'Huge.', translation: '巨。' }]);
+    expect(parseFloat(box().top)).toBe(42);
+    expect(parseFloat(box().top) + parseFloat(box().height)).toBe(bottom);
   });
 
   it('opens the native panel and hides the webpage overlay', async () => {
