@@ -513,6 +513,43 @@ describe('ReadAheadSession', () => {
     expect(t.main.isPaused).toBe(false);
   });
 
+  it('re-reads a hole the viewer is held just before, still inside the chunk before it', async () => {
+    const t = setup({ autoTranslate: true });
+    t.at(0);
+    t.session.acceptAudio({ samples: audio([2.75]), start: 0 });
+    t.session.acceptAudio({ samples: audio([2.5, 0.5, 4, 0.5, 4, 0.5]), start: 4.75 });
+    await t.settle();
+
+    // 0.05 s before the hole: the chunk before it still covers the viewer,
+    // but not far enough to play on.
+    t.at(2.7);
+    expect(t.main.isPaused).toBe(true);
+    t.clock.now = 3100;
+    t.at(2.7);
+    expect(t.source.refill).toHaveBeenCalledWith(2.7);
+    t.session.acceptAudio({ samples: audio([2]), start: 2.75 });
+    await t.settle();
+    t.at(2.7);
+    expect(t.main.isPaused).toBe(false);
+  });
+
+  it('reads a hole the cursor skipped once its audio arrives, when the viewer is held before it', async () => {
+    const t = setup({ autoTranslate: true });
+    t.at(0);
+    t.session.acceptAudio({ samples: audio([2.75]), start: 0 });
+    t.session.acceptAudio({ samples: audio([2.5, 0.5, 4, 0.5, 4, 0.5]), start: 4.75 });
+    await t.settle();
+    // The hole's audio comes late, after reading moved past it.
+    t.session.acceptAudio({ samples: audio([2]), start: 2.75 });
+    await t.settle();
+
+    t.at(2.7);
+    await t.settle();
+    t.at(2.7);
+    expect(t.main.isPaused).toBe(false);
+    expect(t.source.refill).not.toHaveBeenCalled();
+  });
+
   it('dispose resumes a player it was holding', () => {
     const t = setup();
     t.at(0);
