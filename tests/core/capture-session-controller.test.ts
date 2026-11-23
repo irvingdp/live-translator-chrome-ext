@@ -19,7 +19,7 @@ const settings: SessionSettings = {
   preferCaptionTracks: true,
   wordHighlight: true,
   maxLineWidth: 90,
-  readAheadRecognizer: 'gemini',
+  readAheadRecognizer: 'groq',
   readAheadTranslator: 'chrome',
   transcriber: 'gemini',
   originalFontSize: 24,
@@ -38,7 +38,6 @@ function createHarness() {
     sendToTab: vi.fn().mockResolvedValue(undefined),
     startReadAhead: vi.fn().mockResolvedValue(undefined),
     stopReadAhead: vi.fn().mockResolvedValue(undefined),
-    translateChunk: vi.fn().mockResolvedValue([]),
     transcribeChunk: vi.fn().mockResolvedValue({ sentences: [] }),
     translateOnWeb: vi.fn().mockResolvedValue([]),
     translateWithGroq: vi.fn().mockResolvedValue([]),
@@ -499,17 +498,17 @@ describe('CaptureSessionController read-ahead mode', () => {
     expect(harness.controller.status()).toEqual({ state: 'running', tabId: 42 });
   });
 
-  it('passes a chosen source language to the tab and to each chunk request with the shared key', async () => {
+  it('passes a chosen source language to the tab and to each chunk request', async () => {
     const harness = createHarness();
     const sessionId = await startReadAhead(harness, { geminiSourceLanguage: 'ja' });
     expect(vi.mocked(harness.dependencies.startReadAhead).mock.calls[0]![1].sourceLanguage).toBe('ja');
 
     await harness.controller.translateReadAheadChunk(sessionId, 42, 'UklGRg==');
-    expect(harness.dependencies.translateChunk).toHaveBeenCalledWith({
-      apiKey: 'gemini-key',
+    expect(harness.dependencies.transcribeChunk).toHaveBeenCalledWith({
+      apiKey: 'groq-key',
       audioBase64: 'UklGRg==',
+      provider: 'groq',
       sourceLanguage: 'ja',
-      targetLanguage: 'zh-Hant',
     });
   });
 
@@ -518,7 +517,7 @@ describe('CaptureSessionController read-ahead mode', () => {
     const sessionId = await startReadAhead(harness);
     await expect(harness.controller.translateReadAheadChunk('other', 42, 'x')).rejects.toThrow();
     await expect(harness.controller.translateReadAheadChunk(sessionId, 7, 'x')).rejects.toThrow();
-    expect(harness.dependencies.translateChunk).not.toHaveBeenCalled();
+    expect(harness.dependencies.transcribeChunk).not.toHaveBeenCalled();
   });
 
   describe('with Groq Whisper', () => {
@@ -544,7 +543,6 @@ describe('CaptureSessionController read-ahead mode', () => {
         audioBase64: 'wav',
         provider: 'groq',
       });
-      expect(harness.dependencies.translateChunk).not.toHaveBeenCalled();
     });
 
     it('steers Whisper to Traditional Chinese only for speech set as Traditional Chinese', async () => {
@@ -642,33 +640,23 @@ describe('CaptureSessionController read-ahead mode', () => {
       expect(chrome.dependencies.translateWithGroq).not.toHaveBeenCalled();
     });
 
-    it('tells the page which translator to use: Groq (Qwen) only with a Whisper recognizer', async () => {
-      const whisper = createHarness();
-      await startReadAhead(whisper, { ...groq, readAheadTranslator: 'groq' });
-      expect(whisper.dependencies.startReadAhead).toHaveBeenCalledWith(42, expect.objectContaining({ translator: 'groq' }));
+    it('tells the page which translator the viewer chose', async () => {
+      const qwen = createHarness();
+      await startReadAhead(qwen, { ...groq, readAheadTranslator: 'groq' });
+      expect(qwen.dependencies.startReadAhead).toHaveBeenCalledWith(42, expect.objectContaining({ translator: 'groq' }));
 
-      const gemini = createHarness();
-      await startReadAhead(gemini, { readAheadTranslator: 'groq' });
-      expect(gemini.dependencies.startReadAhead).toHaveBeenCalledWith(42, expect.objectContaining({ translator: 'chrome' }));
+      const chrome = createHarness();
+      await startReadAhead(chrome, { ...groq, readAheadTranslator: 'chrome' });
+      expect(chrome.dependencies.startReadAhead).toHaveBeenCalledWith(42, expect.objectContaining({ translator: 'chrome' }));
     });
 
-    it('tags a Gemini failure as Gemini', async () => {
-      const harness = createHarness();
-      const sessionId = await startReadAhead(harness);
-      vi.mocked(harness.dependencies.translateChunk)
-        .mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'quota_exceeded' }));
-      await expect(harness.controller.translateReadAheadChunk(sessionId, 42, 'wav'))
-        .rejects.toMatchObject({ code: 'gemini_quota_exceeded' });
-    });
-
-    it('offers no switch to Groq when Groq is already doing the recognizing', async () => {
+    it('tags a Groq failure as Groq', async () => {
       const harness = createHarness();
       const sessionId = await startReadAhead(harness, groq);
-      await harness.controller.acceptReadAheadStatus(sessionId, 42, 'gemini_quota_exceeded');
-      expect(harness.dependencies.sendToTab).toHaveBeenLastCalledWith(42, {
-        type: 'SESSION_ERROR',
-        payload: { code: 'gemini_quota_exceeded' },
-      });
+      vi.mocked(harness.dependencies.transcribeChunk)
+        .mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'quota_exceeded' }));
+      await expect(harness.controller.translateReadAheadChunk(sessionId, 42, 'wav'))
+        .rejects.toMatchObject({ code: 'groq_quota_exceeded' });
     });
   });
 
@@ -694,7 +682,6 @@ describe('CaptureSessionController read-ahead mode', () => {
 
     await harness.controller.acceptReadAheadStatus(sessionId, 42, 'loading');
     await harness.controller.acceptReadAheadStatus(sessionId, 42, 'failed');
-    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'gemini_quota_exceeded');
     await harness.controller.acceptReadAheadStatus(sessionId, 42, 'groq_quota_exceeded');
     await harness.controller.acceptReadAheadStatus(sessionId, 42, 'translator_unsupported');
     await harness.controller.acceptReadAheadStatus(sessionId, 42, undefined);
@@ -702,8 +689,6 @@ describe('CaptureSessionController read-ahead mode', () => {
     expect(vi.mocked(harness.dependencies.sendToTab).mock.calls.map(([, message]) => message)).toEqual([
       { type: 'SESSION_ERROR', payload: { code: 'read_ahead_loading' } },
       { type: 'SESSION_ERROR', payload: { code: 'read_ahead_failed' } },
-      // A used-up Gemini quota offers the switch to Groq Whisper.
-      { type: 'SESSION_ERROR', payload: { action: 'switch_to_groq', code: 'gemini_quota_exceeded' } },
       { type: 'SESSION_ERROR', payload: { code: 'groq_quota_exceeded' } },
       { type: 'SESSION_ERROR', payload: { code: 'read_ahead_translator_unsupported' } },
       { type: 'SESSION_ERROR_CLEAR' },
@@ -713,19 +698,19 @@ describe('CaptureSessionController read-ahead mode', () => {
 
   it("keeps a provider's failure reason, and offers the next recognizer only where another service helps", async () => {
     const harness = createHarness();
-    const sessionId = await startReadAhead(harness);
+    const sessionId = await startReadAhead(harness, { readAheadRecognizer: 'local' });
 
-    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'gemini_rate_limited');
-    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'gemini_timeout');
-    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'gemini_invalid_credentials');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'local_rate_limited');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'local_timeout');
+    await harness.controller.acceptReadAheadStatus(sessionId, 42, 'local_invalid_credentials');
     await harness.controller.acceptReadAheadStatus(sessionId, 42, 'page_timeout');
     await harness.controller.acceptReadAheadStatus(sessionId, 42, 'web_translation_failed');
 
     expect(vi.mocked(harness.dependencies.sendToTab).mock.calls.map(([, message]) => message)).toEqual([
-      { type: 'SESSION_ERROR', payload: { action: 'switch_to_groq', code: 'gemini_rate_limited' } },
-      { type: 'SESSION_ERROR', payload: { action: 'switch_to_groq', code: 'gemini_timeout' } },
+      { type: 'SESSION_ERROR', payload: { action: 'switch_to_groq', code: 'local_rate_limited' } },
+      { type: 'SESSION_ERROR', payload: { action: 'switch_to_groq', code: 'local_timeout' } },
       // Another service does not fix a wrong key.
-      { type: 'SESSION_ERROR', payload: { code: 'gemini_invalid_credentials' } },
+      { type: 'SESSION_ERROR', payload: { code: 'local_invalid_credentials' } },
       { type: 'SESSION_ERROR', payload: { code: 'read_ahead_page_timeout' } },
       { type: 'SESSION_ERROR', payload: { code: 'read_ahead_web_translation_failed' } },
     ]);

@@ -93,7 +93,7 @@ export interface DisplayedCue {
 // of audio already read. Shown differently so a long hold says which it is.
 // A failed chunk shows 'failed', or, when the error says why, the reason: which
 // provider failed and how, or that no translator could translate it.
-export const READ_AHEAD_PROVIDERS = ['gemini', 'groq', 'local'] as const;
+export const READ_AHEAD_PROVIDERS = ['groq', 'local'] as const;
 export type ReadAheadProvider = (typeof READ_AHEAD_PROVIDERS)[number];
 // Why a provider's request failed (ChunkTranslationErrorCode).
 export const PROVIDER_FAILURE_REASONS = [

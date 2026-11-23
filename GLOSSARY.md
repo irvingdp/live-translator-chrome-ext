@@ -53,7 +53,7 @@ Timed captions the uploader published with the video. When read-ahead finds one 
 _Avoid_: Subtitles, CC, transcript
 
 **Recognizer** (語音辨識):
-The read-ahead service that turns a chunk's audio into timed sentences: Gemini (which also translates), Groq Whisper, or Local Whisper.
+The read-ahead service that turns a chunk's audio into timed sentences: Groq Whisper or Local Whisper. Gemini is not one (it is only the live mode's service).
 _Avoid_: Transcriber (the setting's old name for the caption mode), ASR provider
 
 **Local Whisper** (本地 Whisper):
@@ -61,7 +61,7 @@ The recognizer that runs a Whisper model on the viewer's own computer, in the br
 _Avoid_: Offline mode, on-device ASR
 
 **Translator** (翻譯):
-The read-ahead service that translates the recognizer's sentences when the recognizer does not, chosen by the viewer: Chrome's built-in Translator (the default, no key; where it cannot, Google's web translation), or Groq (Qwen), a language model that reads the neighbouring sentences and needs the viewer's Groq key. A chunk Groq (Qwen) cannot translate falls back to Chrome's built-in Translator; the viewer's choice does not change.
+The read-ahead service that translates the recognizer's sentences, chosen by the viewer: Groq (Qwen) (the default), a language model that reads the neighbouring sentences and needs the viewer's Groq key, or Chrome's built-in Translator (no key; where it cannot, Google's web translation). A chunk Groq (Qwen) cannot translate falls back to Chrome's built-in Translator; the viewer's choice does not change.
 _Avoid_: Translation provider, MT
 
 **Cue** (定時字幕):

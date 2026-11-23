@@ -368,13 +368,13 @@ describe('ReadAheadSession', () => {
 
   it('says the quota is used up when that is why a chunk failed', async () => {
     const t = setup();
-    t.translate.mockRejectedValue(new Error('gemini_quota_exceeded'));
+    t.translate.mockRejectedValue(new Error('groq_quota_exceeded'));
     t.session.acceptAudio({ samples: audio([3, 0.5, 1]), start: 0 });
     t.at(0);
     await t.settle();
     expect(t.main.isPaused).toBe(false);
     t.at(1);
-    expect(t.statuses.at(-1)).toBe('gemini_quota_exceeded');
+    expect(t.statuses.at(-1)).toBe('groq_quota_exceeded');
   });
 
   it('names the provider and reason of any failure the error says, for the overlay to explain', async () => {

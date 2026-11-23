@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  initialRecognizer,
   captionAppearance,
   DEFAULT_SETTINGS,
   migrateStoredSettings,
   normalizeSettings,
-  effectiveTranslator,
   requiredApiKeys,
   validateSettingsForStart,
 } from '../../src/core/settings';
@@ -146,30 +144,23 @@ describe('validateSettingsForStart', () => {
     expect(validateSettingsForStart({ ...DEFAULT_SETTINGS, geminiApiKey: 'gm' })).toEqual({});
     const readAhead = { ...DEFAULT_SETTINGS, transcriber: 'gemini-read-ahead' } as const;
     expect(validateSettingsForStart(readAhead)).toEqual({ groqApiKey: '請輸入 Groq API Key' });
-    expect(validateSettingsForStart({ ...readAhead, readAheadRecognizer: 'gemini' }))
-      .toEqual({ geminiApiKey: '請輸入 Gemini API Key' });
   });
 });
 
 describe('read-ahead services', () => {
   const readAhead = { ...DEFAULT_SETTINGS, transcriber: 'gemini-read-ahead' } as const;
 
-  it('defaults to Gemini recognition, rejecting unknown recognizers', () => {
+  it('defaults to Groq Whisper, rejecting unknown and removed recognizers', () => {
     expect(normalizeSettings({}).readAheadRecognizer).toBe('groq');
     expect(normalizeSettings({ readAheadRecognizer: 'whisper' as never }).readAheadRecognizer).toBe('groq');
+    // Gemini was removed (ADR 0012: often overloaded).
+    expect(normalizeSettings({ readAheadRecognizer: 'gemini' as never }).readAheadRecognizer).toBe('groq');
     // Cloudflare Whisper was removed before release.
     expect(normalizeSettings({ readAheadRecognizer: 'cloudflare' as never }).readAheadRecognizer).toBe('groq');
   });
 
-  it('starts a viewer who never chose on Local Whisper where WebGPU allows it, else on Groq; a choice stays', () => {
-    expect(initialRecognizer(undefined, true)).toBe('local');
-    expect(initialRecognizer({ transcriber: 'gemini' }, false)).toBe('groq');
-    expect(initialRecognizer({ readAheadRecognizer: 'gemini' }, true)).toBe('gemini');
-    expect(initialRecognizer({ readAheadRecognizer: 'cloudflare' as never }, true)).toBe('local');
-  });
 
   it("asks for the keys of the recognizer chosen, and only those (Chrome's translation needs none)", () => {
-    expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'gemini' })).toEqual(['geminiApiKey']);
     expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'groq' })).toEqual(['groqApiKey']);
     // Gemini live ignores the read-ahead choice.
     expect(requiredApiKeys({ ...DEFAULT_SETTINGS, readAheadRecognizer: 'groq' })).toEqual(['geminiApiKey']);
@@ -179,27 +170,18 @@ describe('read-ahead services', () => {
 
   it('asks for the Groq key when Groq (Qwen) translates, even with Local Whisper', () => {
     const readAhead = { ...DEFAULT_SETTINGS, transcriber: 'gemini-read-ahead' } as const;
-    expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'local' })).toEqual([]);
+    expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'local', readAheadTranslator: 'chrome' })).toEqual([]);
     expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'local', readAheadTranslator: 'groq' }))
       .toEqual(['groqApiKey']);
-    // Gemini translates by itself; the translator choice does not apply.
-    expect(requiredApiKeys({ ...readAhead, readAheadRecognizer: 'gemini', readAheadTranslator: 'groq' }))
-      .toEqual(['geminiApiKey']);
   });
 });
 
 describe('readAheadTranslator', () => {
-  it("defaults to Chrome's built-in Translator, also for stored settings without it or with an unknown one", () => {
-    expect(DEFAULT_SETTINGS.readAheadTranslator).toBe('chrome');
-    expect(normalizeSettings({}).readAheadTranslator).toBe('chrome');
-    expect(normalizeSettings({ readAheadTranslator: 'deepl' as never }).readAheadTranslator).toBe('chrome');
-    expect(normalizeSettings({ readAheadTranslator: 'groq' }).readAheadTranslator).toBe('groq');
-  });
-
-  it('applies only with a Whisper recognizer', () => {
-    expect(effectiveTranslator({ readAheadRecognizer: 'local', readAheadTranslator: 'groq' })).toBe('groq');
-    expect(effectiveTranslator({ readAheadRecognizer: 'groq', readAheadTranslator: 'groq' })).toBe('groq');
-    expect(effectiveTranslator({ readAheadRecognizer: 'gemini', readAheadTranslator: 'groq' })).toBe('chrome');
+  it('defaults to Groq (Qwen), also for stored settings without it or with an unknown one; a choice stays', () => {
+    expect(DEFAULT_SETTINGS.readAheadTranslator).toBe('groq');
+    expect(normalizeSettings({}).readAheadTranslator).toBe('groq');
+    expect(normalizeSettings({ readAheadTranslator: 'deepl' as never }).readAheadTranslator).toBe('groq');
+    expect(normalizeSettings({ readAheadTranslator: 'chrome' }).readAheadTranslator).toBe('chrome');
   });
 });
 

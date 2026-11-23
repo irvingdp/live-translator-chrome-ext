@@ -19,7 +19,7 @@ const settings: AppSettings = {
   preferCaptionTracks: true,
   wordHighlight: true,
   maxLineWidth: 90,
-  readAheadRecognizer: 'gemini',
+  readAheadRecognizer: 'groq',
   readAheadTranslator: 'chrome',
   originalFontSize: 24,
   originalTextColor: '#ffffff',
@@ -445,12 +445,12 @@ describe('background offscreen document lifecycle', () => {
     });
 
     it('stops preferring caption tracks and restarts on the recognizer from the notice button', async () => {
-      await startReadAhead({ geminiApiKey: 'gm', readAheadRecognizer: 'gemini' });
+      await startReadAhead({ groqApiKey: 'gq', readAheadRecognizer: 'groq' });
 
       await expect(dispatchFrom({ target: 'background', type: 'READ_AHEAD_USE_RECOGNIZER' }, fromTab))
         .resolves.toEqual({ ok: true, switched: true });
 
-      expect(localStorageData.settings).toMatchObject({ preferCaptionTracks: false, readAheadRecognizer: 'gemini' });
+      expect(localStorageData.settings).toMatchObject({ preferCaptionTracks: false, readAheadRecognizer: 'groq' });
       expect(readAheadStarts()).toHaveLength(2);
       expect(readAheadStarts().at(-1)![1]).toMatchObject({ payload: { preferCaptionTracks: false } });
     });

@@ -8,7 +8,7 @@ status: accepted
 
 因此，語音辨識是 Whisper 時，觀眾可以在 popup 選擇翻譯服務（issue #29）：
 
-- **Chrome 內建翻譯**：預設，跟以前一樣，它不行時再改用 Google 網頁翻譯。
+- **Chrome 內建翻譯**：原本的預設，它不行時再改用 Google 網頁翻譯。2026-11-24 起預設改為 Groq（Qwen），Chrome 內建翻譯改由觀眾自己選（ADR 0012）。
 - **Groq（Qwen）**：Groq 上的 `qwen/qwen3.8-27b` 語言模型。每個片段的句子一次送出，並附上前一段最後兩句當上下文。它會照意思翻成語、用語前後一致，也會用目標語言的地區用法（繁體中文用台灣的說法）。
 
 它用的是觀眾已經有的 Groq 金鑰，也就是 Groq Whisper 那一把，所以不用新註冊帳號。這就是 ADR 0006 否決 DeepL 和 Microsoft、卻接受它的原因。它的額度和 Groq Whisper 分開算。模型寫死在程式裡，觀眾不能選，跟預讀用的 Gemini 模型一樣。Gemini 語音辨識本身就會翻譯，所以選 Gemini 時沒有這個選項。

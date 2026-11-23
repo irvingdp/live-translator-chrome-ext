@@ -56,12 +56,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // Read-ahead: use the uploader's caption track when the video has one
   // (ADR 0007), and mark the original word by word (issue #18).
   preferCaptionTracks: true,
-  // Without WebGPU; where the computer has it, the popup starts a viewer who
-  // never chose on Local Whisper instead (initialRecognizer).
+  // Read-ahead starts on Groq for both: Groq Whisper recognizes, Groq (Qwen)
+  // translates (issue #29), one key. Local Whisper and Chrome's built-in
+  // Translator are the viewer's to choose.
   readAheadRecognizer: 'groq',
-  // With a Whisper recognizer: Chrome's built-in Translator, or Groq (Qwen)
-  // when the viewer chooses it (issue #29).
-  readAheadTranslator: 'chrome',
+  readAheadTranslator: 'groq',
   transcriber: 'gemini',
   translationFontSize: 16,
   translationTextColor: '#fde68a',
@@ -74,26 +73,18 @@ export const TRANSCRIBER_IDS = ['gemini', 'gemini-read-ahead'] as const;
 
 export type TranscriberId = (typeof TRANSCRIBER_IDS)[number];
 
-// Read-ahead mode picks its speech recognition (issue #11). Gemini also
-// translates; with Groq Whisper or Local Whisper (issue #15) Chrome's
-// built-in Translator translates.
+// Read-ahead mode picks its speech recognition (issue #11): Groq Whisper or
+// Local Whisper (issue #15); a separate translator translates.
 // Cloudflare Whisper was removed before release (it often missed the 7 s
-// budget); a stored 'cloudflare' falls back to the default.
-export const READ_AHEAD_RECOGNIZERS = ['gemini', 'groq', 'local'] as const;
+// budget), Gemini later (ADR 0012: often overloaded); a stored 'cloudflare'
+// or 'gemini' falls back to the default.
+export const READ_AHEAD_RECOGNIZERS = ['groq', 'local'] as const;
 export type ReadAheadRecognizer = (typeof READ_AHEAD_RECOGNIZERS)[number];
 
-// Who translates a Whisper recognizer's sentences (issue #29): Chrome's
-// built-in Translator, or Groq (Qwen) with the viewer's Groq key. Gemini
-// translates by itself, so with it this choice does not apply.
+// Who translates the recognizer's sentences (issue #29): Chrome's built-in
+// Translator, or Groq (Qwen) with the viewer's Groq key.
 export const READ_AHEAD_TRANSLATORS = ['chrome', 'groq'] as const;
 export type ReadAheadTranslator = (typeof READ_AHEAD_TRANSLATORS)[number];
-
-// The translator read-ahead actually uses for the page's translation.
-export function effectiveTranslator(
-  settings: Pick<AppSettings, 'readAheadRecognizer' | 'readAheadTranslator'>,
-): ReadAheadTranslator {
-  return settings.readAheadRecognizer === 'gemini' ? 'chrome' : settings.readAheadTranslator;
-}
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return allowed.includes(value as T) ? (value as T) : fallback;
@@ -196,9 +187,7 @@ export type ApiKeyField = 'geminiApiKey' | 'groqApiKey';
 
 // The keys the chosen services need, in the order the popup asks for them.
 export function requiredApiKeys(settings: AppSettings): ApiKeyField[] {
-  if (settings.transcriber !== 'gemini-read-ahead' || settings.readAheadRecognizer === 'gemini') {
-    return ['geminiApiKey'];
-  }
+  if (settings.transcriber !== 'gemini-read-ahead') return ['geminiApiKey'];
   // Local Whisper needs no key, only its downloaded model; Groq (Qwen) as the
   // translator needs the Groq key whatever the Whisper.
   return settings.readAheadRecognizer === 'local' && settings.readAheadTranslator !== 'groq'
@@ -223,18 +212,6 @@ export function validateSettingsForStart(
 
 // Storage key of the one-time popup notice set by migrateStoredSettings.
 export const DEEPGRAM_REMOVED_NOTICE_KEY = 'deepgramRemovedNotice';
-
-// The recognizer for a viewer who has never chosen one: Local Whisper where
-// this computer can run it, else Groq Whisper; both leave the translation to
-// Chrome's built-in Translator. A stored choice is kept.
-export function initialRecognizer(
-  stored: Partial<AppSettings> | undefined,
-  webGpu: boolean,
-): ReadAheadRecognizer {
-  const chosen = stored?.readAheadRecognizer;
-  if (chosen && READ_AHEAD_RECOGNIZERS.includes(chosen)) return chosen;
-  return webGpu ? 'local' : 'groq';
-}
 
 // Settings stored by a version before 1.5.0 may still select Deepgram, or hold
 // its key and the fields only its mode used; a development build may hold

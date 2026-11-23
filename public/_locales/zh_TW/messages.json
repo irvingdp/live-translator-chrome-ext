@@ -663,10 +663,6 @@
     "message": "講者講到哪個字，原文就標示哪個字。只有用 Groq 或本地 Whisper 辨識時才有。",
     "description": "Popup note under the word highlight switch."
   },
-  "wordHighlightGeminiHint": {
-    "message": "Gemini 不支援逐字標示，改用 Groq 或本地 Whisper 才有。",
-    "description": "Popup hint when word highlight is on and the recognizer is Gemini."
-  },
   "preferCaptionTracksLabel": {
     "message": "優先使用影片字幕軌",
     "description": "Popup switch: use the uploader's caption track instead of speech recognition when there is one (read-ahead)."
@@ -750,10 +746,6 @@
   "captionModeLabel": {
     "message": "翻譯模式",
     "description": "Label for the dropdown that picks Gemini live or read-ahead mode."
-  },
-  "recognizerGemini": {
-    "message": "Gemini（含翻譯）",
-    "description": "Read-ahead speech recognition option: Gemini, which also translates."
   },
   "translatorLabel": {
     "message": "翻譯服務",
