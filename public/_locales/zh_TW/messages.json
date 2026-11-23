@@ -678,6 +678,46 @@
     "message": "這個網站需要先允許，預讀模式才能讀取它的影片。",
     "description": "Caption overlay status when read-ahead could read the page's streaming player after the viewer allows the site."
   },
+  "playerButtonLabel": {
+    "message": "雙語字幕",
+    "description": "Player button's label while captions are off in this tab."
+  },
+  "playerButtonActive": {
+    "message": "雙語字幕（字幕開啟中）",
+    "description": "Player button's label while captions run in this tab."
+  },
+  "playerButtonCaptions": {
+    "message": "開啟字幕",
+    "description": "Player button menu: the switch that starts or stops captions."
+  },
+  "playerButtonLanguage": {
+    "message": "翻譯成",
+    "description": "Player button menu: the target language row."
+  },
+  "playerButtonMoreSettings": {
+    "message": "更多設定",
+    "description": "Player button menu: opens the extension popup."
+  },
+  "playerButtonMissingKeys": {
+    "message": "請先在「更多設定」填入 API Key。",
+    "description": "Player button menu: read-ahead cannot start without the chosen services' keys."
+  },
+  "playerButtonNeedsPermission": {
+    "message": "請先在「更多設定」允許連線到 Groq。",
+    "description": "Player button menu: the Groq host permission is missing."
+  },
+  "playerButtonNeedsToolbarGrant": {
+    "message": "即時音訊模式要先在這個分頁點一下瀏覽器工具列上的擴充功能圖示，之後就能從這裡開啟。",
+    "description": "Player button menu: live mode cannot capture this tab until the extension's toolbar button was used on it."
+  },
+  "playerButtonModelMissing": {
+    "message": "請先在「更多設定」下載本地 Whisper 模型。",
+    "description": "Player button menu: Local Whisper's model is not downloaded."
+  },
+  "playerButtonStartFailed": {
+    "message": "無法開始字幕，請從「更多設定」重試。",
+    "description": "Player button menu: starting failed for another reason."
+  },
   "siteAccessTitle": {
     "message": "允許這個網站使用預讀模式",
     "description": "Popup heading when the current site must be allowed for read-ahead."

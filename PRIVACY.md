@@ -105,10 +105,11 @@ from the paid tier:
 | --- | --- |
 | `tabCapture` | Capture the audio of the tab you selected — the only source of caption text |
 | `offscreen` | A Manifest V3 service worker cannot use AudioContext, so audio processing and the provider connection run in an offscreen document |
-| `activeTab`, `scripting` | Inject the caption overlay only into the tab where you pressed start. The one script registered ahead of time is read-ahead's audio reader, and only on sites you allowed |
+| `activeTab`, `scripting` | Inject the caption overlay only into the tab where you pressed start. The one script registered ahead of time is read-ahead's audio reader, only on sites you allowed |
 | `storage` | Save your API keys, caption settings and whether you have rated the extension |
 | `host_permissions` | Limited to Google's Gemini API domain used above |
-| `optional_host_permissions` | `api.groq.com`, asked for only when you choose Groq Whisper or Groq (Qwen), together with the web translation fallback's host (`translate.googleapis.com`). `https://*/*` is declared only as the upper bound for allowing one site at a time for read-ahead: each site is asked for separately when you allow it, never all at once |
+| `content_scripts` on `www.youtube.com` and `www.bilibili.com` | The player button: an icon in those two sites' player controls that opens a small menu to start or stop captions. It reads nothing from the page but where the player's controls are, and sends nothing outside the extension until you use it |
+| `optional_host_permissions` | `api.groq.com`, asked for only when you choose Groq Whisper or Groq (Qwen), together with the web translation fallback's host (`translate.googleapis.com`). `https://*/*` is declared only as the upper bound for allowing one site at a time for read-ahead: each site is asked for separately when you allow it, never all at once. |
 
 ## Children
 

@@ -678,6 +678,46 @@
     "message": "Read-ahead can read this site's video once you allow the site.",
     "description": "Caption overlay status when read-ahead could read the page's streaming player after the viewer allows the site."
   },
+  "playerButtonLabel": {
+    "message": "Bilingual captions",
+    "description": "Player button's label while captions are off in this tab."
+  },
+  "playerButtonActive": {
+    "message": "Bilingual captions (on)",
+    "description": "Player button's label while captions run in this tab."
+  },
+  "playerButtonCaptions": {
+    "message": "Captions",
+    "description": "Player button menu: the switch that starts or stops captions."
+  },
+  "playerButtonLanguage": {
+    "message": "Translate into",
+    "description": "Player button menu: the target language row."
+  },
+  "playerButtonMoreSettings": {
+    "message": "More settings",
+    "description": "Player button menu: opens the extension popup."
+  },
+  "playerButtonMissingKeys": {
+    "message": "Enter the API key in More settings first.",
+    "description": "Player button menu: read-ahead cannot start without the chosen services' keys."
+  },
+  "playerButtonNeedsPermission": {
+    "message": "Allow the connection to Groq in More settings first.",
+    "description": "Player button menu: the Groq host permission is missing."
+  },
+  "playerButtonNeedsToolbarGrant": {
+    "message": "For live mode, click the extension's icon in the browser toolbar once on this tab; then it starts from here.",
+    "description": "Player button menu: live mode cannot capture this tab until the extension's toolbar button was used on it."
+  },
+  "playerButtonModelMissing": {
+    "message": "Download the Local Whisper model in More settings first.",
+    "description": "Player button menu: Local Whisper's model is not downloaded."
+  },
+  "playerButtonStartFailed": {
+    "message": "Captions could not start. Try again from More settings.",
+    "description": "Player button menu: starting failed for another reason."
+  },
   "siteAccessTitle": {
     "message": "Allow read-ahead on this site",
     "description": "Popup heading when the current site must be allowed for read-ahead."

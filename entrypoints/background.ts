@@ -20,8 +20,11 @@ import {
   DEEPGRAM_REMOVED_NOTICE_KEY,
   migrateStoredSettings,
   normalizeSettings,
+  requiredApiKeys,
+  validateSettingsForStart,
   type AppSettings,
 } from '../src/core/settings';
+import type { PlayerButtonError } from '../src/content/player-button';
 import { redactSessionSnapshot } from '../src/core/session-persistence';
 import {
   ReadAheadChunkError,
@@ -120,6 +123,100 @@ export default defineBackground(() => {
     await controller.start(tabId, next);
     await persistActiveSession();
     return { ok: true, switched: true };
+  }
+
+  async function storedSettings(): Promise<AppSettings> {
+    const stored = await chrome.storage.local.get('settings');
+    return normalizeSettings((stored.settings as Partial<AppSettings> | undefined) ?? {});
+  }
+
+  // Starts captions the way the popup's switch does. Callers hold the
+  // lifecycle.
+  async function startSession(tabId: number, settings: AppSettings): Promise<void> {
+    try {
+      const savedLayout = await getOverlayLayout(tabId);
+      if (savedLayout?.mode === 'native') {
+        await persistOverlayLayout(tabId, { ...savedLayout, mode: 'floating' });
+      }
+      if (settings.transcriber === 'gemini-read-ahead' && settings.readAheadRecognizer === 'local') {
+        await prepareLocalWhisper(settings.localWhisperModel);
+      }
+      await controller.start(tabId, settings);
+      if (!authorizedTabs.has(tabId)) {
+        await authorizeTab(tabId).catch(() => false);
+      }
+    } catch (error) {
+      await chrome.storage.session.remove(activeSessionKey);
+      await closeOffscreenIfUnused();
+      throw error;
+    }
+    await persistActiveSession();
+  }
+
+  // The tab whose captions the player button there shows as on.
+  function playerButtonTab(): number | undefined {
+    const status = controller.status();
+    return status.state === 'running' || status.state === 'starting' ? status.tabId : undefined;
+  }
+
+  // What the chosen mode still needs before the player button can start it:
+  // the popup is where keys are typed, permissions asked and models
+  // downloaded.
+  async function startBlocker(settings: AppSettings): Promise<PlayerButtonError | undefined> {
+    if (Object.keys(validateSettingsForStart(settings)).length > 0) return 'missing_keys';
+    if (settings.transcriber !== 'gemini-read-ahead') return undefined;
+    if (
+      requiredApiKeys(settings).includes('groqApiKey') &&
+      !await chrome.permissions.contains({ origins: [GROQ_ORIGIN] }).catch(() => false)
+    ) {
+      return 'needs_permission';
+    }
+    if (
+      settings.readAheadRecognizer === 'local' &&
+      !isModelCached(settings.localWhisperModel, await cachedModelUrls().catch(() => []))
+    ) {
+      return 'model_missing';
+    }
+    return undefined;
+  }
+
+  // The player button's switch (ADR 0013), in the mode chosen in the popup.
+  // Live mode's tab capture works only in a tab the viewer once opened the
+  // extension's own button on; elsewhere it fails, and the menu says so.
+  async function togglePlayerButton(
+    tabId: number,
+    on: boolean,
+  ): Promise<{ active: boolean; error?: PlayerButtonError; ok: boolean }> {
+    if (!on) {
+      if (playerButtonTab() === tabId) await stopSession();
+      return { active: false, ok: true };
+    }
+    if (playerButtonTab() === tabId) return { active: true, ok: true };
+    const settings = await storedSettings();
+    const blocker = await startBlocker(settings);
+    if (blocker) return { active: false, error: blocker, ok: false };
+    const granted = authorizedTabs.has(tabId);
+    try {
+      await startSession(tabId, settings);
+    } catch {
+      const live = settings.transcriber !== 'gemini-read-ahead';
+      return { active: false, error: live && !granted ? 'needs_toolbar_grant' : 'start_failed', ok: false };
+    }
+    return { active: playerButtonTab() === tabId, ok: true };
+  }
+
+  // Tells the player buttons when captions start or stop in their tab.
+  let notifiedPlayerTab: number | undefined;
+  async function notifyPlayerButtons(): Promise<void> {
+    const tabId = playerButtonTab();
+    if (tabId === notifiedPlayerTab) return;
+    const previous = notifiedPlayerTab;
+    notifiedPlayerTab = tabId;
+    for (const [id, active] of [[previous, false], [tabId, true]] as const) {
+      if (id === undefined) continue;
+      await chrome.tabs.sendMessage(id, { type: 'PLAYER_BUTTON_ACTIVE', payload: { active } })
+        .catch(() => undefined);
+    }
   }
 
   // Stops captions the way the popup's switch does. Callers hold the lifecycle.
@@ -730,6 +827,10 @@ export default defineBackground(() => {
     'SESSION_STOP',
   ]);
   const contentMessageTypes = new Set([
+    'PLAYER_BUTTON_LANGUAGE',
+    'PLAYER_BUTTON_OPEN_SETTINGS',
+    'PLAYER_BUTTON_STATE',
+    'PLAYER_BUTTON_TOGGLE',
     'READ_AHEAD_CUE',
     'READ_AHEAD_STATUS',
     'READ_AHEAD_SWITCH_RECOGNIZER',
@@ -1040,33 +1141,42 @@ export default defineBackground(() => {
           }
           case 'SESSION_START':
             return enqueueLifecycle(async () => {
-              try {
-                const savedLayout = await getOverlayLayout(message.payload.tabId);
-                if (savedLayout?.mode === 'native') {
-                  await persistOverlayLayout(message.payload.tabId, {
-                    ...savedLayout,
-                    mode: 'floating',
-                  });
-                }
-                const startSettings = normalizeSettings(message.payload.settings);
-                if (
-                  startSettings.transcriber === 'gemini-read-ahead' &&
-                  startSettings.readAheadRecognizer === 'local'
-                ) {
-                  await prepareLocalWhisper(startSettings.localWhisperModel);
-                }
-                await controller.start(message.payload.tabId, startSettings);
-                if (!authorizedTabs.has(message.payload.tabId)) {
-                  await authorizeTab(message.payload.tabId).catch(() => false);
-                }
-              } catch (error) {
-                await chrome.storage.session.remove(activeSessionKey);
-                await closeOffscreenIfUnused();
-                throw error;
-              }
-              await persistActiveSession();
+              await startSession(message.payload.tabId, normalizeSettings(message.payload.settings));
               return { ok: true, status: controller.status() };
             });
+          case 'PLAYER_BUTTON_STATE': {
+            const settings = await storedSettings();
+            return {
+              active: playerButtonTab() === sender.tab?.id,
+              mode: settings.transcriber === 'gemini-read-ahead' ? 'read-ahead' : 'live',
+              ok: true,
+              targetLanguage: settings.geminiTargetLanguage,
+            };
+          }
+          case 'PLAYER_BUTTON_TOGGLE': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            return enqueueLifecycle(() => togglePlayerButton(tabId, message.payload.on));
+          }
+          case 'PLAYER_BUTTON_LANGUAGE': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) return { error: 'missing_tab', ok: false };
+            const targetLanguage = normalizeSettings({ geminiTargetLanguage: message.payload.targetLanguage })
+              .geminiTargetLanguage;
+            return enqueueLifecycle(async () => {
+              const switched = await restartReadAhead(tabId, { geminiTargetLanguage: targetLanguage });
+              // Not running here: the choice is only saved.
+              if (!switched.switched) {
+                await chrome.storage.local.set({
+                  settings: { ...await storedSettings(), geminiTargetLanguage: targetLanguage },
+                });
+              }
+              return { ok: true };
+            });
+          }
+          case 'PLAYER_BUTTON_OPEN_SETTINGS':
+            await chrome.action.openPopup().catch(() => chrome.runtime.openOptionsPage());
+            return { ok: true };
           case 'LOCAL_WHISPER_DOWNLOAD': {
             const { model } = message.payload;
             if (!(model in LOCAL_WHISPER_SPECS)) return { error: 'unknown_model', ok: false };
@@ -1097,10 +1207,12 @@ export default defineBackground(() => {
       void operation.then(
         async (response) => {
           await broadcastSidePanel().catch(() => undefined);
+          await notifyPlayerButtons().catch(() => undefined);
           sendResponse(response);
         },
         (error: unknown) => {
           void broadcastSidePanel();
+          void notifyPlayerButtons().catch(() => undefined);
           sendResponse({
             error: error instanceof Error ? error.message : 'unknown_error',
             ok: false,

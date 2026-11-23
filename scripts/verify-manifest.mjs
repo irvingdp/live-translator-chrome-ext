@@ -4,8 +4,19 @@ const manifestPath = process.argv[2];
 if (!manifestPath) throw new Error('Usage: verify-manifest.mjs <manifest.json>');
 
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-if ((manifest.content_scripts?.length ?? 0) > 0) {
-  throw new Error('Manifest must not register persistent content scripts');
+// The one persistent content script is the player button (ADR 0013): YouTube
+// and Bilibili only, in the isolated world, reading only where the player's
+// controls are. Everything else is injected on demand.
+const PLAYER_BUTTON_MATCHES = ['https://www.bilibili.com/*', 'https://www.youtube.com/*'];
+const contentScripts = manifest.content_scripts ?? [];
+const playerButtonOnly = contentScripts.every((script) =>
+  JSON.stringify([...(script.matches ?? [])].sort()) === JSON.stringify(PLAYER_BUTTON_MATCHES) &&
+  JSON.stringify(script.js) === JSON.stringify(['content-scripts/player-button.js']) &&
+  !script.css &&
+  script.world !== 'MAIN' &&
+  !script.all_frames);
+if (contentScripts.length > 1 || !playerButtonOnly) {
+  throw new Error(`Unexpected content scripts: ${JSON.stringify(contentScripts)}`);
 }
 
 // Only WebAssembly is allowed beyond 'self' (Local Whisper, ADR 0008): no

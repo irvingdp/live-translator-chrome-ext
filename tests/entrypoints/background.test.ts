@@ -363,6 +363,89 @@ describe('background offscreen document lifecycle', () => {
     });
   });
 
+  describe('the player button (ADR 0013)', () => {
+    const fromTab = { frameId: 0, id: 'test', tab: { id: 42 } as chrome.tabs.Tab };
+    const groqReady = {
+      ...settings,
+      groqApiKey: 'gq',
+      readAheadRecognizer: 'groq',
+      readAheadTranslator: 'chrome',
+      transcriber: 'gemini-read-ahead',
+    } as const;
+    const toggle = (on: boolean) => dispatchFrom({ target: 'background', type: 'PLAYER_BUTTON_TOGGLE', payload: { on } }, fromTab);
+    const readAheadStarts = () => tabsSendMessage.mock.calls
+      .filter(([, message]) => (message as { type?: string }).type === 'READ_AHEAD_START');
+    const buttonUpdates = () => tabsSendMessage.mock.calls
+      .filter(([, message]) => (message as { type?: string }).type === 'PLAYER_BUTTON_ACTIVE')
+      .map(([tabId, message]) => [tabId, (message as { payload: { active: boolean } }).payload.active]);
+
+    it('starts captions in its tab in the chosen mode, and lights the button', async () => {
+      localStorageData.settings = groqReady;
+      await expect(toggle(true)).resolves.toEqual({ active: true, ok: true });
+      expect(readAheadStarts()).toHaveLength(1);
+      expect(readAheadStarts()[0]![0]).toBe(42);
+      expect(buttonUpdates()).toEqual([[42, true]]);
+      await expect(dispatchFrom({ target: 'background', type: 'PLAYER_BUTTON_STATE' }, fromTab))
+        .resolves.toEqual({
+          active: true,
+          mode: 'read-ahead',
+          ok: true,
+          targetLanguage: groqReady.geminiTargetLanguage,
+        });
+
+      await expect(toggle(false)).resolves.toEqual({ active: false, ok: true });
+      expect(buttonUpdates()).toEqual([[42, true], [42, false]]);
+    });
+
+    it('says what is missing instead of starting', async () => {
+      localStorageData.settings = { ...groqReady, groqApiKey: '' };
+      await expect(toggle(true)).resolves.toEqual({ active: false, error: 'missing_keys', ok: false });
+      localStorageData.settings = groqReady;
+      permissionsContains.mockResolvedValue(false);
+      await expect(toggle(true)).resolves.toEqual({ active: false, error: 'needs_permission', ok: false });
+      expect(readAheadStarts()).toHaveLength(0);
+    });
+
+    it('starts live mode where the toolbar button was used, and asks for it elsewhere', async () => {
+      const live = { ...groqReady, geminiApiKey: 'gm', transcriber: 'gemini' } as const;
+      localStorageData.settings = live;
+      await expect(dispatchFrom({ target: 'background', type: 'PLAYER_BUTTON_STATE' }, fromTab))
+        .resolves.toMatchObject({ mode: 'live' });
+
+      getStreamId.mockRejectedValueOnce(new Error('Extension has not been invoked for the current page'));
+      await expect(toggle(true)).resolves.toEqual({ active: false, error: 'needs_toolbar_grant', ok: false });
+      expect(readAheadStarts()).toHaveLength(0);
+
+      await expect(toggle(true)).resolves.toEqual({ active: true, ok: true });
+      expect(getStreamId).toHaveBeenLastCalledWith({ targetTabId: 42 });
+    });
+
+    it('saves a target language while nothing runs, and opens the popup for the rest', async () => {
+      localStorageData.settings = groqReady;
+      await expect(dispatchFrom({
+        target: 'background',
+        type: 'PLAYER_BUTTON_LANGUAGE',
+        payload: { targetLanguage: 'ja' },
+      }, fromTab)).resolves.toEqual({ ok: true });
+      expect(localStorageData.settings).toMatchObject({ geminiTargetLanguage: 'ja' });
+
+      await dispatchFrom({ target: 'background', type: 'PLAYER_BUTTON_OPEN_SETTINGS' }, fromTab);
+      expect(actionOpenPopup).toHaveBeenCalledOnce();
+    });
+
+    it('restarts running captions in the new language', async () => {
+      localStorageData.settings = groqReady;
+      await toggle(true);
+      await dispatchFrom({
+        target: 'background',
+        type: 'PLAYER_BUTTON_LANGUAGE',
+        payload: { targetLanguage: 'ja' },
+      }, fromTab);
+      expect(readAheadStarts()).toHaveLength(2);
+      expect(readAheadStarts().at(-1)![1]).toMatchObject({ payload: { targetLanguage: 'ja' } });
+    });
+  });
+
   describe('switching read-ahead to Groq Whisper from the overlay', () => {
     const readAhead = { ...settings, transcriber: 'gemini-read-ahead' } as const;
     const fromTab = { frameId: 0, id: 'test', tab: { id: 42 } as chrome.tabs.Tab };
