@@ -423,6 +423,10 @@ export interface CaptionOverlayCallbacks {
 export class CaptionOverlay {
   private appearance?: CaptionAppearance;
   private captionsElement?: HTMLElement;
+  // The box as the viewer sized it. A sentence taller than that grows the
+  // box upward for as long as it shows (updateVisiblePairs); this stays the
+  // size to come back to, and the one a drag or resize starts from.
+  private baseRect?: PixelRect;
   private host?: HTMLElement;
   private interaction?: Interaction;
   private layout?: OverlayLayout;
@@ -1158,6 +1162,7 @@ export class CaptionOverlay {
   private applyPixelRect(rect: PixelRect): void {
     const captions = this.captionsElement;
     if (!captions) return;
+    this.baseRect = rect;
     Object.assign(captions.style, {
       height: `${rect.height}px`,
       left: `${rect.left}px`,
@@ -1503,6 +1508,8 @@ export class CaptionOverlay {
     this.captionsElement?.classList.remove('interacting', 'moving');
     this.interaction = undefined;
     this.pendingPoint = undefined;
+    // Growth waited while the viewer held the box.
+    this.updateVisiblePairs();
     if (this.layout) this.callbacks.onLayoutChanged?.(this.currentLayout());
   }
 
@@ -1521,6 +1528,8 @@ export class CaptionOverlay {
   private updateVisiblePairs(): void {
     const viewport = this.viewportElement;
     if (!viewport) return;
+    // Measured at the size the viewer chose; any growth is decided again.
+    this.restoreBaseHeight();
     const elements = this.pairs.flatMap((pair) => {
       const element = this.pairElements.get(pair.id);
       return element ? [element] : [];
@@ -1529,17 +1538,57 @@ export class CaptionOverlay {
     const available = viewport.clientHeight;
     if (available <= 0) return;
     let used = 0;
+    let newestHeight = 0;
     for (let index = elements.length - 1; index >= 0; index -= 1) {
       const element = elements[index]!;
       const pairHeight = element.offsetHeight;
-      // The newest pair always shows, even taller than the captions box (a
-      // long read-ahead sentence): the box keeps its bottom, the translation,
-      // and clips the top of the original. Only older pairs make way.
+      // The newest pair always shows; only older pairs make way.
       const newest = index === elements.length - 1;
+      if (newest) newestHeight = pairHeight;
       const fits = newest || (pairHeight > 0 && used + pairHeight <= available);
       element.dataset.hidden = fits ? 'false' : 'true';
       if (fits) used += pairHeight;
     }
+    // A sentence taller than the box (a long read-ahead sentence) grows the
+    // box upward, its bottom and the translation staying put, until the
+    // sentence fits or the box reaches the top of the video (or the page);
+    // past that the top of the original is clipped. Not while the viewer is
+    // dragging or resizing it.
+    if (newestHeight > available) this.growBy(newestHeight - available);
+  }
+
+  private restoreBaseHeight(): void {
+    const captions = this.captionsElement;
+    const base = this.baseRect;
+    if (!captions || !base || captions.dataset.grown !== 'true') return;
+    delete captions.dataset.grown;
+    Object.assign(captions.style, { height: `${base.height}px`, top: `${base.top}px` });
+  }
+
+  private growBy(extra: number): void {
+    const captions = this.captionsElement;
+    const base = this.baseRect;
+    if (!captions || !base || this.interaction) return;
+    const grow = Math.min(extra, Math.max(0, base.top - this.highestTop()));
+    if (grow <= 0) return;
+    captions.dataset.grown = 'true';
+    Object.assign(captions.style, {
+      height: `${base.height + grow}px`,
+      top: `${base.top - grow}px`,
+    });
+  }
+
+  // How high the box's top may go: below the title bar's room at the top of
+  // the video it follows, or of the page.
+  private highestTop(): number {
+    const anchor = this.mediaAnchor;
+    if (anchor?.isConnected) {
+      const bounds = anchor.getBoundingClientRect();
+      if (bounds.width > 0 && bounds.height > 0) {
+        return bounds.top + Math.min(TITLEBAR_HEIGHT + RESIZE_HANDLE_OFFSET, bounds.height / 2);
+      }
+    }
+    return Math.max(VIEWPORT_MARGIN, TITLEBAR_HEIGHT + RESIZE_HANDLE_OFFSET);
   }
 
   private createPair(pair: CaptionPair): HTMLElement {

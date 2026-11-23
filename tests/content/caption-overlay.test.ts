@@ -9,7 +9,7 @@ import {
   ERROR_SHOW_DELAY_MS,
   sessionErrorText,
 } from '../../src/content/caption-overlay';
-import type { OverlayLayout } from '../../src/core/overlay-layout';
+import { normalizeOverlayLayout, type OverlayLayout } from '../../src/core/overlay-layout';
 
 function rect(
   width: number,
@@ -634,6 +634,42 @@ describe('CaptionOverlay', () => {
       { hidden: 'true', id: 'old' },
       { hidden: 'false', id: 'long' },
     ]);
+  });
+
+  it('grows the box upward for a sentence taller than it, keeping its bottom, then back to the size the viewer chose', () => {
+    let pairHeight = 104;
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains('viewport') ? 77 : 0;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains('pair') ? pairHeight : 0;
+      },
+    );
+    const overlay = new CaptionOverlay(document);
+    overlay.show(appearance, layout);
+    const box = () => shadow()!.querySelector<HTMLElement>('.captions')!.style;
+    const chosen = { height: parseFloat(box().height), top: parseFloat(box().top) };
+    const bottom = chosen.top + chosen.height;
+
+    overlay.setWindow([{ id: 'long', original: 'A long sentence.', translation: '長句。' }]);
+    expect(parseFloat(box().height)).toBe(chosen.height + 27);
+    expect(parseFloat(box().top) + parseFloat(box().height)).toBe(bottom);
+    // What is saved is still the size the viewer chose.
+    expect(overlay.currentLayout()).toEqual(normalizeOverlayLayout(layout));
+
+    pairHeight = 20;
+    overlay.setWindow([{ id: 'short', original: 'Short.', translation: '短。' }]);
+    expect(parseFloat(box().height)).toBe(chosen.height);
+    expect(parseFloat(box().top)).toBe(chosen.top);
+
+    // Never past the top of the page (minus the title bar's room).
+    pairHeight = 100_000;
+    overlay.setWindow([{ id: 'huge', original: 'Huge.', translation: '巨。' }]);
+    expect(parseFloat(box().top)).toBe(42);
+    expect(parseFloat(box().top) + parseFloat(box().height)).toBe(bottom);
   });
 
   it('opens the native panel and hides the webpage overlay', async () => {
