@@ -28,6 +28,10 @@ _Avoid_: Interceptor, sniffer, prefetch
 A site the viewer has allowed read-ahead to be ready on from the moment its pages load, so it can read any streaming player there. Asked for once per site.
 _Avoid_: Whitelisted site, enabled domain
 
+**Player button** (播放器按鈕):
+The extension's icon in YouTube's and Bilibili's own player controls, always there on those two sites. It opens a small menu that starts or stops captions in that tab in the mode chosen in the popup, changes the language captions are translated into, or opens the popup.
+_Avoid_: Player toggle, in-player icon
+
 **Shadow player** (影子播放器):
 A hidden, muted second copy of the same media that plays ahead of the main player and supplies the audio for read-ahead. Used for plain video files, where there is no buffer to tap.
 _Avoid_: Ghost player, background player, preloader

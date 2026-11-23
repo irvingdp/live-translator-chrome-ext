@@ -158,4 +158,11 @@ export type ExtensionMessage =
   | { target: 'background'; type: 'READ_AHEAD_USE_RECOGNIZER' }
   // The "允許這個網站" button (ADR 0009): opens the popup to allow the site.
   | { target: 'background'; type: 'READ_AHEAD_OPEN_SITE_ACCESS' }
+  // The player button (ADR 0013), from YouTube's or Bilibili's page: whether
+  // captions run in this tab; start read-ahead here or stop; the target
+  // language; the popup for everything else.
+  | { target: 'background'; type: 'PLAYER_BUTTON_STATE' }
+  | { target: 'background'; type: 'PLAYER_BUTTON_TOGGLE'; payload: { on: boolean } }
+  | { target: 'background'; type: 'PLAYER_BUTTON_LANGUAGE'; payload: { targetLanguage: string } }
+  | { target: 'background'; type: 'PLAYER_BUTTON_OPEN_SETTINGS' }
   | { target: 'background'; type: 'SESSION_STATUS' };
