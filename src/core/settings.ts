@@ -39,8 +39,8 @@ export function captionAppearance(
 export const SETTING_RANGES = {
   backgroundOpacity: { max: 100, min: 0 },
   maxLineWidth: { max: 140, min: 40 },
-  originalFontSize: { max: 36, min: 12 },
-  translationFontSize: { max: 36, min: 12 },
+  originalFontSize: { max: 46, min: 12 },
+  translationFontSize: { max: 46, min: 12 },
 } as const;
 
 export const DEFAULT_SETTINGS: AppSettings = {

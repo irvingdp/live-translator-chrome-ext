@@ -240,10 +240,10 @@ describe('PopupApp', () => {
     const translation = screen.getByLabelText('譯文字級');
 
     expect(original).toHaveAttribute('min', '12');
-    expect(original).toHaveAttribute('max', '36');
+    expect(original).toHaveAttribute('max', '46');
     expect(original).toHaveValue('16');
     expect(translation).toHaveAttribute('min', '12');
-    expect(translation).toHaveAttribute('max', '36');
+    expect(translation).toHaveAttribute('max', '46');
     expect(translation).toHaveValue('16');
 
     fireEvent.change(original, { target: { value: '34' } });

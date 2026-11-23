@@ -30,12 +30,12 @@ describe('captionAppearance', () => {
 });
 
 describe('normalizeSettings', () => {
-  it('applies defaults and clamps both caption sizes to 12–36 px', () => {
+  it('applies defaults and clamps both caption sizes to 12–46 px', () => {
     expect(
       normalizeSettings({ originalFontSize: 99, translationFontSize: 2 }),
     ).toEqual({
       ...DEFAULT_SETTINGS,
-      originalFontSize: 36,
+      originalFontSize: 46,
       translationFontSize: 12,
     });
   });
