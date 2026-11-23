@@ -745,10 +745,13 @@ export class CaptionOverlay {
 
   private showStatus(code: string, action?: SessionErrorAction): void {
     this.statusTextValue = sessionErrorText(code);
-    // A new status opens its panel when the viewer has to do something; the
-    // same status again keeps the panel as the viewer left it.
+    // A new status opens its panel when the viewer has to do something, or
+    // when it offers another recognizer (the button is the way out, so it
+    // shows without a click); the same status again keeps the panel as the
+    // viewer left it.
     if (code !== this.statusCode) {
-      this.statusPanelOpen = statusPresentation(code, this.statusTextValue).urgent;
+      this.statusPanelOpen = statusPresentation(code, this.statusTextValue).urgent ||
+        action === 'switch_to_groq' || action === 'switch_to_local';
       this.statusShownAt = Date.now();
     }
     this.statusCode = code;

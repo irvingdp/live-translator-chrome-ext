@@ -231,7 +231,7 @@ describe('CaptionOverlay', () => {
     expect(button().hidden).toBe(true);
   });
 
-  it('shows a status as a light with a short label, its panel opening by itself only when urgent', () => {
+  it('shows a status as a light with a short label, its panel opening by itself when urgent or offering a switch', () => {
     vi.useFakeTimers();
     try {
       const overlay = new CaptionOverlay(document);
@@ -241,14 +241,17 @@ describe('CaptionOverlay', () => {
       const panel = () => shadow()!.querySelector<HTMLElement>('.status-panel')!;
       expect(area().hidden).toBe(true);
 
-      // A rate limit usually clears with the next chunk: the light only.
-      overlay.setSessionError('gemini_rate_limited', 'switch_to_groq');
+      // A rate limit with nothing to switch to: the light only.
+      overlay.setSessionError('groq_rate_limited');
       vi.advanceTimersByTime(ERROR_SHOW_DELAY_MS);
       expect(area().hidden).toBe(false);
       expect(light().dataset.tone).toBe('error');
-      expect(light().textContent).toBe('Gemini 限流中');
+      expect(light().textContent).toBe('Groq Whisper 限流中');
       expect(panel().hidden).toBe(true);
-      light().click();
+
+      // One that offers another recognizer opens its panel, button and all.
+      overlay.setSessionError('gemini_rate_limited', 'switch_to_groq');
+      expect(light().textContent).toBe('Gemini 限流中');
       expect(panel().hidden).toBe(false);
       expect(panel().querySelector('.status-message')!.textContent).toMatch(/^Gemini 請求太頻繁/);
       expect(panel().querySelector('.status-action')!.textContent).toBe('改用 Groq Whisper');
