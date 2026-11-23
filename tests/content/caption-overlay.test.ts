@@ -135,64 +135,54 @@ describe('findLargestVisiblePlayerFrame', () => {
 });
 
 describe('CaptionOverlay', () => {
-  it('sets the caption size and background by dragging their toolbar icons, saving once the drag ends', () => {
+  it('sets the caption size and background with bars in the toolbar, saving once let go', () => {
     const onAppearanceChanged = vi.fn();
     const overlay = new CaptionOverlay(document, { onAppearanceChanged });
     overlay.show(appearance, layout);
-    const control = (name: string) => shadow()!.querySelector<HTMLElement>(`[data-scrub="${name}"]`)!;
-    const pointer = (target: HTMLElement, type: string, clientX: number) => {
-      const event = new MouseEvent(type, { bubbles: true, button: 0, cancelable: true, clientX });
-      target.dispatchEvent(event);
-      return event;
-    };
-    const size = () => shadow()!.host as HTMLElement;
+    const bar = (name: string) => shadow()!.querySelector<HTMLInputElement>(`[data-slider="${name}"] input`)!;
+    const value = (name: string) => shadow()!.querySelector(`[data-slider="${name}"] .slider-value`)!;
+    const host = () => shadow()!.host as HTMLElement;
 
-    expect(control('font')).toHaveAttribute('role', 'slider');
-    expect(control('font')).toHaveAttribute('aria-label', '字幕大小');
-    expect(control('font')).toHaveAttribute('aria-valuemax', '46');
-    expect(control('background')).toHaveAttribute('aria-label', '字幕背景');
-    expect(control('font').querySelector('.scrub-value')).toHaveTextContent('30 px');
-    expect(control('font').querySelector('.scrub-hint')).toHaveTextContent('左右拖曳調整・雙擊恢復預設');
-    // The four +/− buttons are gone.
-    expect(shadow()!.querySelector('[data-appearance-action]')).toBeNull();
+    expect(bar('font')).toHaveAttribute('type', 'range');
+    expect(bar('font')).toHaveAttribute('aria-label', '字幕大小');
+    expect(bar('font')).toHaveAttribute('min', '12');
+    expect(bar('font')).toHaveAttribute('max', '46');
+    expect(bar('font')).toHaveValue('30');
+    expect(value('font')).toHaveTextContent('30 px');
+    expect(bar('background')).toHaveAttribute('aria-label', '字幕背景');
+    expect(bar('background')).toHaveAttribute('step', '5');
+    expect(value('background')).toHaveTextContent('50%');
 
-    // 220 px covers 12–46 px: dragging 65 px right adds 10 px to both.
-    const down = pointer(control('font'), 'pointerdown', 100);
-    expect(down.defaultPrevented).toBe(true);
-    pointer(control('font'), 'pointermove', 165);
-    expect(size().style.getPropertyValue('--caption-original-size')).toBe('40px');
-    expect(size().style.getPropertyValue('--caption-translation-size')).toBe('30px');
-    expect(control('font').querySelector('.scrub-value')).toHaveTextContent('40 px');
+    // A drag on the bar is not a drag of the box.
+    const down = new MouseEvent('pointerdown', { bubbles: true, cancelable: true });
+    const bubbled = vi.fn();
+    shadow()!.querySelector('.captions')!.addEventListener('pointerdown', bubbled);
+    bar('font').dispatchEvent(down);
+    expect(bubbled).not.toHaveBeenCalled();
+
+    // Dragging shows the change; letting go saves it, both sizes moving together.
+    bar('font').value = '40';
+    bar('font').dispatchEvent(new Event('input', { bubbles: true }));
+    expect(host().style.getPropertyValue('--caption-original-size')).toBe('40px');
+    expect(host().style.getPropertyValue('--caption-translation-size')).toBe('30px');
+    expect(value('font')).toHaveTextContent('40 px');
     expect(onAppearanceChanged).not.toHaveBeenCalled();
-    // Past the end it stops at 46 px.
-    pointer(control('font'), 'pointermove', 900);
-    pointer(control('font'), 'pointerup', 900);
+    bar('font').dispatchEvent(new Event('change', { bubbles: true }));
     expect(onAppearanceChanged).toHaveBeenCalledOnce();
     expect(onAppearanceChanged).toHaveBeenLastCalledWith({
       ...appearance,
-      originalFontSize: 46,
-      translationFontSize: 36,
+      originalFontSize: 40,
+      translationFontSize: 30,
     });
 
-    // The background: left is lighter.
-    pointer(control('background'), 'pointerdown', 300);
-    pointer(control('background'), 'pointermove', 256);
-    pointer(control('background'), 'pointerup', 256);
+    bar('background').value = '30';
+    bar('background').dispatchEvent(new Event('change', { bubbles: true }));
     expect(onAppearanceChanged).toHaveBeenLastCalledWith(expect.objectContaining({ backgroundOpacity: 30 }));
+    expect(value('background')).toHaveTextContent('30%');
 
-    // The wheel and the arrow keys step; a double-click resets.
-    control('background').dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -100 }));
-    expect(onAppearanceChanged).toHaveBeenLastCalledWith(expect.objectContaining({ backgroundOpacity: 35 }));
-    control('font').dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowLeft' }));
-    expect(onAppearanceChanged).toHaveBeenLastCalledWith(expect.objectContaining({
-      originalFontSize: 45,
-      translationFontSize: 35,
-    }));
-    control('font').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    expect(onAppearanceChanged).toHaveBeenLastCalledWith(expect.objectContaining({
-      originalFontSize: 16,
-      translationFontSize: 16,
-    }));
+    // A change made elsewhere (the popup) moves the bar.
+    overlay.setAppearance({ ...appearance, originalFontSize: 18 });
+    expect(bar('font')).toHaveValue('18');
     overlay.hide();
   });
 
@@ -326,6 +316,10 @@ describe('CaptionOverlay', () => {
     expect(shadow()?.querySelector('.caption-toolbar')).toBeInTheDocument();
     expect(shadow()?.querySelector('.toolbar-label')).toHaveTextContent('即時字幕');
     const css = shadow()?.querySelector('style')?.textContent;
+    // The background fades by opacity on its own layer, not a var() alpha a
+    // dark-mode extension freezes.
+    expect(css).toMatch(/\.caption-body::before \{[^}]*opacity: var\(--caption-bg-opacity, 0\)/);
+    expect(css).not.toContain('rgba(3, 7, 18, var(');
     expect(css).toContain('height: 32px');
     expect(css).toContain('bottom: 100%');
     expect(css).toContain('height: 16px');
@@ -666,6 +660,15 @@ describe('CaptionOverlay', () => {
     overlay.setWindow([{ id: 'short', original: 'Short.', translation: '短。' }]);
     expect(parseFloat(box().height)).toBe(chosen.height);
     expect(parseFloat(box().top)).toBe(chosen.top);
+
+    // The pointer on the box holds its size: a bar under it does not jump.
+    const captions = shadow()!.querySelector<HTMLElement>('.captions')!;
+    captions.dispatchEvent(new Event('pointerenter'));
+    pairHeight = 104;
+    overlay.setWindow([{ id: 'long-again', original: 'Long again.', translation: '又長。' }]);
+    expect(parseFloat(box().height)).toBe(chosen.height);
+    captions.dispatchEvent(new Event('pointerleave'));
+    expect(parseFloat(box().height)).toBe(chosen.height + 27);
 
     // Never past the top of the page (minus the title bar's room).
     pairHeight = 100_000;

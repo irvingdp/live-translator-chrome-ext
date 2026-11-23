@@ -65,7 +65,6 @@
   },
   "captionSizeControl": { "message": "字幕大小", "description": "Caption toolbar control dragged left or right to set both font sizes." },
   "captionBackgroundControl": { "message": "字幕背景", "description": "Caption toolbar control dragged left or right to set the background opacity." },
-  "captionScrubHint": { "message": "左右拖曳調整・雙擊恢復預設", "description": "Hint under a caption toolbar drag control." },
   "increaseCaptionFont": { "message": "同時加大原文與譯文字體", "description": "Caption toolbar action that increases both font sizes." },
   "decreaseCaptionFont": { "message": "同時縮小原文與譯文字體", "description": "Caption toolbar action that decreases both font sizes." },
   "increaseCaptionBackground": { "message": "增加字幕背景透明度", "description": "Caption toolbar action that increases background opacity." },
