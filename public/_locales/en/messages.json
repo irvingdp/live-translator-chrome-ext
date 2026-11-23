@@ -65,7 +65,6 @@
   },
   "captionSizeControl": { "message": "Caption size", "description": "Caption toolbar control dragged left or right to set both font sizes." },
   "captionBackgroundControl": { "message": "Caption background", "description": "Caption toolbar control dragged left or right to set the background opacity." },
-  "captionScrubHint": { "message": "Drag left or right · double-click to reset", "description": "Hint under a caption toolbar drag control." },
   "increaseCaptionFont": { "message": "Increase original and translation font sizes", "description": "Caption toolbar action that increases both font sizes." },
   "decreaseCaptionFont": { "message": "Decrease original and translation font sizes", "description": "Caption toolbar action that decreases both font sizes." },
   "increaseCaptionBackground": { "message": "Increase caption background opacity", "description": "Caption toolbar action that increases background opacity." },
