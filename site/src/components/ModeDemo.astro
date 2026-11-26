@@ -215,20 +215,27 @@ const config = JSON.stringify({ kind, joiner: t.sourceJoiner, lines });
 </script>
 
 <style>
+  /* A player on the beige page: the demo keeps its own dark palette. */
   .demo {
+    --surface: #1e1b17;
+    --surface-2: #2c2823;
+    --border: #3b352d;
+    --text: #f8fafc;
+    --muted: #b8ae9f;
+    --bg: #1e1b17;
     margin: 0;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
+    border: 1px solid #14120f;
+    border-radius: 14px;
     padding: 12px;
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 20px 44px -22px rgba(35, 31, 26, 0.55);
   }
   .screen {
     position: relative;
     aspect-ratio: 16 / 9;
-    border-radius: 10px;
+    border-radius: 8px;
     overflow: hidden;
-    background: radial-gradient(circle at 50% 30%, #3b2a6b 0%, #1a1438 55%, #0d0b1f 100%);
+    background: radial-gradient(circle at 50% 30%, #4a3a2c 0%, #2a211a 55%, #15110d 100%);
   }
   .read .screen {
     background: radial-gradient(circle at 50% 30%, #1f4d5c 0%, #12283a 55%, #0a1520 100%);
@@ -327,7 +334,8 @@ const config = JSON.stringify({ kind, joiner: t.sourceJoiner, lines });
   }
   .caption p {
     margin: 0;
-    font-size: clamp(11px, 1.9vw, 17px);
+    font-size: clamp(13px, 1.9vw, 17px);
+    text-wrap: balance;
   }
   .src {
     color: #fff;
@@ -388,7 +396,7 @@ const config = JSON.stringify({ kind, joiner: t.sourceJoiner, lines });
   }
   .lane {
     position: relative;
-    border-radius: 4px;
+    border-radius: 3px;
     background: var(--surface-2);
   }
   .lane :global(.block) {
@@ -415,7 +423,11 @@ const config = JSON.stringify({ kind, joiner: t.sourceJoiner, lines });
     position: absolute;
     left: calc(100% + 6px);
     top: -1px;
-    font-size: 10px;
+    padding: 0 5px;
+    border-radius: 4px;
+    background: var(--bg);
+    font-size: 11px;
+    line-height: 1.5;
     color: var(--teal-light);
     white-space: nowrap;
   }

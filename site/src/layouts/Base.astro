@@ -10,6 +10,9 @@ interface Props {
 
 const { lang, title, description, alternates = [] } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
+// Headings: a subset of jf open huninn, renamed per its OFL licence
+// (public/fonts/OFL.txt; rebuild with scripts/subset-font.py).
+const roundedFace = `@font-face{font-family:"BLC Rounded";font-style:normal;font-weight:400;font-display:swap;src:url("${url('fonts/blc-rounded.woff2')}") format("woff2");}`;
 ---
 
 <!doctype html>
@@ -25,13 +28,15 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={new URL(url('video/intro-en.jpg'), Astro.site)} />
-    <meta name="theme-color" content="#0b1120" />
+    <meta name="theme-color" content="#0f1f3d" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap"
     />
+    <link rel="preload" href={url('fonts/blc-rounded.woff2')} as="font" type="font/woff2" crossorigin />
+    <style set:html={roundedFace}></style>
   </head>
   <body>
     <slot />
@@ -40,23 +45,43 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 
 <style is:global>
   :root {
-    --bg: #0b1120;
-    --surface: #111827;
-    --surface-2: #182235;
-    --border: #334155;
-    --text: #f8fafc;
-    --muted: #a8b3c5;
-    --teal: #14b8a6;
-    --teal-dark: #0d9488;
+    /* A deep navy page with warm cream text. The section holding the players
+       is a beige band (.band), and the players stay dark on it. Orange, from
+       the 雙 icon, is the one accent. */
+    --bg: #0f1f3d;
+    --surface-2: #1a2c50;
+    --border: #2e4166;
+    --text: #f4efe6;
+    --muted: #b4bed0;
+    --accent: #ff7744;
+    --accent-ink: #ff7744;
+    --on-accent: #0f1f3d;
     --teal-light: #5eead4;
     --amber: #fde68a;
+    --rounded: 'BLC Rounded', 'Noto Sans TC', system-ui, sans-serif;
     color-scheme: dark;
+  }
+  /* The light band: same roles, beige ground, a darker orange for text. */
+  .band {
+    --surface-2: #e8dfd0;
+    --border: #d8cdbb;
+    --text: #231f1a;
+    --muted: #5d5548;
+    --accent-ink: #a8401a;
+    background: #f3ece0;
+    color: var(--text);
+    color-scheme: light;
   }
   * {
     box-sizing: border-box;
   }
   html {
     scroll-behavior: smooth;
+    scrollbar-color: var(--border) var(--bg);
+  }
+  ::selection {
+    background: rgba(255, 119, 68, 0.32);
+    color: var(--text);
   }
   body {
     margin: 0;
@@ -66,12 +91,22 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
   }
+  h1,
+  h2,
+  h3,
+  summary {
+    font-family: var(--rounded);
+    font-weight: 400;
+    font-synthesis: none;
+  }
   a {
-    color: var(--teal-light);
+    color: var(--accent-ink);
+    text-underline-offset: 0.18em;
   }
   a:focus-visible,
-  button:focus-visible {
-    outline: 3px solid var(--teal-light);
+  button:focus-visible,
+  summary:focus-visible {
+    outline: 3px solid var(--accent-ink);
     outline-offset: 3px;
     border-radius: 6px;
   }
