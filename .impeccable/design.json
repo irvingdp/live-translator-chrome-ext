@@ -1,0 +1,522 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-26T13:52:42.735389+00:00",
+  "title": "Design System: Bilingual Live Captions (marketing site)",
+  "extensions": {
+    "colorMeta": {
+      "navy-page": {
+        "role": "neutral",
+        "displayName": "Navy Page",
+        "canonical": "#0f1f3d",
+        "tonalRamp": [
+          "#090b0f",
+          "#1e2532",
+          "#354259",
+          "#4e6184",
+          "#6f83a7",
+          "#96a6c1",
+          "#c0cada",
+          "#ebeff5"
+        ]
+      },
+      "navy-hover": {
+        "role": "neutral",
+        "displayName": "Navy Hover",
+        "canonical": "#1a2c50",
+        "tonalRamp": [
+          "#090b10",
+          "#1e2533",
+          "#34425c",
+          "#4c6189",
+          "#6d83ac",
+          "#95a6c4",
+          "#bfcadc",
+          "#ebeff6"
+        ]
+      },
+      "navy-hairline": {
+        "role": "neutral",
+        "displayName": "Navy Hairline",
+        "canonical": "#2e4166",
+        "tonalRamp": [
+          "#090b10",
+          "#1e2533",
+          "#34425c",
+          "#4d6188",
+          "#6d83ab",
+          "#95a6c4",
+          "#c0cadc",
+          "#ebeff6"
+        ]
+      },
+      "cream": {
+        "role": "neutral",
+        "displayName": "Cream",
+        "canonical": "#f4efe6",
+        "tonalRamp": [
+          "#0c0b0a",
+          "#262522",
+          "#44423d",
+          "#656159",
+          "#86827a",
+          "#a8a59f",
+          "#cbc9c5",
+          "#efeeed"
+        ]
+      },
+      "mist-muted": {
+        "role": "neutral",
+        "displayName": "Mist Muted",
+        "canonical": "#b4bed0",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#22252b",
+          "#3c424d",
+          "#596271",
+          "#7a8393",
+          "#9fa5b2",
+          "#c5c9d1",
+          "#edeef1"
+        ]
+      },
+      "icon-orange": {
+        "role": "primary",
+        "displayName": "Icon Orange",
+        "canonical": "#ff7744",
+        "tonalRamp": [
+          "#150704",
+          "#411505",
+          "#712604",
+          "#a33a0a",
+          "#d5531c",
+          "#e68967",
+          "#f4baa5",
+          "#fee9e2"
+        ]
+      },
+      "beige-band": {
+        "role": "neutral",
+        "displayName": "Beige Band",
+        "canonical": "#f3ece0",
+        "tonalRamp": [
+          "#0c0b0a",
+          "#272521",
+          "#45413b",
+          "#666056",
+          "#888177",
+          "#a9a49d",
+          "#cbc9c4",
+          "#efeeec"
+        ]
+      },
+      "oat-hover": {
+        "role": "neutral",
+        "displayName": "Oat Hover",
+        "canonical": "#e8dfd0",
+        "tonalRamp": [
+          "#0c0b0a",
+          "#272520",
+          "#464139",
+          "#686053",
+          "#898174",
+          "#aaa49a",
+          "#ccc9c3",
+          "#f0eeec"
+        ]
+      },
+      "sand-hairline": {
+        "role": "neutral",
+        "displayName": "Sand Hairline",
+        "canonical": "#d8cdbb",
+        "tonalRamp": [
+          "#0c0b09",
+          "#28251f",
+          "#474137",
+          "#696050",
+          "#8b8171",
+          "#aba498",
+          "#cdc8c1",
+          "#f0eeeb"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#231f1a",
+        "tonalRamp": [
+          "#0c0b0a",
+          "#262523",
+          "#45413e",
+          "#65605b",
+          "#86817b",
+          "#a8a4a0",
+          "#cbc9c6",
+          "#efeeed"
+        ]
+      },
+      "walnut-muted": {
+        "role": "neutral",
+        "displayName": "Walnut Muted",
+        "canonical": "#5d5548",
+        "tonalRamp": [
+          "#0c0b0a",
+          "#272520",
+          "#474139",
+          "#686053",
+          "#8a8173",
+          "#aaa49a",
+          "#ccc9c2",
+          "#f0eeec"
+        ]
+      },
+      "burnt-orange": {
+        "role": "primary",
+        "displayName": "Burnt Orange",
+        "canonical": "#a8401a",
+        "tonalRamp": [
+          "#130805",
+          "#3d190d",
+          "#6d2a13",
+          "#a13c16",
+          "#c85f3c",
+          "#dc8f75",
+          "#edbdad",
+          "#fceae4"
+        ]
+      },
+      "player-umber": {
+        "role": "neutral",
+        "displayName": "Player Umber",
+        "canonical": "#1e1b17",
+        "tonalRamp": [
+          "#0b0b0a",
+          "#262523",
+          "#44423e",
+          "#64615c",
+          "#85827d",
+          "#a7a4a1",
+          "#cac9c6",
+          "#efeeed"
+        ]
+      },
+      "player-umber-lane": {
+        "role": "neutral",
+        "displayName": "Player Umber Lane",
+        "canonical": "#2c2823",
+        "tonalRamp": [
+          "#0c0b0a",
+          "#262523",
+          "#44413e",
+          "#65605b",
+          "#86817c",
+          "#a8a4a0",
+          "#cbc9c6",
+          "#efeeed"
+        ]
+      },
+      "player-edge": {
+        "role": "neutral",
+        "displayName": "Player Edge",
+        "canonical": "#14120f",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#262524",
+          "#43423f",
+          "#63615d",
+          "#84827e",
+          "#a7a5a2",
+          "#cac9c7",
+          "#efeeee"
+        ]
+      },
+      "player-muted": {
+        "role": "neutral",
+        "displayName": "Player Muted",
+        "canonical": "#b8ae9f",
+        "tonalRamp": [
+          "#0c0b09",
+          "#282520",
+          "#474138",
+          "#696053",
+          "#8a8173",
+          "#aba49a",
+          "#cdc8c2",
+          "#f0eeec"
+        ]
+      },
+      "caption-white": {
+        "role": "neutral",
+        "displayName": "Caption White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "caption-amber": {
+        "role": "secondary",
+        "displayName": "Caption Amber",
+        "canonical": "#fde68a",
+        "tonalRamp": [
+          "#0d0b04",
+          "#2c2506",
+          "#4e4107",
+          "#72600f",
+          "#978121",
+          "#b4a56a",
+          "#d2caa7",
+          "#f2efe2"
+        ]
+      },
+      "signal-teal": {
+        "role": "tertiary",
+        "displayName": "Signal Teal",
+        "canonical": "#5eead4",
+        "tonalRamp": [
+          "#030e0c",
+          "#002c26",
+          "#014d44",
+          "#037164",
+          "#1a9686",
+          "#61b7a8",
+          "#a5d5cb",
+          "#e2f3ef"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Hero headline only, centred, cream on navy."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section titles (h2)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Ruled-column item titles (features, steps)."
+      },
+      "title-mode": {
+        "displayName": "Mode Title",
+        "purpose": "Mode names beside the demos, on the beige band."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "Step numbers in accent ink (Icon Orange on navy)."
+      },
+      "lead": {
+        "displayName": "Lead",
+        "purpose": "Hero lead, Mist Muted."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Mode taglines (Burnt Orange), table heads, footer and language links."
+      }
+    },
+    "shadows": [
+      {
+        "name": "player-lift",
+        "value": "0 24px 50px -24px rgba(35, 31, 26, 0.6)",
+        "purpose": "Promo video frame, straddling the navy hero and the beige band."
+      },
+      {
+        "name": "demo-lift",
+        "value": "0 20px 44px -22px rgba(35, 31, 26, 0.55)",
+        "purpose": "Each mode demo player on the beige band."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ui-ease",
+        "value": "160ms ease-out",
+        "purpose": "Button filter/press and FAQ chevron rotation."
+      },
+      {
+        "name": "caption-fade",
+        "value": "opacity 0.2s",
+        "purpose": "Demo caption overlay appearing."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "prefers-reduced-motion: reduce",
+        "purpose": "Smooth scroll off; demos render one still frame."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "table-wrap",
+        "value": "600px"
+      },
+      {
+        "name": "mode-stack",
+        "value": "820px"
+      },
+      {
+        "name": "container",
+        "value": "1120px"
+      }
+    ],
+    "assets": {
+      "displayFont": "site/public/fonts/blc-rounded.woff2 (renamed jf open huninn subset, SIL OFL, OFL.txt alongside); rebuild with site/scripts/subset-font.py when copy adds characters",
+      "scope": "Marketing site (site/) only; the extension UI under src/ and entrypoints/ is separate."
+    },
+    "roles": {
+      "note": "Base.astro defines the roles on :root (navy) and .band redefines them (beige). Components use the roles.",
+      "navy": {
+        "--bg": "#0f1f3d",
+        "--surface-2": "#1a2c50",
+        "--border": "#2e4166",
+        "--text": "#f4efe6",
+        "--muted": "#b4bed0",
+        "--accent": "#ff7744",
+        "--accent-ink": "#ff7744",
+        "--on-accent": "#0f1f3d"
+      },
+      "band": {
+        "background": "#f3ece0",
+        "--surface-2": "#e8dfd0",
+        "--border": "#d8cdbb",
+        "--text": "#231f1a",
+        "--muted": "#5d5548",
+        "--accent-ink": "#a8401a"
+      }
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Install action: Icon Orange fill with Navy Page text, the one filled button.",
+      "html": "<div class=\"ds-ground\"><a class=\"ds-btn ds-btn-primary\" href=\"#\">Add to Chrome — it's free</a></div>",
+      "css": ".ds-ground{background:#0f1f3d;padding:24px}.ds-btn{display:inline-flex;align-items:center;min-height:50px;padding:0 24px;border-radius:10px;border:1.5px solid #f4efe6;color:#f4efe6;background:transparent;font:600 16px Inter,'Noto Sans TC',system-ui,sans-serif;text-decoration:none;transition:filter 160ms ease-out,transform 160ms ease-out}.ds-btn-primary{background:#ff7744;border-color:#ff7744;color:#0f1f3d}.ds-btn-primary:hover{background:#ff7744;filter:brightness(1.08)}.ds-btn:active{transform:translateY(1px)}.ds-btn:focus-visible{outline:3px solid #ff7744;outline-offset:3px;border-radius:6px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Cream outline button for the source link; hover fills Navy Hover.",
+      "html": "<div class=\"ds-ground2\"><a class=\"ds-btn2\" href=\"#\">View source</a></div>",
+      "css": ".ds-ground2{background:#0f1f3d;padding:24px}.ds-btn2{display:inline-flex;align-items:center;min-height:50px;padding:0 24px;border-radius:10px;border:1.5px solid #f4efe6;color:#f4efe6;background:transparent;font:600 16px Inter,'Noto Sans TC',system-ui,sans-serif;text-decoration:none;transition:filter 160ms ease-out,transform 160ms ease-out}.ds-btn2:hover{background:#1a2c50}.ds-btn2:active{transform:translateY(1px)}.ds-btn2:focus-visible{outline:3px solid #ff7744;outline-offset:3px;border-radius:6px}"
+    },
+    {
+      "name": "Top Bar",
+      "kind": "nav",
+      "refersTo": null,
+      "description": "Brand with the orange 雙 icon in cream BLC Rounded, and a Mist Muted language link.",
+      "html": "<header class=\"ds-top\"><a class=\"ds-brand\" href=\"#\"><span class=\"ds-ico\">雙</span>Bilingual Live Captions</a><a class=\"ds-lang\" href=\"#\">繁體中文</a></header>",
+      "css": ".ds-top{display:flex;justify-content:space-between;align-items:center;padding:20px 16px;background:#0f1f3d}.ds-brand{display:flex;align-items:center;gap:10px;color:#f4efe6;text-decoration:none;font:400 17px 'BLC Rounded','Noto Sans TC',system-ui,sans-serif}.ds-ico{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:#ff7744;color:#fff;font-weight:700}.ds-lang{font:15px Inter,'Noto Sans TC',system-ui,sans-serif;color:#b4bed0}.ds-brand:focus-visible,.ds-lang:focus-visible{outline:3px solid #ff7744;outline-offset:3px;border-radius:6px}"
+    },
+    {
+      "name": "Ruled Column Item",
+      "kind": "card",
+      "refersTo": null,
+      "description": "The card replacement: a heavy cream rule over a title with an orange line icon and muted body.",
+      "html": "<div class=\"ds-ground3\"><article class=\"ds-rule\"><h3><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M3 5h18v14H3z\"/><path d=\"M6.5 13.5h7M6.5 16h11\"/></svg>Two lines, live</h3><p>The original on top, its translation underneath.</p></article></div>",
+      "css": ".ds-ground3{background:#0f1f3d;padding:24px}.ds-rule{border-top:2px solid #f4efe6;padding-top:18px;max-width:320px}.ds-rule h3{display:flex;align-items:center;gap:10px;margin:0 0 8px;font:400 20px 'BLC Rounded','Noto Sans TC',system-ui,sans-serif;color:#f4efe6}.ds-rule svg{width:22px;height:22px;flex:none;fill:none;stroke:#ff7744;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.ds-rule p{margin:0;color:#b4bed0;font:16px/1.6 Inter,'Noto Sans TC',system-ui,sans-serif}"
+    },
+    {
+      "name": "Step Item",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Ruled column with an Icon Orange rounded numeral.",
+      "html": "<div class=\"ds-ground4\"><div class=\"ds-step\"><span>1</span><h3>Install</h3><p>From the Chrome Web Store.</p></div></div>",
+      "css": ".ds-ground4{background:#0f1f3d;padding:24px}.ds-step{border-top:2px solid #f4efe6;padding-top:18px;max-width:320px}.ds-step span{display:block;color:#ff7744;font:400 40px/1 'BLC Rounded','Noto Sans TC',system-ui,sans-serif;margin-bottom:10px}.ds-step h3{margin:0 0 8px;font:400 20px 'BLC Rounded','Noto Sans TC',system-ui,sans-serif;color:#f4efe6}.ds-step p{margin:0;color:#b4bed0;font:16px/1.6 Inter,'Noto Sans TC',system-ui,sans-serif}"
+    },
+    {
+      "name": "FAQ Row",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Navy Hairline-divided disclosure under a cream rule; summary turns orange on hover, drawn chevron.",
+      "html": "<div class=\"ds-ground5\"><div class=\"ds-faq\"><details><summary>Is it free?</summary><p>Yes. You bring your own key.</p></details><details><summary>Where is my key stored?</summary><p>In Chrome, on your computer.</p></details></div></div>",
+      "css": ".ds-ground5{background:#0f1f3d;padding:24px}.ds-faq{border-top:2px solid #f4efe6;max-width:560px;font:16px/1.6 Inter,'Noto Sans TC',system-ui,sans-serif;color:#f4efe6}.ds-faq details{border-bottom:1px solid #2e4166;padding:18px 0}.ds-faq details:last-child{border-bottom:none}.ds-faq summary{cursor:pointer;list-style:none;position:relative;padding-right:28px;font:400 17px 'BLC Rounded','Noto Sans TC',system-ui,sans-serif;color:#f4efe6}.ds-faq summary::-webkit-details-marker{display:none}.ds-faq summary::after{content:'';position:absolute;right:4px;top:.45em;width:8px;height:8px;border-right:2px solid #b4bed0;border-bottom:2px solid #b4bed0;transform:rotate(45deg);transition:transform 160ms ease-out}.ds-faq details[open] summary::after{top:.65em;transform:rotate(-135deg)}.ds-faq details:hover summary{color:#ff7744}.ds-faq summary:focus-visible{outline:3px solid #ff7744;outline-offset:3px;border-radius:6px}.ds-faq p{margin:10px 0 0;color:#b4bed0}"
+    },
+    {
+      "name": "Mode Note",
+      "kind": "chip",
+      "refersTo": "mode-note",
+      "description": "Outlined Burnt Orange chip on the beige band stating a mode's timing fact.",
+      "html": "<div class=\"ds-band\"><p class=\"ds-note\">Captions start with the speaker</p></div>",
+      "css": ".ds-band{background:#f3ece0;padding:24px}.ds-note{display:inline-block;margin:0;padding:4px 10px;border-radius:6px;border:1px solid currentColor;color:#a8401a;font:600 14px Inter,'Noto Sans TC',system-ui,sans-serif}"
+    },
+    {
+      "name": "Demo Player",
+      "kind": "custom",
+      "refersTo": "demo-player",
+      "description": "Dark umber player on the beige band with the product's white and amber caption and a two-lane timeline.",
+      "html": "<div class=\"ds-band2\"><figure class=\"ds-demo\"><div class=\"ds-screen\"><div class=\"ds-cap\"><p class=\"ds-src\">Start small, and <span>don't</span> be afraid of mistakes.</p><p class=\"ds-tr\">從小地方開始，不要害怕犯錯。</p></div></div><div class=\"ds-lanes\"><div><i style=\"left:8%;width:36%;background:rgba(203,213,225,.55)\"></i></div><div><i style=\"left:8%;width:36%;background:#fde68a\"></i></div></div></figure></div>",
+      "css": ".ds-band2{background:#f3ece0;padding:24px}.ds-demo{margin:0;max-width:480px;background:#1e1b17;border:1px solid #14120f;border-radius:14px;padding:12px;box-shadow:0 20px 44px -22px rgba(35,31,26,.55)}.ds-screen{position:relative;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:radial-gradient(circle at 50% 30%,#1f4d5c 0%,#12283a 55%,#0a1520 100%)}.ds-cap{position:absolute;left:50%;bottom:12%;transform:translateX(-50%);width:max-content;max-width:90%;padding:6px 12px;border-radius:8px;background:rgba(0,0,0,.66);text-align:center;font:15px/1.4 Inter,'Noto Sans TC',system-ui,sans-serif}.ds-cap p{margin:0}.ds-src{color:#fff}.ds-src span{background:#fde68a;color:#111827;border-radius:3px}.ds-tr{color:#fde68a}.ds-lanes{display:grid;grid-template-rows:22px 22px;gap:8px;margin-top:14px}.ds-lanes div{position:relative;border-radius:3px;background:#2c2823}.ds-lanes i{position:absolute;top:3px;bottom:3px;border-radius:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Living Room Screen",
+    "overview": "A deep navy room with a lit screen in it. The page is a calm, flat navy (not black, not a gradient) with warm cream text, one orange voice taken from the 雙 icon, and rounded headings that feel friendly rather than technical. The section that holds the players is a full-bleed beige band; the promo video straddles the edge between the navy hero and that band, and the two mode demos sit dark on the beige. Only inside those players do the product's real caption colours appear: white source line, amber translation.\n\nContent is set like a well-made printed brochure, not a SaaS grid. Items sit in ruled columns under a heavy rule, rows are divided by hairlines, and nothing on the page is a rounded, filled, shadowed card. The user rejected boxed cards as looking \"too AI\"; the purple-blue gradient AI-tool look is equally out. The layout, section order and the orange 雙 icon are kept from the incumbent site for recognisability. History: navy-black (#0b1120) → beige restyle → this deep navy with an orange accent (user's choice, 2026-11-26).",
+    "keyCharacteristics": [
+      "Deep navy page (`navy-page`), cream type; one beige band (`beige-band`) for the players.",
+      "Ruled columns and hairline rows instead of boxed cards.",
+      "Rounded display face (BLC Rounded) for every heading, Inter + Noto Sans TC for text.",
+      "One accent: icon orange (`icon-orange` on navy, `burnt-orange` for text on beige). Amber and bright teal live only inside the players.",
+      "Small radii; one family of drawn line icons."
+    ],
+    "rules": [
+      {
+        "name": "The Screen On A Band Rule",
+        "body": "The page is navy; the players sit on the beige band (the promo video half on navy, half on beige). Players stay dark and never turn beige or navy.",
+        "section": "colors"
+      },
+      {
+        "name": "The Caption Colours Rule",
+        "body": "White over amber is how the product's captions look; use it only inside a player, where it depicts the product, never as page decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Voice Rule",
+        "body": "Orange is the only accent: `--accent` for fills, `--accent-ink` for text and lines. White text never sits on orange (2.6:1); the button text is navy.",
+        "section": "colors"
+      },
+      {
+        "name": "The Rounded Headings Rule",
+        "body": "h1, h2, h3 and FAQ summaries are set in BLC Rounded at weight 400 with `font-synthesis: none`. The face has a single weight; never fake bold on it.",
+        "section": "typography"
+      },
+      {
+        "name": "The Subset Maintenance Rule",
+        "body": "`site/public/fonts/blc-rounded.woff2` contains only the characters the site uses. Whenever copy adds characters (new Chinese text especially), rebuild it with `site/scripts/subset-font.py` (source: jf open huninn v2.1) or headings will fall back to Noto Sans TC glyph by glyph. The subset must keep the BLC Rounded name: the OFL reserves \"open huninn\" and \"huninn\" for unmodified fonts. Keep `OFL.txt` next to the font.",
+        "section": "typography"
+      },
+      {
+        "name": "The Only Screens Float Rule",
+        "body": "Shadows belong to dark players. Everything else sits flat.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** set content as ruled columns (2px `--text` top rule) and hairline rows (1px `--border`).",
+      "**Do** keep the page flat Navy Page, the players on the beige band, and every player dark with its palette scoped to the player.",
+      "**Do** use orange as the only accent (`--accent` fills, `--accent-ink` text), and Signal Teal and Caption Amber only inside players.",
+      "**Do** style through the role variables so a component works on navy and inside `.band`.",
+      "**Do** set every heading in BLC Rounded at 400, and rebuild the font subset when copy adds characters.",
+      "**Do** keep the incumbent layout, section order and the orange 雙 icon.",
+      "**Do** draw new icons in the existing line family (24px viewBox, 1.7 stroke, round caps, accent ink)."
+    ],
+    "donts": [
+      "**Don't** put content in rounded, filled or shadowed boxed cards; the user rejected them as \"too AI\".",
+      "**Don't** give the page a purple-blue or dark-gradient AI-tool look: the navy is flat, and the only gradients are the radial ones inside the demo screens, which depict a video.",
+      "**Don't** put white text on orange, or orange text on beige without darkening it to Burnt Orange.",
+      "**Don't** add shadows to anything that is not a dark player.",
+      "**Don't** bold or synthesise weights on BLC Rounded, or rename the subset back to huninn.",
+      "**Don't** carry these styles into the extension's own UI under `src/` or `entrypoints/`."
+    ]
+  }
+}

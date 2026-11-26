@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-11-26T13:51:29.325Z",
+        "reason": "agent: Inter is the documented body face in DESIGN.md (Typography) and kept by the surface brief's 'refined incumbent' restyle; this change only swapped colours"
+      }
+    ]
+  }
+}

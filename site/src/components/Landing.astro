@@ -11,6 +11,13 @@ const { lang } = Astro.props;
 const t = STRINGS[lang];
 const otherHref = lang === 'en' ? url('zh-tw/') : url('');
 const video = `video/intro-${t.videoLocale}`;
+// One family of drawn line icons, in the order of t.features: two caption
+// lines on a screen, a box being moved, a key.
+const featureIcons = [
+  ['M3 5h18v14H3z', 'M6.5 13.5h7M6.5 16h11'],
+  ['M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5', 'M9 12h6M12 9v6'],
+  ['M14.5 9.5a4 4 0 1 1-3.4-3.95 4 4 0 0 1 3.4 3.95Z', 'M13.6 12.4 20 18.8M17.5 16.3l1.8-1.8M15.6 14.4l1.6-1.6'],
+];
 const alternates = [
   { hreflang: 'en', href: url('') },
   { hreflang: 'zh-Hant-TW', href: url('zh-tw/') },
@@ -50,6 +57,7 @@ const alternates = [
       </div>
     </section>
 
+    <div class="band">
     <section class="wrap modes">
       <h2>{t.modesTitle}</h2>
       <p class="section-lead">{t.modesLead}</p>
@@ -60,8 +68,8 @@ const alternates = [
         ].map(({ kind, mode }) => (
           <article class="mode">
             <div class="mode-text">
-              <p class="eyebrow">{mode.tagline}</p>
               <h3>{mode.name}</h3>
+              <p class="mode-for">{mode.tagline}</p>
               <p>{mode.body}</p>
               <ul>
                 {mode.points.map((point) => (
@@ -75,14 +83,20 @@ const alternates = [
         ))
       }
     </section>
+    </div>
 
     <section class="wrap">
       <h2>{t.featuresTitle}</h2>
       <div class="grid">
         {
-          t.features.map((f) => (
+          t.features.map((f, i) => (
             <article class="card">
-              <h3>{f.title}</h3>
+              <h3 class="with-icon">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  {(featureIcons[i] ?? []).map((d) => <path d={d} />)}
+                </svg>
+                {f.title}
+              </h3>
               <p>{f.body}</p>
             </article>
           ))
@@ -167,31 +181,39 @@ const alternates = [
     gap: 10px;
     color: var(--text);
     text-decoration: none;
-    font-weight: 700;
+    font-family: var(--rounded);
+    font-size: 17px;
   }
   .brand img {
-    border-radius: 8px;
+    border-radius: 9px;
   }
   .lang {
     font-size: 15px;
     color: var(--muted);
   }
+  /* The promo video straddles the navy hero and the beige band below it. */
+  main {
+    --overlap: clamp(56px, 13vw, 200px);
+  }
   .hero {
     text-align: center;
     padding-top: 48px;
+    padding-bottom: 0;
   }
   h1 {
     font-size: clamp(34px, 6vw, 60px);
-    line-height: 1.12;
-    letter-spacing: -0.02em;
+    line-height: 1.18;
+    letter-spacing: 0;
     margin: 0 auto 18px;
     max-width: 16em;
+    text-wrap: balance;
   }
   .lead {
     color: var(--muted);
     font-size: clamp(17px, 2.2vw, 20px);
     max-width: 40em;
     margin: 0 auto 28px;
+    text-wrap: balance;
   }
   .ctas {
     display: flex;
@@ -202,29 +224,42 @@ const alternates = [
   .btn {
     display: inline-flex;
     align-items: center;
-    min-height: 48px;
+    min-height: 50px;
     padding: 0 24px;
-    border-radius: 12px;
-    border: 1px solid var(--border);
+    border-radius: 10px;
+    border: 1.5px solid var(--text);
     color: var(--text);
     text-decoration: none;
     font-weight: 600;
-    background: var(--surface);
+    background: transparent;
   }
   .btn.primary {
-    background: var(--teal-dark);
-    border-color: var(--teal);
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+  }
+  .btn {
+    transition: filter 160ms ease-out, transform 160ms ease-out;
   }
   .btn:hover {
-    filter: brightness(1.12);
+    background: var(--surface-2);
+  }
+  .btn.primary:hover {
+    background: var(--accent);
+    filter: brightness(1.08);
+  }
+  .btn:active {
+    transform: translateY(1px);
   }
   .video {
+    position: relative;
     margin-top: 44px;
-    border-radius: 16px;
+    margin-bottom: calc(-1 * var(--overlap));
+    border-radius: 14px;
     overflow: hidden;
-    border: 1px solid var(--border);
-    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(94, 234, 212, 0.06);
-    background: var(--surface);
+    border: 1px solid #14120f;
+    box-shadow: 0 24px 50px -24px rgba(35, 31, 26, 0.6);
+    background: #0b1120;
   }
   .video video {
     display: block;
@@ -234,29 +269,51 @@ const alternates = [
   section {
     padding-block: 44px;
   }
+  .band {
+    padding-top: var(--overlap);
+    margin-bottom: 44px;
+  }
+  .band .modes {
+    padding-block: 64px 56px;
+  }
   h2 {
     font-size: clamp(26px, 3.5vw, 34px);
-    letter-spacing: -0.01em;
+    letter-spacing: 0;
     margin: 0 0 22px;
   }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
+    gap: 28px 36px;
   }
+  /* Ruled columns, not boxes: a heavy rule over each item. */
   .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 22px;
+    border-top: 2px solid var(--text);
+    padding-top: 18px;
   }
   .card h3 {
     margin: 0 0 8px;
-    font-size: 18px;
+    font-size: 20px;
   }
   .card p {
     margin: 0;
     color: var(--muted);
+  }
+  .with-icon {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+  }
+  .icon {
+    color: var(--accent-ink);
+    fill: none;
+    flex: none;
+    height: 22px;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.7;
+    width: 22px;
   }
   .steps {
     list-style: none;
@@ -264,17 +321,15 @@ const alternates = [
     margin: 0;
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
+    gap: 28px 36px;
   }
   .num {
-    display: inline-grid;
-    place-items: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: var(--teal-dark);
-    font-weight: 700;
-    margin-bottom: 12px;
+    display: block;
+    color: var(--accent-ink);
+    font-family: var(--rounded);
+    font-size: 40px;
+    line-height: 1;
+    margin-bottom: 10px;
   }
   .section-lead {
     color: var(--muted);
@@ -293,16 +348,15 @@ const alternates = [
   .mode:nth-of-type(even) .mode-text {
     order: 2;
   }
-  .eyebrow {
-    margin: 0 0 6px;
-    color: var(--teal-light);
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-  }
   .mode h3 {
-    margin: 0 0 12px;
+    margin: 0 0 4px;
     font-size: clamp(22px, 3vw, 28px);
+  }
+  .mode-for {
+    margin: 0 0 14px;
+    color: var(--accent-ink);
+    font-size: 15px;
+    font-weight: 600;
   }
   .mode-text > p {
     color: var(--muted);
@@ -319,11 +373,12 @@ const alternates = [
   .mode .note {
     display: inline-block;
     margin: 0;
-    padding: 4px 12px;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    color: var(--amber);
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid currentColor;
+    color: var(--accent-ink);
     font-size: 14px;
+    font-weight: 600;
   }
   @media (max-width: 820px) {
     .mode {
@@ -336,44 +391,86 @@ const alternates = [
   }
   .table-scroll {
     overflow-x: auto;
-    border: 1px solid var(--border);
-    border-radius: 14px;
+    border-top: 2px solid var(--text);
   }
   table {
     width: 100%;
     border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
     min-width: 560px;
   }
   th,
   td {
     text-align: left;
-    padding: 14px 18px;
+    padding: 14px 16px 14px 0;
     border-bottom: 1px solid var(--border);
   }
   tbody tr:last-child > * {
     border-bottom: none;
   }
   thead th {
-    background: var(--surface-2);
     font-size: 15px;
+    border-bottom: 1px solid var(--text);
   }
   tbody th {
     color: var(--muted);
     font-weight: 500;
   }
+  /* Narrow screens: the three columns wrap in place rather than scroll, so
+     the read-ahead column is never cut off. */
+  @media (max-width: 600px) {
+    table {
+      min-width: 0;
+      font-size: 14px;
+    }
+    th,
+    td {
+      padding: 12px 10px 12px 0;
+    }
+    thead th {
+      font-size: 13px;
+    }
+    /* Row labels keep room for a two-line Chinese label, broken between words. */
+    tbody th {
+      min-width: 4.8em;
+      width: 4.8em;
+    }
+  }
   .faq {
-    display: grid;
-    gap: 10px;
+    border-top: 2px solid var(--text);
   }
   details {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    padding: 18px 0;
+  }
+  details:hover summary {
+    color: var(--accent-ink);
   }
   summary {
     cursor: pointer;
-    font-weight: 600;
+    font-size: 17px;
+    list-style: none;
+    padding-right: 28px;
+    position: relative;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary::after {
+    border-bottom: 2px solid var(--muted);
+    border-right: 2px solid var(--muted);
+    content: '';
+    height: 8px;
+    position: absolute;
+    right: 4px;
+    top: 0.45em;
+    transform: rotate(45deg);
+    transition: transform 160ms ease-out;
+    width: 8px;
+  }
+  details[open] summary::after {
+    top: 0.65em;
+    transform: rotate(-135deg);
   }
   details p {
     color: var(--muted);
@@ -393,5 +490,8 @@ const alternates = [
   }
   .footer a {
     color: var(--muted);
+  }
+  .footer a:hover {
+    color: var(--text);
   }
 </style>
